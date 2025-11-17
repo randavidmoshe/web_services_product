@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Form Discoverer Agent{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tabs {
+        display: flex;
+        gap: 0.5rem;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 2rem;
+    }
+
+    .tab {
+        padding: 1rem 2rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+        color: var(--text-secondary);
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+    }
+
+    .tab:hover {
+        color: var(--primary);
+    }
+
+    .tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+
+    .folder-input-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .folder-input-group .form-control {
+        flex: 1;
+    }
+
+    .btn-secondary {
+        background: var(--text-secondary);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+        opacity: 0.9;
+    }
+
+    .connection-test {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 6px;
+        display: none;
+    }
+
+    .connection-test.success {
+        display: block;
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .connection-test.error {
+        display: block;
+        background: #fee2e2;
+        color: #991b1b;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">Agent Settings</div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('connection')">Connection</button>
+        <button class="tab" onclick="switchTab('browser')">Browser</button>
+        <button class="tab" onclick="switchTab('folders')">Folders</button>
+        <button class="tab" onclick="switchTab('advanced')">Advanced</button>
+    </div>
+
+    <form id="settings-form">
+        <!-- Connection Tab -->
+        <div id="connection-tab" class="tab-content active">
+            <div class="form-group">
+                <label class="form-label">API Server URL</label>
+                <input type="text" class="form-control" id="api_url" 
+                       value="{{ config.api_url }}" placeholder="http://localhost:8001">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Agent ID (Read-only)</label>
+                    <input type="text" class="form-control" value="{{ config.agent_id }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Company ID (Read-only)</label>
+                    <input type="text" class="form-control" value="{{ config.company_id }}" readonly>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-secondary" onclick="testConnection()">
+                Test Connection
+            </button>
+
+            <div id="connection-result" class="connection-test"></div>
+        </div>
+
+        <!-- Browser Tab -->
+        <div id="browser-tab" class="tab-content">
+            <div class="form-group">
+                <label class="form-label">Default Browser</label>
+                <select class="form-control" id="browser">
+                    <option value="chrome" {% if config.browser == 'chrome' %}selected{% endif %}>Chrome</option>
+                    <option value="firefox" {% if config.browser == 'firefox' %}selected{% endif %}>Firefox</option>
+                    <option value="edge" {% if config.browser == 'edge' %}selected{% endif %}>Edge</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <input type="checkbox" id="headless" {% if config.headless %}checked{% endif %}>
+                    Headless Mode (Run browser in background)
+                </label>
+            </div>
+        </div>
+
+        <!-- Folders Tab -->
+        <div id="folders-tab" class="tab-content">
+            <div class="form-group">
+                <label class="form-label">Screenshot Folder</label>
+                <div class="folder-input-group">
+                    <input type="text" class="form-control" id="screenshot_folder" 
+                           value="{{ config.screenshot_folder }}">
+                    <button type="button" class="btn btn-secondary" onclick="showFolderInfo('screenshots')">
+                        Browse
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Log Folder</label>
+                <div class="folder-input-group">
+                    <input type="text" class="form-control" id="log_folder" 
+                           value="{{ config.log_folder }}">
+                    <button type="button" class="btn btn-secondary" onclick="showFolderInfo('logs')">
+                        Browse
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Files Folder</label>
+                <div class="folder-input-group">
+                    <input type="text" class="form-control" id="files_folder" 
+                           value="{{ config.files_folder }}">
+                    <button type="button" class="btn btn-secondary" onclick="showFolderInfo('files')">
+                        Browse
+                    </button>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>Note:</strong> Use the system tray icon to open folders in file explorer. 
+                Folder paths can be edited here and will be created on save.
+            </div>
+        </div>
+
+        <!-- Advanced Tab -->
+        <div id="advanced-tab" class="tab-content">
+            <div class="form-group">
+                <label class="form-label">
+                    <input type="checkbox" id="auto_start" {% if config.auto_start %}checked{% endif %}>
+                    Auto-start agent on system boot
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Log Level</label>
+                <select class="form-control" id="log_level">
+                    <option value="DEBUG" {% if config.log_level == 'DEBUG' %}selected{% endif %}>DEBUG (Most verbose)</option>
+                    <option value="INFO" {% if config.log_level == 'INFO' %}selected{% endif %}>INFO (Recommended)</option>
+                    <option value="WARNING" {% if config.log_level == 'WARNING' %}selected{% endif %}>WARNING</option>
+                    <option value="ERROR" {% if config.log_level == 'ERROR' %}selected{% endif %}>ERROR (Least verbose)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Polling Interval (seconds)</label>
+                <input type="number" class="form-control" id="poll_interval" 
+                       value="{{ config.poll_interval }}" min="1" max="60">
+                <small>How often the agent checks for new tasks (default: 2 seconds)</small>
+            </div>
+        </div>
+
+        <!-- Save Buttons -->
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                Save Settings
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="window.location.href='/'">
+                Cancel
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function switchTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        // Show selected tab
+        document.getElementById(tabName + '-tab').classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    async function testConnection() {
+        const apiUrl = document.getElementById('api_url').value;
+        const resultDiv = document.getElementById('connection-result');
+        
+        resultDiv.textContent = 'Testing connection...';
+        resultDiv.className = 'connection-test';
+        resultDiv.style.display = 'block';
+
+        try {
+            const response = await fetch('/api/setup/test-connection', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: apiUrl})
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                resultDiv.className = 'connection-test success';
+                resultDiv.textContent = '✅ Connection successful!';
+            } else {
+                resultDiv.className = 'connection-test error';
+                resultDiv.textContent = '❌ ' + (result.message || 'Connection failed');
+            }
+        } catch (err) {
+            resultDiv.className = 'connection-test error';
+            resultDiv.textContent = '❌ Connection failed: ' + err.message;
+        }
+    }
+
+    function showFolderInfo(folderType) {
+        showAlert(`Use the system tray icon's "Open ${folderType} Folder" option to browse folders. You can also type the path directly here.`, 'info');
+    }
+
+    async function saveSettings() {
+        const settings = {
+            api_url: document.getElementById('api_url').value,
+            browser: document.getElementById('browser').value,
+            headless: document.getElementById('headless').checked,
+            screenshot_folder: document.getElementById('screenshot_folder').value,
+            log_folder: document.getElementById('log_folder').value,
+            files_folder: document.getElementById('files_folder').value,
+            auto_start: document.getElementById('auto_start').checked,
+            log_level: document.getElementById('log_level').value,
+            poll_interval: document.getElementById('poll_interval').value
+        };
+
+        try {
+            const response = await fetch('/api/settings/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(settings)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showAlert('✅ Settings saved successfully! Restart the agent for changes to take effect.', 'success');
+                // Stay on settings page - don't redirect
+            } else {
+                showAlert('❌ Failed to save: ' + (result.message || 'Unknown error'), 'error');
+            }
+        } catch (err) {
+            showAlert('❌ Error saving settings: ' + err.message, 'error');
+        }
+    }
+</script>
+{% endblock %}

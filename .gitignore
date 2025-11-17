@@ -1,0 +1,37 @@
+# Environment
+.env
+.env.local
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.Python
+venv/
+env/
+
+# Next.js
+.next/
+out/
+build/
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Agent
+agent/agent_config.json

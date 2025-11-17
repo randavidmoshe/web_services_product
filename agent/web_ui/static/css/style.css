@@ -1,0 +1,720 @@
+/* Form Discoverer Agent - Web UI Styles */
+
+:root {
+    --primary: #0070f3;
+    --primary-hover: #0051cc;
+    --success: #10b981;
+    --error: #ef4444;
+    --warning: #f59e0b;
+    --bg-light: #f9fafb;
+    --bg-white: #ffffff;
+    --text-dark: #1f2937;
+    --text-gray: #6b7280;
+    --text-light: #9ca3af;
+    --border: #e5e7eb;
+    --shadow: rgba(0, 0, 0, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    background: var(--bg-light);
+    color: var(--text-dark);
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+/* ========== BUTTONS ========== */
+
+.btn {
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.btn-secondary {
+    background: var(--bg-white);
+    color: var(--text-dark);
+    border: 2px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-danger {
+    background: var(--error);
+    color: white;
+}
+
+.btn-large {
+    padding: 16px 32px;
+    font-size: 18px;
+}
+
+/* ========== SETUP WIZARD ========== */
+
+.setup-wizard {
+    background: var(--bg-white);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.wizard-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.wizard-header h1 {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.wizard-header p {
+    color: var(--text-gray);
+    font-size: 18px;
+}
+
+/* Progress Steps */
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    position: relative;
+}
+
+.progress-steps::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    z-index: 0;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+    flex: 1;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-white);
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: var(--text-gray);
+    transition: all 0.3s ease;
+}
+
+.step-label {
+    font-size: 14px;
+    color: var(--text-gray);
+    font-weight: 500;
+}
+
+.step.active .step-number {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.step.completed .step-number {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+/* Wizard Steps */
+.wizard-step {
+    min-height: 400px;
+}
+
+.wizard-step.hidden {
+    display: none;
+}
+
+.wizard-step h2 {
+    font-size: 28px;
+    margin-bottom: 24px;
+}
+
+.wizard-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: flex-end;
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+/* ========== FORMS ========== */
+
+.form-section {
+    margin-bottom: 32px;
+}
+
+.form-section h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+}
+
+label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--text-dark);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+    margin-bottom: 16px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 16px;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin: 0;
+}
+
+/* ========== INFO BOXES ========== */
+
+.info-box {
+    background: var(--bg-light);
+    border-left: 4px solid var(--primary);
+    padding: 20px;
+    border-radius: 8px;
+    margin: 24px 0;
+}
+
+.info-box h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.info-box ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.info-box li {
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.success-box {
+    background: #ecfdf5;
+    border-left-color: var(--success);
+}
+
+.error-box {
+    background: #fef2f2;
+    border-left-color: var(--error);
+}
+
+.warning-box {
+    background: #fffbeb;
+    border-left-color: var(--warning);
+}
+
+/* ========== RESULT MESSAGES ========== */
+
+.result-message {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-top: 12px;
+    display: none;
+}
+
+.result-message.visible {
+    display: block;
+}
+
+.result-message.success {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #10b981;
+}
+
+.result-message.error {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #ef4444;
+}
+
+.result-message.info {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #3b82f6;
+}
+
+/* ========== DIVIDER ========== */
+
+.divider {
+    text-align: center;
+    margin: 32px 0;
+    position: relative;
+    color: var(--text-gray);
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border);
+    z-index: 0;
+}
+
+.divider::after {
+    content: 'OR';
+    background: var(--bg-white);
+    padding: 0 16px;
+    position: relative;
+    z-index: 1;
+}
+
+/* ========== SUMMARY BOX ========== */
+
+.summary-box {
+    background: var(--bg-light);
+    padding: 24px;
+    border-radius: 8px;
+    margin: 24px 0;
+}
+
+.summary-box h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.summary-item:last-child {
+    border-bottom: none;
+}
+
+.summary-label {
+    font-weight: 500;
+    color: var(--text-gray);
+}
+
+.summary-value {
+    color: var(--text-dark);
+    font-weight: 500;
+}
+
+.success-message {
+    text-align: center;
+    font-size: 18px;
+    color: var(--success);
+    margin: 24px 0;
+}
+
+/* ========== SETTINGS PANEL ========== */
+
+.settings-panel {
+    background: var(--bg-white);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.settings-header {
+    margin-bottom: 32px;
+}
+
+.settings-header h1 {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.settings-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 32px;
+}
+
+.tab {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-gray);
+    transition: all 0.2s ease;
+    margin-bottom: -2px;
+}
+
+.tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.settings-section {
+    margin-bottom: 32px;
+}
+
+.settings-section h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+}
+
+.read-only {
+    background: var(--bg-light);
+    cursor: not-allowed;
+}
+
+/* ========== LOG VIEWER ========== */
+
+.log-viewer {
+    background: var(--bg-white);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.log-controls {
+    display: flex;
+    gap: 12px;
+}
+
+.log-container {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 20px;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.log-line {
+    padding: 4px 0;
+    word-wrap: break-word;
+}
+
+.log-line.info {
+    color: #3b82f6;
+}
+
+.log-line.success {
+    color: #10b981;
+}
+
+.log-line.warning {
+    color: #f59e0b;
+}
+
+.log-line.error {
+    color: #ef4444;
+}
+
+.log-line.debug {
+    color: #9ca3af;
+}
+
+/* ========== TEST RUNNER ========== */
+
+.test-runner {
+    background: var(--bg-white);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.test-header {
+    margin-bottom: 32px;
+}
+
+.test-list {
+    list-style: none;
+    padding: 0;
+}
+
+.test-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.test-item:hover {
+    border-color: var(--primary);
+    background: var(--bg-light);
+}
+
+.test-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.test-info {
+    flex: 1;
+}
+
+.test-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.test-description {
+    color: var(--text-gray);
+    font-size: 14px;
+}
+
+.test-actions {
+    display: flex;
+    gap: 16px;
+    margin-top: 24px;
+}
+
+/* ========== DASHBOARD ========== */
+
+.dashboard {
+    background: var(--bg-white);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.dashboard-header {
+    margin-bottom: 32px;
+}
+
+.status-card {
+    background: var(--bg-light);
+    padding: 24px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.status-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+.status-dot.disconnected {
+    background: var(--error);
+    box-shadow: 0 0 8px var(--error);
+}
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.action-card {
+    background: var(--bg-white);
+    border: 2px solid var(--border);
+    padding: 24px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.action-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.action-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+}
+
+.action-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+/* ========== RESPONSIVE ========== */
+
+@media (max-width: 768px) {
+    .container {
+        padding: 20px 16px;
+    }
+
+    .setup-wizard,
+    .settings-panel,
+    .log-viewer,
+    .test-runner,
+    .dashboard {
+        padding: 24px;
+    }
+
+    .progress-steps {
+        flex-wrap: wrap;
+    }
+
+    .step-label {
+        font-size: 12px;
+    }
+
+    .wizard-buttons {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .quick-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========== LOADING SPINNER ========== */
+
+.spinner {
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}

@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # Web Application (Next.js)
+  web:
+    build: ./web-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@db:5432/formfinder
+      - API_SERVER_URL=http://api-server:8000
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=your-secret-key-change-in-production
+    depends_on:
+      - db
+    volumes:
+      - ./web-app:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  # API/Processing Server (FastAPI)
+  api-server:
+    build: ./api-server
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/formfinder
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - JWT_SECRET=your-jwt-secret-change-in-production
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./api-server:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=formfinder
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Redis (Message Queue)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Celery Worker (Background Tasks)
+  celery-worker:
+    build: ./api-server
+    command: celery -A celery_app.celery worker --loglevel=info -Q celery
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/formfinder
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./api-server:/app
+
+volumes:
+  postgres_data:
+  redis_data:

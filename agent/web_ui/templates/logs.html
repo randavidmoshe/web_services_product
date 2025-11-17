@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - Form Discoverer Agent{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-controls {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    .log-viewer {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Courier New', Consolas, monospace;
+        font-size: 0.875rem;
+        padding: 1.5rem;
+        border-radius: 8px;
+        height: 600px;
+        overflow-y: auto;
+        line-height: 1.6;
+    }
+
+    .log-line {
+        margin-bottom: 0.25rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .log-line.info {
+        color: #4fc3f7;
+    }
+
+    .log-line.warning {
+        color: #ffb74d;
+    }
+
+    .log-line.error {
+        color: #ef5350;
+    }
+
+    .log-line.success {
+        color: #66bb6a;
+    }
+
+    .log-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stat-box {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-top: 0.5rem;
+    }
+
+    .btn-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    #auto-scroll-indicator {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        background: var(--primary);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        display: none;
+    }
+
+    #auto-scroll-indicator.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">Agent Logs</div>
+
+    <div class="log-stats">
+        <div class="stat-box">
+            <div class="stat-number" id="total-lines">0</div>
+            <div class="stat-label">Total Lines</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="info-count" style="color: #4fc3f7;">0</div>
+            <div class="stat-label">Info</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="warning-count" style="color: #ffb74d;">0</div>
+            <div class="stat-label">Warnings</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="error-count" style="color: #ef5350;">0</div>
+            <div class="stat-label">Errors</div>
+        </div>
+    </div>
+
+    <div class="log-controls">
+        <button class="btn btn-primary" onclick="toggleAutoScroll()" id="auto-scroll-btn">
+            🔄 Auto-scroll: ON
+        </button>
+        <button class="btn btn-secondary" onclick="clearLogs()">
+            🗑️ Clear Display
+        </button>
+        <button class="btn btn-secondary" onclick="downloadLogs()">
+            💾 Download
+        </button>
+        <select class="form-control" style="width: 200px;" onchange="filterLogs(this.value)">
+            <option value="all">All Logs</option>
+            <option value="info">Info Only</option>
+            <option value="warning">Warnings Only</option>
+            <option value="error">Errors Only</option>
+        </select>
+    </div>
+
+    <div class="log-viewer" id="log-viewer">
+        <div class="log-line">Loading logs...</div>
+    </div>
+</div>
+
+<div id="auto-scroll-indicator">Auto-scrolling...</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let autoScroll = true;
+    let logLines = [];
+    let filterType = 'all';
+    let stats = {total: 0, info: 0, warning: 0, error: 0};
+
+    function getLogType(line) {
+        if (line.includes('ERROR')) return 'error';
+        if (line.includes('WARNING')) return 'warning';
+        if (line.includes('INFO')) return 'info';
+        if (line.includes('✅') || line.includes('SUCCESS')) return 'success';
+        return 'info';
+    }
+
+    function addLogLine(line) {
+        if (!line.trim()) return;
+
+        const type = getLogType(line);
+        logLines.push({text: line, type: type});
+
+        // Update stats
+        stats.total++;
+        if (type === 'info' || type === 'success') stats.info++;
+        if (type === 'warning') stats.warning++;
+        if (type === 'error') stats.error++;
+
+        updateStats();
+
+        // Only display if matches filter
+        if (filterType === 'all' || filterType === type) {
+            displayLogLine(line, type);
+        }
+    }
+
+    function displayLogLine(line, type) {
+        const viewer = document.getElementById('log-viewer');
+        const lineDiv = document.createElement('div');
+        lineDiv.className = `log-line ${type}`;
+        lineDiv.textContent = line;
+        viewer.appendChild(lineDiv);
+
+        if (autoScroll) {
+            viewer.scrollTop = viewer.scrollHeight;
+        }
+    }
+
+    function updateStats() {
+        document.getElementById('total-lines').textContent = stats.total;
+        document.getElementById('info-count').textContent = stats.info;
+        document.getElementById('warning-count').textContent = stats.warning;
+        document.getElementById('error-count').textContent = stats.error;
+    }
+
+    function toggleAutoScroll() {
+        autoScroll = !autoScroll;
+        const btn = document.getElementById('auto-scroll-btn');
+        btn.textContent = autoScroll ? '🔄 Auto-scroll: ON' : '⏸️ Auto-scroll: OFF';
+        
+        if (autoScroll) {
+            const viewer = document.getElementById('log-viewer');
+            viewer.scrollTop = viewer.scrollHeight;
+        }
+    }
+
+    function clearLogs() {
+        document.getElementById('log-viewer').innerHTML = '';
+        logLines = [];
+        stats = {total: 0, info: 0, warning: 0, error: 0};
+        updateStats();
+    }
+
+    function downloadLogs() {
+        const content = logLines.map(l => l.text).join('\n');
+        const blob = new Blob([content], {type: 'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `agent_logs_${new Date().toISOString()}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function filterLogs(type) {
+        filterType = type;
+        const viewer = document.getElementById('log-viewer');
+        viewer.innerHTML = '';
+
+        logLines.forEach(log => {
+            if (type === 'all' || log.type === type) {
+                displayLogLine(log.text, log.type);
+            }
+        });
+    }
+
+    // Load existing logs from the correct location
+    async function loadExistingLogs() {
+        try {
+            // Try to get logs from the agent's log folder
+            const response = await fetch('/api/logs/history?lines=1000');
+            const data = await response.json();
+
+            if (data.logs && data.logs.length > 0) {
+                document.getElementById('log-viewer').innerHTML = '';
+                data.logs.forEach(line => addLogLine(line));
+            } else if (data.error) {
+                document.getElementById('log-viewer').innerHTML = 
+                    '<div class="log-line error">Error loading logs: ' + data.error + '</div>';
+            } else {
+                document.getElementById('log-viewer').innerHTML = 
+                    '<div class="log-line">No logs found yet. Logs will appear here as the agent runs.</div>';
+            }
+        } catch (err) {
+            console.error('Failed to load logs:', err);
+            document.getElementById('log-viewer').innerHTML = 
+                '<div class="log-line error">Failed to load logs: ' + err.message + '</div>' +
+                '<div class="log-line">Note: Logs are located at: /home/ranlaser/Desktop/automation_files/logs/</div>';
+        }
+    }
+
+    // Start streaming logs (simulated - would need SSE endpoint)
+    function startLogStream() {
+        // Check for new logs every 2 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/logs/history?lines=10');
+                const data = await response.json();
+                
+                if (data.logs && data.logs.length > 0) {
+                    // Only add new lines (simple check)
+                    const lastDisplayedLine = logLines.length > 0 ? logLines[logLines.length - 1].text : '';
+                    
+                    data.logs.forEach(line => {
+                        if (line !== lastDisplayedLine && !logLines.some(l => l.text === line)) {
+                            addLogLine(line);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Log stream error:', err);
+            }
+        }, 2000);
+    }
+
+    // Initialize
+    loadExistingLogs();
+    startLogStream();
+</script>
+{% endblock %}

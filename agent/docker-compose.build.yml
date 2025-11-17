@@ -1,0 +1,44 @@
+# Docker Compose file for building agent installers
+# Usage: docker-compose -f docker-compose.build.yml up
+
+version: '3.8'
+
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.builder
+    volumes:
+      # Mount output directory to get the built installers
+      - ./dist/installers:/build/dist/installers
+    environment:
+      - PYTHONUNBUFFERED=1
+```
+
+## 📁 **File 16: agent/.dockerignore**
+```
+# Don't copy these to Docker build context
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec~
+.env
+.env.local
+venv/
+env/
+.venv/
+.git/
+.gitignore
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+.DS_Store
+Thumbs.db

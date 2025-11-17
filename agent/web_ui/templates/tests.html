@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Tests{% endblock %}
+{% block content %}
+<div class="test-runner">
+    <div class="test-header">
+        <h1>🧪 Test Runner</h1>
+        <p>Select and run tests from your projects</p>
+    </div>
+
+    <div id="test-load-error" class="result-message"></div>
+
+    <div style="margin-bottom: 24px; display: flex; gap: 12px;">
+        <button class="btn btn-secondary" onclick="selectAllTests()">Select All</button>
+        <button class="btn btn-secondary" onclick="deselectAllTests()">Deselect All</button>
+        <button class="btn btn-secondary" onclick="refreshTestList()">🔄 Refresh</button>
+    </div>
+
+    <div class="test-list" id="test-list">
+        <p>Loading tests...</p>
+    </div>
+
+    <div class="test-actions">
+        <button class="btn btn-primary btn-large" id="run-tests-btn" onclick="runSelectedTests()" disabled>
+            Select Tests to Run
+        </button>
+    </div>
+
+    <div id="test-run-result" class="result-message"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/tests.js') }}"></script>
+{% endblock %}

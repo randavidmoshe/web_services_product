@@ -1,0 +1,16 @@
+# Core dependencies
+selenium>=4.15.0
+selenium-wire>=5.1.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Web UI
+flask>=3.0.0
+werkzeug>=3.0.0
+
+# System tray
+pystray>=0.19.5
+pillow>=10.0.0
+
+# Optional but recommended
+webdriver-manager>=4.0.0
