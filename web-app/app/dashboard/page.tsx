@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 
 export default function DashboardPage() {
   const [token, setToken] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
-    const userType = localStorage.getItem('userType')
+    const storedUserId = localStorage.getItem('user_id')
     
     if (!storedToken) {
       window.location.href = '/login'
@@ -14,6 +15,7 @@ export default function DashboardPage() {
     }
     
     setToken(storedToken)
+    setUserId(storedUserId)
   }, [])
 
   if (!token) return <p>Loading...</p>
@@ -23,6 +25,17 @@ export default function DashboardPage() {
       <h1>Dashboard</h1>
       
       <div style={{ marginTop: '30px' }}>
+        <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+          <h2>🔍 Form Discovery</h2>
+          <p>Discover all form pages in your web application automatically using AI</p>
+          <button 
+            onClick={() => window.location.href = '/dashboard/form-pages-discovery'}
+            style={buttonStyle}
+          >
+            Start Form Discovery
+          </button>
+        </div>
+
         <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
           <h2>🎯 Projects</h2>
           <p>Create and manage your testing projects</p>

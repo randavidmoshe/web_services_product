@@ -1,12 +1,27 @@
 # Form Pages Routes - API Endpoints for Form Discovery
 # Location: web_services_product/api-server/routes/form_pages.py
+#
+# UPDATED: Added Redis queue integration to trigger agent tasks
+# - locate_form_pages now creates agent_task and pushes to user's Redis queue
+# - Added check for online agent before starting discovery
 
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
+import redis
+import json
+import uuid
+import os
+
 from models.database import get_db, FormPageRoute, CrawlSession, Network
+from models.agent_models import Agent, AgentTask
 
 router = APIRouter()
+
+# Redis connection
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+redis_client = redis.from_url(REDIS_URL)
 
 
 # ========== CRAWL SESSION ENDPOINTS ==========
@@ -24,7 +39,12 @@ async def locate_form_pages(
 ):
     """
     Start form page discovery for a network.
-    Creates a crawl session and returns task parameters for agent.
+    Creates a crawl session, agent task, and pushes to user's Redis queue.
+    
+    Returns:
+        - crawl_session_id: ID to poll for status
+        - task_id: Agent task ID
+        - status: 'pending'
     """
     from services.form_pages_locator_service import FormPagesLocatorService
     
@@ -33,10 +53,28 @@ async def locate_form_pages(
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
     
+    # Check if user has an online agent
+    agent = db.query(Agent).filter(
+        Agent.user_id == user_id,
+        Agent.status.in_(['online', 'idle', 'busy'])
+    ).first()
+    
+    # Also check heartbeat is recent (within last 2 minutes)
+    if agent and agent.last_heartbeat:
+        heartbeat_timeout = datetime.utcnow() - timedelta(minutes=2)
+        if agent.last_heartbeat < heartbeat_timeout:
+            agent = None  # Agent is stale
+    
+    if not agent:
+        raise HTTPException(
+            status_code=400, 
+            detail="No online agent found. Please ensure your agent is running and connected."
+        )
+    
     # Initialize service
     service = FormPagesLocatorService(db)
     
-    # Prepare crawl task
+    # Prepare crawl task (creates crawl_session)
     task_params = service.prepare_crawl_task(
         network_id=network_id,
         user_id=user_id,
@@ -50,11 +88,39 @@ async def locate_form_pages(
     if not task_params:
         raise HTTPException(status_code=400, detail="Failed to prepare crawl task")
     
+    # Generate task ID
+    task_id = str(uuid.uuid4())
+    
+    # Create agent_task record in database
+    agent_task = AgentTask(
+        task_id=task_id,
+        company_id=task_params["company_id"],
+        user_id=user_id,
+        task_type="discover_form_pages",
+        parameters=task_params,
+        status="pending"
+    )
+    db.add(agent_task)
+    db.commit()
+    db.refresh(agent_task)
+    
+    # Push to user's Redis queue
+    queue_name = f'agent:{user_id}'
+    redis_message = json.dumps({
+        'task_id': task_id,
+        'task_type': 'discover_form_pages',
+        'company_id': task_params["company_id"],
+        'user_id': user_id
+    })
+    redis_client.rpush(queue_name, redis_message)
+    
     return {
         "crawl_session_id": task_params["crawl_session_id"],
+        "task_id": task_id,
         "status": "pending",
-        "message": "Form page discovery task created",
-        "task_params": task_params
+        "message": "Form page discovery task created and queued",
+        "agent_id": agent.agent_id,
+        "queue": queue_name
     }
 
 
@@ -64,7 +130,17 @@ async def get_crawl_session(session_id: int, db: Session = Depends(get_db)):
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
-    return session
+    
+    return {
+        "id": session.id,
+        "status": session.status,
+        "pages_crawled": session.pages_crawled,
+        "forms_found": session.forms_found,
+        "error_message": session.error_message,
+        "started_at": session.started_at.isoformat() if session.started_at else None,
+        "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+        "created_at": session.created_at.isoformat() if session.created_at else None
+    }
 
 
 @router.put("/sessions/{session_id}")
@@ -86,6 +162,46 @@ async def update_crawl_session(
     )
     
     return {"success": True}
+
+
+@router.get("/sessions/{session_id}/status")
+async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
+    """
+    Get discovery status including session info, task status, and discovered forms.
+    Designed for frontend polling.
+    """
+    # Get crawl session
+    session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Crawl session not found")
+    
+    # Get discovered forms for this session
+    forms = db.query(FormPageRoute).filter(
+        FormPageRoute.crawl_session_id == session_id
+    ).order_by(FormPageRoute.created_at.desc()).all()
+    
+    return {
+        "session": {
+            "id": session.id,
+            "status": session.status,
+            "pages_crawled": session.pages_crawled,
+            "forms_found": session.forms_found,
+            "error_message": session.error_message,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "completed_at": session.completed_at.isoformat() if session.completed_at else None
+        },
+        "forms": [
+            {
+                "id": form.id,
+                "form_name": form.form_name,
+                "url": form.url,
+                "navigation_steps": form.navigation_steps,
+                "is_root": form.is_root,
+                "created_at": form.created_at.isoformat() if form.created_at else None
+            }
+            for form in forms
+        ]
+    }
 
 
 # ========== FORM ROUTES ENDPOINTS ==========

@@ -21,6 +21,10 @@ export default function LoginPage() {
         const data = await response.json()
         localStorage.setItem('token', data.token)
         localStorage.setItem('userType', data.type)
+        localStorage.setItem('user_id', data.user_id)
+        if (data.company_id) {
+          localStorage.setItem('company_id', data.company_id)
+        }
         setMessage('✅ Login successful!')
         setTimeout(() => window.location.href = '/dashboard', 1000)
       } else {

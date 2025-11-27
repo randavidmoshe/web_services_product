@@ -1,5 +1,9 @@
 # Agent API Router - Direct Redis (No Celery for Agent Tasks)
 # Location: api-server/routes/agent_router.py
+#
+# UPDATED: Per-user queue isolation for scalability (100,000+ users)
+# - Tasks pushed to 'agent:{user_id}' instead of shared 'agent_only'
+# - Agent polls from their user's queue only
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -63,12 +67,19 @@ async def poll_task(
     db: Session = Depends(get_db)
 ):
     """
-    Agent polls for tasks from Redis agent_only queue
-    Simple direct Redis access - no Celery parsing needed
+    Agent polls for tasks from their user-specific Redis queue.
+    Each user has their own queue: 'agent:{user_id}'
+    This ensures Agent A never grabs Agent B's tasks.
     """
     try:
-        # Pop task from Redis list (LPOP gets oldest task)
-        task_data = redis_client.lpop('agent_only')
+        # Look up agent to get user_id
+        agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not registered")
+        
+        # Pop task from user-specific Redis queue
+        queue_name = f'agent:{agent.user_id}'
+        task_data = redis_client.lpop(queue_name)
         
         if not task_data:
             raise HTTPException(status_code=204, detail="No tasks available")
@@ -96,6 +107,8 @@ async def poll_task(
             "parameters": db_task.parameters
         }
         
+    except HTTPException:
+        raise
     except redis.RedisError as e:
         raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
 
@@ -136,6 +149,7 @@ async def list_agents(company_id: Optional[int] = None, db: Session = Depends(ge
             {
                 "agent_id": agent.agent_id,
                 "company_id": agent.company_id,
+                "user_id": agent.user_id,
                 "status": agent.status,
                 "last_heartbeat": agent.last_heartbeat.isoformat() if agent.last_heartbeat else None,
                 "platform": agent.platform,
@@ -149,13 +163,16 @@ async def list_agents(company_id: Optional[int] = None, db: Session = Depends(ge
 @router.post("/create-task")
 async def create_task(task_data: dict, db: Session = Depends(get_db)):
     """
-    Create task (called by web app OR by Celery crawl tasks)
-    Direct Redis - no Celery for agent tasks
+    Create task (called by web app OR by server endpoints)
+    Tasks are pushed to user-specific Redis queue: 'agent:{user_id}'
     """
     company_id = task_data.get('company_id')
     user_id = task_data.get('user_id')
     task_type = task_data.get('task_type')
     parameters = task_data.get('parameters', {})
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
     
     # Generate task ID
     task_id = str(uuid.uuid4())
@@ -170,16 +187,17 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
         parameters=parameters
     )
     
-    # Add to Redis queue (simple JSON message)
+    # Add to user-specific Redis queue
+    queue_name = f'agent:{user_id}'
     redis_message = json.dumps({
         'task_id': task_id,
         'task_type': task_type,
         'company_id': company_id,
         'user_id': user_id
     })
-    redis_client.rpush('agent_only', redis_message)
+    redis_client.rpush(queue_name, redis_message)
     
-    return {"success": True, "task_id": task_id, "message": "Task queued successfully"}
+    return {"success": True, "task_id": task_id, "queue": queue_name, "message": "Task queued successfully"}
 
 
 @router.get("/task-status/{task_id}")
@@ -205,13 +223,48 @@ async def get_task_status_endpoint(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/queue-stats")
-async def get_queue_stats():
-    """Get queue statistics"""
+async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """
+    Get queue statistics.
+    - If user_id provided: returns that user's queue length
+    - If no user_id: returns summary of all user queues
+    """
     try:
-        agent_queue_length = redis_client.llen('agent_only')
-        return {
-            "agent_queue_length": agent_queue_length,
-            "agent_queue": "agent_only"
-        }
+        if user_id:
+            # Get specific user's queue length
+            queue_name = f'agent:{user_id}'
+            queue_length = redis_client.llen(queue_name)
+            return {
+                "user_id": user_id,
+                "queue": queue_name,
+                "queue_length": queue_length
+            }
+        else:
+            # Get all agent:* queues
+            all_queues = []
+            cursor = 0
+            total_tasks = 0
+            
+            # Scan for all agent:* keys
+            while True:
+                cursor, keys = redis_client.scan(cursor, match='agent:*', count=100)
+                for key in keys:
+                    if isinstance(key, bytes):
+                        key = key.decode('utf-8')
+                    length = redis_client.llen(key)
+                    total_tasks += length
+                    if length > 0:  # Only show non-empty queues
+                        all_queues.append({
+                            "queue": key,
+                            "length": length
+                        })
+                if cursor == 0:
+                    break
+            
+            return {
+                "total_queues": len(all_queues),
+                "total_pending_tasks": total_tasks,
+                "queues_with_tasks": all_queues
+            }
     except redis.RedisError as e:
         return {"error": str(e)}

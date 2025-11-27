@@ -25,14 +25,24 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Check super admin
     admin = db.query(SuperAdmin).filter(SuperAdmin.email == email).first()
     if admin and pwd_context.verify(password, admin.password_hash):
-        return {"token": create_token({"user_id": admin.id, "type": "super_admin"}), "type": "super_admin"}
+        return {
+            "token": create_token({"user_id": admin.id, "type": "super_admin"}),
+            "type": "super_admin",
+            "user_id": admin.id,
+            "company_id": None  # Super admins don't belong to a company
+        }
     
     # Check regular user
     user = db.query(User).filter(User.email == email).first()
     if user and pwd_context.verify(password, user.password_hash):
         user.last_login_at = datetime.utcnow()
         db.commit()
-        return {"token": create_token({"user_id": user.id, "type": "user"}), "type": "user"}
+        return {
+            "token": create_token({"user_id": user.id, "type": "user"}),
+            "type": "user",
+            "user_id": user.id,
+            "company_id": user.company_id
+        }
     
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
