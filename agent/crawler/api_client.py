@@ -1,0 +1,391 @@
+# Form Pages API Client
+# Location: web_services_product/agent/crawler/api_client.py
+#
+# HTTP client that replaces direct server.method() calls
+# Agent crawler uses this to communicate with API server
+
+import requests
+from typing import Dict, List, Any, Optional
+
+
+class FormPagesAPIClient:
+    """
+    API client for Form Pages Locator feature.
+    Replaces direct server method calls with HTTP API calls.
+    """
+    
+    def __init__(
+        self, 
+        api_url: str, 
+        agent_token: str,
+        company_id: int,
+        product_id: int,
+        project_id: int,
+        network_id: int,
+        crawl_session_id: int
+    ):
+        """
+        Initialize API client.
+        
+        Args:
+            api_url: Base URL of API server (e.g., http://localhost:8001)
+            agent_token: Agent authentication token
+            company_id: Company ID
+            product_id: Product ID
+            project_id: Project ID
+            network_id: Network ID
+            crawl_session_id: Current crawl session ID
+        """
+        self.api_url = api_url.rstrip('/')
+        self.agent_token = agent_token
+        self.company_id = company_id
+        self.product_id = product_id
+        self.project_id = project_id
+        self.network_id = network_id
+        self.crawl_session_id = crawl_session_id
+        
+        # Track created form names (to avoid duplicates)
+        self.created_form_names: List[str] = []
+        
+        # Track new form pages count
+        self.new_form_pages_count = 0
+        self.max_form_pages: Optional[int] = None
+        
+        # UI verification flag
+        self.ui_verification = True
+        
+        # Store parent fields for current form
+        self.current_form_parent_fields: List[Dict] = []
+    
+    def _headers(self) -> Dict[str, str]:
+        """Get request headers with auth token"""
+        return {
+            "Authorization": f"Bearer {self.agent_token}",
+            "Content-Type": "application/json"
+        }
+    
+    def _post(self, endpoint: str, data: Dict) -> Dict:
+        """Make POST request to API"""
+        url = f"{self.api_url}{endpoint}"
+        try:
+            response = requests.post(url, json=data, headers=self._headers(), timeout=120)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"[APIClient] ❌ POST {endpoint} failed: {e}")
+            return {"error": str(e)}
+    
+    def _put(self, endpoint: str, data: Dict) -> Dict:
+        """Make PUT request to API"""
+        url = f"{self.api_url}{endpoint}"
+        try:
+            response = requests.put(url, json=data, headers=self._headers(), timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"[APIClient] ❌ PUT {endpoint} failed: {e}")
+            return {"error": str(e)}
+    
+    def _get(self, endpoint: str, params: Dict = None) -> Dict:
+        """Make GET request to API"""
+        url = f"{self.api_url}{endpoint}"
+        try:
+            response = requests.get(url, params=params, headers=self._headers(), timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"[APIClient] ❌ GET {endpoint} failed: {e}")
+            return {"error": str(e)}
+    
+    # ========== CRAWL SESSION ==========
+    
+    def update_crawl_session(
+        self,
+        status: Optional[str] = None,
+        pages_crawled: Optional[int] = None,
+        forms_found: Optional[int] = None,
+        error_message: Optional[str] = None
+    ):
+        """Update crawl session status"""
+        data = {}
+        if status:
+            data["status"] = status
+        if pages_crawled is not None:
+            data["pages_crawled"] = pages_crawled
+        if forms_found is not None:
+            data["forms_found"] = forms_found
+        if error_message:
+            data["error_message"] = error_message
+        
+        self._put(f"/api/form-pages/sessions/{self.crawl_session_id}", data)
+    
+    # ========== AI OPERATIONS ==========
+    
+    def generate_login_steps(
+        self,
+        page_html: str,
+        screenshot_base64: str,
+        username: str,
+        password: str
+    ) -> List[Dict[str, Any]]:
+        """Generate login automation steps using AI"""
+        print("[APIClient] 🔐 Requesting login steps from server...")
+        
+        result = self._post("/api/form-pages/ai/login-steps", {
+            "page_html": page_html,
+            "screenshot_base64": screenshot_base64,
+            "username": username,
+            "password": password,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        steps = result.get("steps", [])
+        print(f"[APIClient] 🔐 Received {len(steps)} login steps")
+        return steps
+    
+    def generate_logout_steps(
+        self,
+        page_html: str,
+        screenshot_base64: str
+    ) -> List[Dict[str, Any]]:
+        """Generate logout automation steps using AI"""
+        print("[APIClient] 🚪 Requesting logout steps from server...")
+        
+        result = self._post("/api/form-pages/ai/logout-steps", {
+            "page_html": page_html,
+            "screenshot_base64": screenshot_base64,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        steps = result.get("steps", [])
+        print(f"[APIClient] 🚪 Received {len(steps)} logout steps")
+        return steps
+    
+    def extract_form_name(
+        self,
+        context_data: Dict[str, Any],
+        page_html: str = "",
+        screenshot_base64: str = None
+    ) -> str:
+        """Extract semantic form name using AI"""
+        print("[APIClient] AI: Extracting form name...")
+        
+        result = self._post("/api/form-pages/ai/form-name", {
+            "url": context_data.get("url", ""),
+            "url_path": context_data.get("url_path", ""),
+            "button_clicked": context_data.get("button_clicked", ""),
+            "page_title": context_data.get("page_title", ""),
+            "headers": context_data.get("headers", []),
+            "form_labels": context_data.get("form_labels", []),
+            "existing_names": self.created_form_names,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        form_name = result.get("form_name", "unknown_form")
+        print(f"[APIClient] AI: ✅ Form name: '{form_name}'")
+        
+        # Also extract parent reference fields
+        print("[APIClient] AI: Extracting parent reference fields...")
+        self.current_form_parent_fields = self.extract_parent_reference_fields(
+            form_name, page_html, screenshot_base64
+        )
+        print(f"[APIClient] AI: ✅ Found {len(self.current_form_parent_fields)} parent fields")
+        
+        return form_name
+    
+    def extract_parent_reference_fields(
+        self,
+        form_name: str,
+        page_html: str,
+        screenshot_base64: str = None
+    ) -> List[Dict[str, Any]]:
+        """Extract parent reference fields using AI"""
+        result = self._post("/api/form-pages/ai/parent-fields", {
+            "form_name": form_name,
+            "page_html": page_html,
+            "screenshot_base64": screenshot_base64,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        return result.get("fields", [])
+    
+    def verify_ui_defects(self, form_name: str, screenshot_base64: str) -> str:
+        """Check for UI defects using AI Vision"""
+        if not self.ui_verification or not screenshot_base64:
+            return ""
+        
+        print(f"[APIClient] AI: Checking UI for defects...")
+        
+        result = self._post("/api/form-pages/ai/ui-defects", {
+            "form_name": form_name,
+            "screenshot_base64": screenshot_base64,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        defects = result.get("defects", "")
+        if defects:
+            print(f"[APIClient] ⚠️ UI Defects detected: {defects}")
+        else:
+            print(f"[APIClient] ✅ No UI defects detected")
+        
+        return defects
+    
+    def is_submission_button(self, button_text: str) -> bool:
+        """Determine if button is a form submission button"""
+        result = self._post("/api/form-pages/ai/is-submission-button", {
+            "button_text": button_text,
+            "company_id": self.company_id,
+            "product_id": self.product_id
+        })
+        
+        return result.get("is_submission", False)
+    
+    # ========== FORM ROUTE OPERATIONS ==========
+    
+    def check_form_exists(self, project_name: str, form_url: str) -> bool:
+        """Check if form with this URL already exists
+        
+        Args:
+            project_name: Project name (for compatibility, stored in DB via network)
+            form_url: URL of the form page
+        """
+        result = self._get("/api/form-pages/routes", {
+            "network_id": self.network_id
+        })
+        
+        if "error" in result:
+            return False
+        
+        # Normalize URL for comparison
+        url_base = form_url.split('#')[0].split('?')[0]
+        
+        for route in result:
+            existing_url = route.get("url", "")
+            existing_url_base = existing_url.split('#')[0].split('?')[0]
+            if url_base == existing_url_base:
+                print(f"[APIClient] ⏭️ Form URL already exists: {url_base}")
+                return True
+        
+        return False
+    
+    def create_form_folder(
+        self,
+        project_name: str,
+        form: Dict[str, Any],
+        username: str = None,
+        login_url: str = None
+    ) -> bool:
+        """
+        Save discovered form route to database.
+        (Replaces server.create_form_folder which saved to JSON)
+        
+        Args:
+            project_name: Project name (for logging)
+            form: Form dictionary with form_name, navigation_steps, form_url, etc.
+            username: Username used for login
+            login_url: Login URL
+            
+        Returns:
+            True if saved, False if limit reached
+        """
+        # Check limit
+        if self.max_form_pages is not None and self.new_form_pages_count >= self.max_form_pages:
+            print(f"[APIClient] ⛔ Limit reached: {self.new_form_pages_count}/{self.max_form_pages}")
+            return False
+        
+        form_name = form.get("form_name")
+        
+        # Extract parent field names
+        id_fields = [field.get("field_name") for field in self.current_form_parent_fields]
+        
+        # Save to database via API
+        result = self._post("/api/form-pages/routes", {
+            "company_id": self.company_id,
+            "product_id": self.product_id,
+            "project_id": self.project_id,
+            "network_id": self.network_id,
+            "crawl_session_id": self.crawl_session_id,
+            "form_name": form_name,
+            "url": form.get("form_url"),
+            "login_url": login_url or "",
+            "username": username or "unknown",
+            "navigation_steps": form.get("navigation_steps", []),
+            "id_fields": id_fields,
+            "is_root": True,
+            "verification_attempts": 1
+        })
+        
+        if "error" not in result:
+            self.new_form_pages_count += 1
+            
+            # Track form name
+            if form_name not in self.created_form_names:
+                self.created_form_names.append(form_name)
+            
+            print(f"[APIClient] ✅ Saved form route: {form_name} ({self.new_form_pages_count}/{self.max_form_pages or '∞'})")
+            return True
+        else:
+            print(f"[APIClient] ❌ Failed to save form route: {result.get('error')}")
+            return False
+    
+    def update_form_verification(
+        self,
+        project_name: str,
+        form_name: str,
+        navigation_steps: List[Dict[str, Any]],
+        verification_attempts: int = 1
+    ):
+        """Update form route with verified navigation steps"""
+        # This is handled by the save_form_route API endpoint
+        # The verification updates are part of the same save operation
+        print(f"[APIClient] ✅ Form '{form_name}' verified (attempts: {verification_attempts})")
+    
+    def build_hierarchy(self, project_name: str = None) -> Dict[str, Any]:
+        """Build parent-child relationships for all routes
+        
+        Args:
+            project_name: Project name (for compatibility)
+            
+        Returns:
+            Dict with ordered_forms key for crawler compatibility
+        """
+        print("[APIClient] 🔗 Building hierarchy...")
+        
+        result = self._post("/api/form-pages/routes/build-hierarchy", {
+            "network_id": self.network_id
+        })
+        
+        if "error" not in result:
+            print("[APIClient] ✅ Hierarchy built")
+        else:
+            print(f"[APIClient] ⚠️ Hierarchy build failed: {result.get('error')}")
+        
+        # Return format expected by crawler
+        return {"ordered_forms": self.created_form_names}
+    
+    # ========== UTILITY ==========
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Check API server health"""
+        try:
+            response = requests.get(f"{self.api_url}/health", timeout=5)
+            return {"status": "ok", "server_reachable": response.status_code == 200}
+        except:
+            return {"status": "error", "server_reachable": False}
+    
+    def get_ai_cost_summary(self) -> Dict[str, Any]:
+        """Placeholder - cost tracking is done server-side"""
+        return {
+            "api_calls": 0,
+            "total_cost": 0.0,
+            "note": "Cost tracking is done server-side"
+        }
+    
+    def print_ai_cost_summary(self):
+        """Placeholder - cost tracking is done server-side"""
+        print("\n[APIClient] 💰 AI costs tracked server-side\n")

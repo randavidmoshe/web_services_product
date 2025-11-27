@@ -95,6 +95,9 @@ class Network(Base):
     product_id = Column(Integer, ForeignKey("products.id"))
     name = Column(String)
     url = Column(String)
+    # Login credentials for test user (used by crawler)
+    login_username = Column(String, nullable=True)
+    login_password = Column(String, nullable=True)  # Should be encrypted in production
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -116,17 +119,44 @@ class CrawlSession(Base):
     error_message = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-class FormPageDiscovered(Base):
-    __tablename__ = "form_pages_discovered"
+class FormPageRoute(Base):
+    """
+    Stores navigation routes to form pages discovered by the crawler.
+    Phase 1: How to reach each form (navigation steps)
+    Phase 2 (future): FormPageFields will store field details for each form
+    """
+    __tablename__ = "form_page_routes"
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, ForeignKey("companies.id"))
     product_id = Column(Integer, ForeignKey("products.id"))
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    network_id = Column(Integer, ForeignKey("networks.id"))
     crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"))
-    url = Column(String)
-    page_title = Column(String)
-    forms_count = Column(Integer, default=0)
-    screenshot_url = Column(String)
-    discovered_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Form identification
+    form_name = Column(String)  # AI-generated name (e.g., "claim", "expense")
+    url = Column(String)  # URL where form appears
+    login_url = Column(String)  # Login page URL
+    username = Column(String)  # Which test user credentials were used
+    
+    # Navigation data
+    navigation_steps = Column(JSON)  # Array of steps to reach the form
+    id_fields = Column(JSON)  # Array of reference field names
+    
+    # Hierarchy
+    parent_form_route_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=True)
+    is_root = Column(Boolean, default=True)
+    
+    # Verification
+    verification_attempts = Column(Integer, default=0)
+    last_verified_at = Column(DateTime)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    parent = relationship("FormPageRoute", remote_side=[id], backref="children")
 
 class ApiUsage(Base):
     __tablename__ = "api_usage"
@@ -147,7 +177,7 @@ class Screenshot(Base):
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"))
     crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"))
-    form_page_id = Column(Integer, ForeignKey("form_pages_discovered.id"))
+    form_page_id = Column(Integer, ForeignKey("form_page_routes.id"))  # Updated FK reference
     
     # Image metadata
     filename = Column(String, nullable=False)
@@ -169,4 +199,3 @@ class Screenshot(Base):
     captured_at = Column(DateTime, default=datetime.utcnow)
     uploaded_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
-

@@ -1,6 +1,6 @@
 from celery_app import celery
 from datetime import datetime
-from models.database import SessionLocal, CrawlSession, FormPageDiscovered, ApiUsage
+from models.database import SessionLocal, CrawlSession, FormPageRoute, ApiUsage
 import os
 
 @celery.task(bind=True)

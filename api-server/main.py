@@ -10,6 +10,7 @@ from routes import agent_router
 from routes import installer_router
 from models.database import engine, Base
 from services.s3_storage import create_s3_bucket_if_not_exists
+from routes import form_pages
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ app.include_router(crawl.router, prefix="/api/crawl", tags=["crawl"])
 app.include_router(screenshots.router, prefix="/api/screenshots", tags=["screenshots"])
 app.include_router(agent_router.router)
 app.include_router(installer_router.router)
+app.include_router(form_pages.router, prefix="/api/form-pages", tags=["form-pages"])
 
 @app.get("/")
 async def root():

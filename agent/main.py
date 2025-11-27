@@ -23,7 +23,7 @@ from agent_selenium import AgentSelenium
 from tray_icon import AgentTrayIcon
 from traffic_capture import TrafficCapture
 from web_ui.server import start_server
-
+from crawler import FormPagesCrawler, FormPagesAPIClient
 
 def check_first_run():
     """Check if this is first run (no .env file)"""
@@ -191,6 +191,8 @@ class FormDiscovererAgent:
                 result = self._handle_extract_dom(params)
             elif task_type == "execute_steps":
                 result = self._handle_execute_steps(params)
+            elif task_type == "discover_form_pages":
+                result = self._handle_discover_form_pages(params)
             else:
                 result = {"success": False, "error": f"Unknown task type: {task_type}"}
             
@@ -275,7 +277,114 @@ class FormDiscovererAgent:
             return nav_result
         
         return self._handle_execute_steps({'steps': test_steps})
-    
+
+    def _handle_discover_form_pages(self, params: Dict) -> Dict:
+        """Handle form page discovery task"""
+        self.logger.info("🔍 Starting form page discovery...")
+
+        crawl_session_id = params.get('crawl_session_id')
+        network_url = params.get('network_url')
+        login_url = params.get('login_url', network_url)
+        login_username = params.get('login_username')
+        login_password = params.get('login_password')
+        project_name = params.get('project_name', 'default')
+        max_depth = params.get('max_depth', 20)
+        max_form_pages = params.get('max_form_pages')
+        headless = params.get('headless', False)
+        slow_mode = params.get('slow_mode', True)
+
+        api_client = FormPagesAPIClient(
+            api_url=self.config.api_url,
+            agent_token=self.config.agent_token,
+            company_id=params.get('company_id'),
+            product_id=params.get('product_id'),
+            project_id=params.get('project_id'),
+            network_id=params.get('network_id'),
+            crawl_session_id=crawl_session_id
+        )
+        api_client.max_form_pages = max_form_pages
+
+        api_client.update_crawl_session(status='running')
+
+        try:
+            if not self.selenium_agent.driver:
+                self.selenium_agent.initialize_browser(
+                    browser_type=params.get('browser', 'chrome'),
+                    headless=headless
+                )
+
+            driver = self.selenium_agent.driver
+            driver.get(login_url)
+            time.sleep(2)
+
+            if login_username and login_password:
+                self.logger.info(f"Logging in as: {login_username}")
+                page_html = driver.execute_script("return document.documentElement.outerHTML")
+                screenshot_b64 = driver.get_screenshot_as_base64()
+
+                login_steps = api_client.generate_login_steps(
+                    page_html=page_html,
+                    screenshot_base64=screenshot_b64,
+                    username=login_username,
+                    password=login_password
+                )
+
+                from selenium.webdriver.common.by import By
+                for step in login_steps:
+                    action = step.get('action')
+                    selector = step.get('selector')
+                    value = step.get('value', '')
+
+                    if action == 'fill':
+                        element = driver.find_element(By.CSS_SELECTOR, selector)
+                        element.clear()
+                        element.send_keys(value)
+                        time.sleep(0.3)
+                    elif action == 'click':
+                        element = driver.find_element(By.CSS_SELECTOR, selector)
+                        element.click()
+                        time.sleep(0.5)
+                    elif action in ('wait_dom_ready', 'verify_clickables'):
+                        time.sleep(1)
+
+                time.sleep(2)
+
+            base_url = driver.current_url
+
+            crawler = FormPagesCrawler(
+                driver=driver,
+                start_url=base_url,
+                base_url=base_url,
+                project_name=project_name,
+                max_depth=max_depth,
+                target_form_pages=[],
+                discovery_only=True,
+                slow_mode=slow_mode,
+                server=api_client,
+                username=login_username,
+                login_url=login_url,
+                agent=None
+            )
+
+            crawler.crawl()
+
+            api_client.update_crawl_session(
+                status='completed',
+                forms_found=api_client.new_form_pages_count
+            )
+
+            return {
+                "success": True,
+                "forms_found": api_client.new_form_pages_count,
+                "crawl_session_id": crawl_session_id
+            }
+
+        except Exception as e:
+            self.logger.error(f"Form discovery failed: {e}")
+            api_client.update_crawl_session(status='failed', error_message=str(e))
+            return {"success": False, "error": str(e)}
+
+
     def start(self):
         try:
             if not self.connect_to_server():

@@ -1,0 +1,578 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Wizard - Form Discoverer Agent{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Hide navbar during setup */
+    .navbar {
+        display: none;
+    }
+    
+    /* Setup wizard container */
+    .setup-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+    }
+    
+    /* Setup header */
+    .setup-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .setup-header .logo {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+    
+    .setup-header h1 {
+        font-size: 1.75rem;
+        color: var(--text);
+        margin-bottom: 0.5rem;
+    }
+    
+    .setup-header p {
+        color: var(--text-secondary);
+    }
+    
+    /* Progress indicator */
+    .progress-steps {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 2rem;
+        position: relative;
+    }
+    
+    .progress-steps::before {
+        content: '';
+        position: absolute;
+        top: 15px;
+        left: 10%;
+        right: 10%;
+        height: 2px;
+        background: var(--border);
+        z-index: 0;
+    }
+    
+    .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .step-number {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 2px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+        transition: all 0.3s;
+    }
+    
+    .step-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+    
+    .step.active .step-number {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: white;
+    }
+    
+    .step.active .step-label {
+        color: var(--primary);
+        font-weight: 500;
+    }
+    
+    .step.completed .step-number {
+        background: var(--success);
+        border-color: var(--success);
+        color: white;
+    }
+    
+    .step.completed .step-number::after {
+        content: '✓';
+    }
+    
+    .step.completed .step-number span {
+        display: none;
+    }
+    
+    /* Wizard step content */
+    .wizard-step {
+        background: var(--bg);
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .wizard-step.hidden {
+        display: none;
+    }
+    
+    .step-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text);
+    }
+    
+    .step-description {
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Form inputs */
+    .input-group {
+        margin-bottom: 1rem;
+    }
+    
+    .input-group label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--text);
+    }
+    
+    .input-group input,
+    .input-group select {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .input-group input:focus,
+    .input-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+    }
+    
+    .input-group .hint {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
+    }
+    
+    /* Checkbox */
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .checkbox-group input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    
+    .checkbox-group label {
+        cursor: pointer;
+        user-select: none;
+    }
+    
+    /* Result messages */
+    .result-message {
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        display: none;
+        font-size: 0.875rem;
+    }
+    
+    .result-message.visible {
+        display: block;
+    }
+    
+    .result-message.success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+    
+    .result-message.error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+    
+    .result-message.info {
+        background: #dbeafe;
+        color: #1e40af;
+        border: 1px solid #93c5fd;
+    }
+    
+    /* Navigation buttons */
+    .step-navigation {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+    
+    .btn-back {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+    }
+    
+    .btn-back:hover {
+        background: var(--bg-secondary);
+        color: var(--text);
+    }
+    
+    .btn-next {
+        background: var(--primary);
+        color: white;
+    }
+    
+    .btn-next:hover {
+        opacity: 0.9;
+    }
+    
+    .btn-next:disabled {
+        background: var(--border);
+        cursor: not-allowed;
+    }
+    
+    .btn-finish {
+        background: var(--success);
+        color: white;
+    }
+    
+    .btn-finish:hover {
+        opacity: 0.9;
+    }
+    
+    /* Button with spinner */
+    .btn .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 0.8s linear infinite;
+        margin-right: 0.5rem;
+        vertical-align: middle;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    /* Welcome step */
+    .welcome-features {
+        margin: 1.5rem 0;
+    }
+    
+    .feature-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-icon {
+        font-size: 1.25rem;
+        flex-shrink: 0;
+    }
+    
+    .feature-text {
+        color: var(--text);
+    }
+    
+    .feature-text strong {
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    
+    .feature-text span {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+    }
+    
+    /* Summary */
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .summary-item:last-child {
+        border-bottom: none;
+    }
+    
+    .summary-label {
+        font-weight: 500;
+        color: var(--text);
+    }
+    
+    .summary-value {
+        color: var(--text-secondary);
+        text-align: right;
+        word-break: break-all;
+        max-width: 60%;
+    }
+    
+    /* Button row */
+    .button-row {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+    
+    .button-row .btn {
+        flex: 1;
+    }
+    
+    /* Or divider */
+    .or-divider {
+        display: flex;
+        align-items: center;
+        margin: 1.5rem 0;
+        color: var(--text-secondary);
+    }
+    
+    .or-divider::before,
+    .or-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+    }
+    
+    .or-divider span {
+        padding: 0 1rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="setup-container">
+    <!-- Setup Header -->
+    <div class="setup-header">
+        <div class="logo">🤖</div>
+        <h1>Form Discoverer Agent</h1>
+        <p>Let's get you set up in just a few steps</p>
+    </div>
+    
+    <!-- Progress Steps -->
+    <div class="progress-steps">
+        <div class="step active" data-step="1">
+            <div class="step-number"><span>1</span></div>
+            <div class="step-label">Welcome</div>
+        </div>
+        <div class="step" data-step="2">
+            <div class="step-number"><span>2</span></div>
+            <div class="step-label">Connect</div>
+        </div>
+        <div class="step" data-step="3">
+            <div class="step-number"><span>3</span></div>
+            <div class="step-label">Login</div>
+        </div>
+        <div class="step" data-step="4">
+            <div class="step-number"><span>4</span></div>
+            <div class="step-label">Configure</div>
+        </div>
+        <div class="step" data-step="5">
+            <div class="step-number"><span>5</span></div>
+            <div class="step-label">Finish</div>
+        </div>
+    </div>
+    
+    <!-- Step 1: Welcome -->
+    <div id="step-1" class="wizard-step">
+        <h2 class="step-title">Welcome! 👋</h2>
+        <p class="step-description">
+            Form Discoverer Agent is an AI-powered testing automation tool that runs on your machine.
+        </p>
+        
+        <div class="welcome-features">
+            <div class="feature-item">
+                <div class="feature-icon">🔍</div>
+                <div class="feature-text">
+                    <strong>Auto-Discover Forms</strong>
+                    <span>AI automatically finds and catalogs all forms in your web application</span>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">🧪</div>
+                <div class="feature-text">
+                    <strong>Execute Tests</strong>
+                    <span>Run automated test cases with intelligent step execution</span>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">📸</div>
+                <div class="feature-text">
+                    <strong>Screenshot & Logging</strong>
+                    <span>Capture screenshots and detailed logs for debugging</span>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">🔒</div>
+                <div class="feature-text">
+                    <strong>Secure & Local</strong>
+                    <span>Runs on your network with access to internal QA environments</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="step-navigation">
+            <div></div>
+            <button class="btn btn-next" onclick="nextStep()">Get Started →</button>
+        </div>
+    </div>
+    
+    <!-- Step 2: API Server Connection -->
+    <div id="step-2" class="wizard-step hidden">
+        <h2 class="step-title">Connect to API Server</h2>
+        <p class="step-description">
+            The agent needs to connect to your API server for task coordination.
+        </p>
+        
+        <button class="btn btn-primary" onclick="scanNetwork()" style="width: 100%;">
+            🔍 Scan Network for API Server
+        </button>
+        
+        <div id="scan-result" class="result-message"></div>
+        
+        <div class="or-divider">
+            <span>or enter manually</span>
+        </div>
+        
+        <div class="input-group">
+            <label for="api-url">API Server URL</label>
+            <input type="url" id="api-url" placeholder="http://localhost:8001" />
+            <div class="hint">Example: http://192.168.1.100:8001</div>
+        </div>
+        
+        <button class="btn btn-primary" onclick="testConnection()" style="width: 100%;">
+            Test Connection
+        </button>
+        
+        <div id="connection-result" class="result-message"></div>
+        
+        <div class="step-navigation">
+            <button class="btn btn-back" onclick="prevStep()">← Back</button>
+            <button id="api-next-btn" class="btn btn-next" onclick="nextStep()" disabled>Next →</button>
+        </div>
+    </div>
+    
+    <!-- Step 3: Login -->
+    <div id="step-3" class="wizard-step hidden">
+        <h2 class="step-title">Login to Your Account</h2>
+        <p class="step-description">
+            Enter your credentials to authenticate this agent with the server.
+        </p>
+        
+        <div class="input-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" placeholder="you@company.com" />
+        </div>
+        
+        <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Enter your password" />
+        </div>
+        
+        <button class="btn btn-primary" onclick="doLogin()" style="width: 100%;">
+            Login
+        </button>
+        
+        <div id="login-result" class="result-message"></div>
+        
+        <div class="step-navigation">
+            <button class="btn btn-back" onclick="prevStep()">← Back</button>
+            <button id="login-next-btn" class="btn btn-next" onclick="nextStep()" disabled>Next →</button>
+        </div>
+    </div>
+    
+    <!-- Step 4: Configuration -->
+    <div id="step-4" class="wizard-step hidden">
+        <h2 class="step-title">Configure Agent</h2>
+        <p class="step-description">
+            Set up browser preferences and folder locations.
+        </p>
+        
+        <div class="input-group">
+            <label for="browser">Default Browser</label>
+            <select id="browser">
+                <option value="chrome">Chrome (Recommended)</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+            </select>
+        </div>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="headless" />
+            <label for="headless">Run in headless mode (no visible browser window)</label>
+        </div>
+        
+        <div class="input-group">
+            <label for="screenshot-folder">Screenshots Folder</label>
+            <input type="text" id="screenshot-folder" placeholder="/home/user/FormDiscovererAgent/screenshots" />
+        </div>
+        
+        <div class="input-group">
+            <label for="log-folder">Logs Folder</label>
+            <input type="text" id="log-folder" placeholder="/home/user/FormDiscovererAgent/logs" />
+        </div>
+        
+        <div class="input-group">
+            <label for="files-folder">Files Folder</label>
+            <input type="text" id="files-folder" placeholder="/home/user/FormDiscovererAgent/files" />
+            <div class="hint">Used for creating test files (PDF, DOCX, etc.)</div>
+        </div>
+        
+        <div class="step-navigation">
+            <button class="btn btn-back" onclick="prevStep()">← Back</button>
+            <button class="btn btn-next" onclick="nextStep()">Next →</button>
+        </div>
+    </div>
+    
+    <!-- Step 5: Summary & Finish -->
+    <div id="step-5" class="wizard-step hidden">
+        <h2 class="step-title">Ready to Go! ✅</h2>
+        <p class="step-description">
+            Review your configuration and click Finish to start the agent.
+        </p>
+        
+        <div id="config-summary">
+            <!-- Populated by JavaScript -->
+        </div>
+        
+        <div class="step-navigation">
+            <button class="btn btn-back" onclick="prevStep()">← Back</button>
+            <button class="btn btn-finish" onclick="finishSetup()">🚀 Finish Setup</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/common.js"></script>
+<script src="/static/js/setup.js"></script>
+{% endblock %}
