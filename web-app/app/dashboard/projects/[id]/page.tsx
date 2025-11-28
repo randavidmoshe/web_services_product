@@ -109,7 +109,7 @@ export default function ProjectDetailPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${id}`,
+        `/api/projects/${id}`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -155,7 +155,7 @@ export default function ProjectDetailPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/networks?user_id=${userId}`,
+        `/api/projects/${projectId}/networks?user_id=${userId}`,
         {
           method: 'POST',
           headers: {
@@ -211,7 +211,7 @@ export default function ProjectDetailPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/networks/${editingNetwork.id}`,
+        `/api/projects/${projectId}/networks/${editingNetwork.id}`,
         {
           method: 'PUT',
           headers: {
@@ -257,7 +257,7 @@ export default function ProjectDetailPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/networks/${networkToDelete.id}`,
+        `/api/projects/${projectId}/networks/${networkToDelete.id}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }

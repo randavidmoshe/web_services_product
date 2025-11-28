@@ -1,5 +1,6 @@
 # agent_config.py
 # Agent Configuration Management
+# UPDATED: Added API Key support for Part 2 authentication
 
 import os
 from typing import Optional
@@ -33,8 +34,15 @@ class AgentConfig:
             print(f"   Using environment variables or defaults")
         
         # Server connection settings
-        self.api_url = os.getenv('API_URL', 'http://localhost:8000')
+        # NOTE: Changed to HTTPS for secure communication
+        self.api_url = os.getenv('API_URL', 'https://localhost')
         self.agent_token = os.getenv('AGENT_TOKEN', '')
+        
+        # API Key for authentication (received during registration)
+        self.api_key = os.getenv('API_KEY', '')
+        
+        # SSL verification (set to False for self-signed certs in development)
+        self.ssl_verify = os.getenv('SSL_VERIFY', 'false').lower() == 'true'
         
         # Agent identification (pre-configured by server when agent is downloaded)
         self.agent_id = os.getenv('AGENT_ID', self._generate_agent_id())
@@ -61,20 +69,49 @@ class AgentConfig:
         self.default_browser = os.getenv('DEFAULT_BROWSER', 'chrome')
         self.default_headless = os.getenv('DEFAULT_HEADLESS', 'false').lower() == 'true'
         
-        # Validate required settings
-        #if not self.agent_token:
-        #    raise ValueError("AGENT_TOKEN is required in .env file")
-        
-        #if self.company_id == 0:
-        #    raise ValueError("COMPANY_ID is required in .env file")
-        
-        #if self.user_id == 0:
-        #    raise ValueError("USER_ID is required in .env file")
+        # Store path to .env for saving API key later
+        self._env_path = env_path
     
     def _generate_agent_id(self) -> str:
         """Generate a unique agent ID if not provided"""
         import uuid
         return f"agent-{uuid.uuid4().hex[:12]}"
+    
+    def save_api_key(self, api_key: str):
+        """
+        Save API key to .env file after registration.
+        This is called when the agent receives an API key from the server.
+        """
+        env_path = self._env_path
+        
+        if env_path.exists():
+            # Read existing content
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check if API_KEY line exists
+            key_found = False
+            for i, line in enumerate(lines):
+                if line.startswith('API_KEY='):
+                    lines[i] = f"API_KEY='{api_key}'\n"
+                    key_found = True
+                    break
+            
+            # Add API_KEY if not found
+            if not key_found:
+                lines.append(f"\n# API Key (auto-saved after registration)\nAPI_KEY='{api_key}'\n")
+            
+            # Write back
+            with open(env_path, 'w') as f:
+                f.writelines(lines)
+        else:
+            # Create new .env file with API key
+            with open(env_path, 'w') as f:
+                f.write(f"API_KEY='{api_key}'\n")
+        
+        # Update current config
+        self.api_key = api_key
+        print(f"✅ API key saved to {env_path}")
     
     def to_dict(self) -> dict:
         """Return configuration as dictionary"""
@@ -87,17 +124,21 @@ class AgentConfig:
             'heartbeat_interval': self.heartbeat_interval,
             'screenshot_folder': self.screenshot_folder,
             'default_browser': self.default_browser,
-            'default_headless': self.default_headless
+            'default_headless': self.default_headless,
+            'ssl_verify': self.ssl_verify,
+            'has_api_key': bool(self.api_key)
         }
     
     def __repr__(self):
-        """String representation (hide token)"""
+        """String representation (hide sensitive data)"""
         return (
             f"AgentConfig(\n"
             f"  api_url={self.api_url}\n"
             f"  agent_id={self.agent_id}\n"
             f"  company_id={self.company_id}\n"
             f"  user_id={self.user_id}\n"
+            f"  ssl_verify={self.ssl_verify}\n"
+            f"  api_key={'*' * 10 if self.api_key else 'NOT SET'}\n"
             f"  token={'*' * 10 if self.agent_token else 'NOT SET'}\n"
             f")"
         )

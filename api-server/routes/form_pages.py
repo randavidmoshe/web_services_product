@@ -282,6 +282,46 @@ async def get_form_route(route_id: int, db: Session = Depends(get_db)):
     return route
 
 
+@router.put("/routes/{route_id}")
+async def update_form_route(
+    route_id: int,
+    data: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Update a form route (form name and navigation steps)"""
+    route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Form route not found")
+    
+    # Update allowed fields
+    if "form_name" in data:
+        route.form_name = data["form_name"]
+    if "navigation_steps" in data:
+        route.navigation_steps = data["navigation_steps"]
+    if "url" in data:
+        route.url = data["url"]
+    if "is_root" in data:
+        route.is_root = data["is_root"]
+    
+    route.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(route)
+    
+    return {
+        "success": True,
+        "message": f"Form route {route_id} updated",
+        "route": {
+            "id": route.id,
+            "form_name": route.form_name,
+            "url": route.url,
+            "navigation_steps": route.navigation_steps,
+            "is_root": route.is_root,
+            "updated_at": route.updated_at.isoformat() if route.updated_at else None
+        }
+    }
+
+
 @router.delete("/routes/{route_id}")
 async def delete_form_route(route_id: int, db: Session = Depends(get_db)):
     """Delete a form route"""

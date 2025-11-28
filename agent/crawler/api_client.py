@@ -3,9 +3,15 @@
 #
 # HTTP client that replaces direct server.method() calls
 # Agent crawler uses this to communicate with API server
+#
+# UPDATED: Added API Key authentication (X-Agent-API-Key header)
 
 import requests
+import urllib3
 from typing import Dict, List, Any, Optional
+
+# Suppress SSL warnings for self-signed certificates in development
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class FormPagesAPIClient:
@@ -22,19 +28,23 @@ class FormPagesAPIClient:
         product_id: int,
         project_id: int,
         network_id: int,
-        crawl_session_id: int
+        crawl_session_id: int,
+        ssl_verify: bool = False,
+        api_key: str = ""
     ):
         """
         Initialize API client.
         
         Args:
-            api_url: Base URL of API server (e.g., http://localhost:8001)
+            api_url: Base URL of API server (e.g., https://localhost)
             agent_token: Agent authentication token
             company_id: Company ID
             product_id: Product ID
             project_id: Project ID
             network_id: Network ID
             crawl_session_id: Current crawl session ID
+            ssl_verify: Whether to verify SSL certificates (False for self-signed)
+            api_key: API key for authentication (Part 2)
         """
         self.api_url = api_url.rstrip('/')
         self.agent_token = agent_token
@@ -43,6 +53,8 @@ class FormPagesAPIClient:
         self.project_id = project_id
         self.network_id = network_id
         self.crawl_session_id = crawl_session_id
+        self.ssl_verify = ssl_verify
+        self.api_key = api_key
         
         # Track created form names (to avoid duplicates)
         self.created_form_names: List[str] = []
@@ -58,17 +70,23 @@ class FormPagesAPIClient:
         self.current_form_parent_fields: List[Dict] = []
     
     def _headers(self) -> Dict[str, str]:
-        """Get request headers with auth token"""
-        return {
+        """Get request headers with auth token and API key"""
+        headers = {
             "Authorization": f"Bearer {self.agent_token}",
             "Content-Type": "application/json"
         }
+        
+        # Add API key if available (Part 2 authentication)
+        if self.api_key:
+            headers["X-Agent-API-Key"] = self.api_key
+        
+        return headers
     
     def _post(self, endpoint: str, data: Dict) -> Dict:
         """Make POST request to API"""
         url = f"{self.api_url}{endpoint}"
         try:
-            response = requests.post(url, json=data, headers=self._headers(), timeout=120)
+            response = requests.post(url, json=data, headers=self._headers(), timeout=120, verify=self.ssl_verify)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -79,7 +97,7 @@ class FormPagesAPIClient:
         """Make PUT request to API"""
         url = f"{self.api_url}{endpoint}"
         try:
-            response = requests.put(url, json=data, headers=self._headers(), timeout=30)
+            response = requests.put(url, json=data, headers=self._headers(), timeout=30, verify=self.ssl_verify)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -90,7 +108,7 @@ class FormPagesAPIClient:
         """Make GET request to API"""
         url = f"{self.api_url}{endpoint}"
         try:
-            response = requests.get(url, params=params, headers=self._headers(), timeout=30)
+            response = requests.get(url, params=params, headers=self._headers(), timeout=30, verify=self.ssl_verify)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -129,7 +147,7 @@ class FormPagesAPIClient:
         password: str
     ) -> List[Dict[str, Any]]:
         """Generate login automation steps using AI"""
-        print("[APIClient] 🔐 Requesting login steps from server...")
+        print("[APIClient] 🔑 Requesting login steps from server...")
         
         result = self._post("/api/form-pages/ai/login-steps", {
             "page_html": page_html,
@@ -141,7 +159,7 @@ class FormPagesAPIClient:
         })
         
         steps = result.get("steps", [])
-        print(f"[APIClient] 🔐 Received {len(steps)} login steps")
+        print(f"[APIClient] 🔑 Received {len(steps)} login steps")
         return steps
     
     def generate_logout_steps(
@@ -268,7 +286,7 @@ class FormPagesAPIClient:
             existing_url = route.get("url", "")
             existing_url_base = existing_url.split('#')[0].split('?')[0]
             if url_base == existing_url_base:
-                print(f"[APIClient] ⏭️ Form URL already exists: {url_base}")
+                print(f"[APIClient] ⭐️ Form URL already exists: {url_base}")
                 return True
         
         return False
@@ -373,7 +391,7 @@ class FormPagesAPIClient:
     def health_check(self) -> Dict[str, Any]:
         """Check API server health"""
         try:
-            response = requests.get(f"{self.api_url}/health", timeout=5)
+            response = requests.get(f"{self.api_url}/health", timeout=5, verify=self.ssl_verify)
             return {"status": "ok", "server_reachable": response.status_code == 200}
         except:
             return {"status": "error", "server_reachable": False}

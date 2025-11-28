@@ -1,5 +1,7 @@
 # Agent Database Models
 # Location: web_services_product/api-server/models/agent_models.py
+#
+# UPDATED: Added api_key field for Part 2 authentication
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
@@ -18,6 +20,9 @@ class Agent(Base):
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     
+    # API Key for authentication (Part 2)
+    api_key = Column(String(64), unique=True, index=True, nullable=True)
+    
     # Agent info
     hostname = Column(String(255))
     platform = Column(String(50))
@@ -25,6 +30,7 @@ class Agent(Base):
     
     # Status
     status = Column(String(20), default='offline')
+    current_task_id = Column(String(100), nullable=True)
     last_heartbeat = Column(DateTime, nullable=True)
     
     # Timestamps

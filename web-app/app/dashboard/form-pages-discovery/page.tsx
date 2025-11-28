@@ -128,7 +128,7 @@ export default function FormDiscoveryPage() {
     setLoadingProjects(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/?company_id=${companyId}`,
+        `/api/projects/?company_id=${companyId}`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -150,7 +150,7 @@ export default function FormDiscoveryPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/networks`,
+        `/api/projects/${projectId}/networks`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -213,7 +213,7 @@ export default function FormDiscoveryPage() {
       }
       
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/networks/${selectedNetworkId}/locate?${params}`,
+        `/api/form-pages/networks/${selectedNetworkId}/locate?${params}`,
         {
           method: 'POST',
           headers: {
@@ -241,7 +241,7 @@ export default function FormDiscoveryPage() {
   const pollStatus = async (sessionId: number) => {
     try {
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/sessions/${sessionId}/status`,
+        `/api/form-pages/sessions/${sessionId}/status`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       

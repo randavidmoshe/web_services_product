@@ -7,6 +7,8 @@ Runs on customer's network, connects to api-server, executes Selenium automation
 Now with web-based UI and system tray icon!
 
 FIXED: Added agent_id and company_id as query parameters to poll-task endpoint
+UPDATED: Added HTTPS support with ssl_verify configuration
+UPDATED: Added API Key authentication for secure communication (Part 2)
 """
 
 import os
@@ -14,6 +16,7 @@ import sys
 import time
 import logging
 import requests
+import urllib3
 import threading
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -24,6 +27,10 @@ from tray_icon import AgentTrayIcon
 from traffic_capture import TrafficCapture
 from web_ui.server import start_server
 from crawler import FormPagesCrawler, FormPagesAPIClient
+
+# Suppress SSL warnings for self-signed certificates in development
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 def check_first_run():
     """Check if this is first run (no .env file)"""
@@ -43,6 +50,12 @@ class FormDiscovererAgent:
         self.heartbeat_thread = None
         self.tray_icon = None
         
+        # SSL verification setting (False for self-signed certs)
+        self.ssl_verify = getattr(self.config, 'ssl_verify', False)
+        
+        # API Key for authentication
+        self.api_key = getattr(self.config, 'api_key', '')
+        
         # Initialize traffic capture if enabled
         if getattr(self.config, 'capture_traffic', False):
             traffic_storage = Path(self.config.log_folder) / 'traffic' if self.config.log_folder else None
@@ -58,6 +71,8 @@ class FormDiscovererAgent:
         self.logger.info(f"Agent ID: {self.config.agent_id}")
         self.logger.info(f"Company ID: {self.config.company_id}")
         self.logger.info(f"User ID: {self.config.user_id}")
+        self.logger.info(f"SSL Verify: {self.ssl_verify}")
+        self.logger.info(f"API Key: {'Configured' if self.api_key else 'Not set (will get on registration)'}")
         self.logger.info("="*70)
     
     def _setup_logging(self):
@@ -75,10 +90,24 @@ class FormDiscovererAgent:
         )
         self.logger = logging.getLogger('FormDiscovererAgent')
     
+    def _get_headers(self) -> Dict[str, str]:
+        """Get request headers with API key authentication"""
+        headers = {
+            "Authorization": f"Bearer {self.config.agent_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Add API key if we have one
+        if self.api_key:
+            headers["X-Agent-API-Key"] = self.api_key
+        
+        return headers
+    
     def connect_to_server(self) -> bool:
         try:
             self.logger.info("Connecting to server...")
             url = f"{self.config.api_url}/api/agent/register"
+            # Registration doesn't require API key (it's where we GET the API key)
             headers = {
                 "Authorization": f"Bearer {self.config.agent_token}",
                 "Content-Type": "application/json"
@@ -91,9 +120,17 @@ class FormDiscovererAgent:
                 "platform": sys.platform,
                 "version": "2.0.0"
             }
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, headers=headers, timeout=30, verify=self.ssl_verify)
             
             if response.status_code == 200:
+                result = response.json()
+                
+                # Save API key if returned (first registration or key regeneration)
+                if result.get('api_key'):
+                    self.api_key = result['api_key']
+                    self.config.save_api_key(self.api_key)
+                    self.logger.info("✅ API key received and saved")
+                
                 self.logger.info(f"✅ Connected successfully")
                 # Update tray icon status
                 if self.tray_icon:
@@ -114,17 +151,21 @@ class FormDiscovererAgent:
         while self.is_running:
             try:
                 url = f"{self.config.api_url}/api/agent/heartbeat"
-                headers = {"Authorization": f"Bearer {self.config.agent_token}", "Content-Type": "application/json"}
                 payload = {
                     "agent_id": self.config.agent_id,
                     "status": "idle" if not self.current_task_id else "busy",
                     "current_task_id": self.current_task_id
                 }
-                response = requests.post(url, json=payload, headers=headers, timeout=10)
+                response = requests.post(url, json=payload, headers=self._get_headers(), timeout=10, verify=self.ssl_verify)
                 
                 # Update tray icon based on connection
                 if self.tray_icon:
                     self.tray_icon.update_status(response.status_code == 200)
+                
+                # Check for authentication error
+                if response.status_code == 401:
+                    self.logger.error("❌ Heartbeat failed: Invalid API key. Re-registering...")
+                    self.connect_to_server()  # Re-register to get new API key
                     
             except Exception as e:
                 self.logger.warning(f"Heartbeat error: {str(e)}")
@@ -140,8 +181,7 @@ class FormDiscovererAgent:
             try:
                 # FIXED: Add agent_id and company_id as query parameters
                 url = f"{self.config.api_url}/api/agent/poll-task?agent_id={self.config.agent_id}&company_id={self.config.company_id}"
-                headers = {"Authorization": f"Bearer {self.config.agent_token}"}
-                response = requests.get(url, headers=headers, timeout=35)
+                response = requests.get(url, headers=self._get_headers(), timeout=35, verify=self.ssl_verify)
                 
                 if response.status_code == 200:
                     task = response.json()
@@ -152,6 +192,11 @@ class FormDiscovererAgent:
                 elif response.status_code == 204:
                     consecutive_errors = 0
                     time.sleep(1)
+                elif response.status_code == 401:
+                    self.logger.error("❌ Poll failed: Invalid API key. Re-registering...")
+                    self.connect_to_server()  # Re-register to get new API key
+                    consecutive_errors += 1
+                    time.sleep(5)
                 else:
                     consecutive_errors += 1
                     self.logger.error(f"Poll returned status code: {response.status_code}")
@@ -205,66 +250,51 @@ class FormDiscovererAgent:
             
             if result.get('success'):
                 self._update_task_status(task_id, "completed", "Success", result)
-                self.logger.info(f"✅ Task completed")
             else:
-                self._update_task_status(task_id, "failed", result.get('error'), result)
-                self.logger.error(f"❌ Task failed")
+                self._update_task_status(task_id, "failed", result.get('error', 'Unknown error'))
+                
         except Exception as e:
-            self.logger.error(f"❌ Error: {str(e)}")
+            self.logger.error(f"Task execution error: {str(e)}")
             self._update_task_status(task_id, "failed", str(e))
         finally:
             self.current_task_id = None
     
-    def _update_task_status(self, task_id: str, status: str, message: str, result: Optional[Dict] = None):
+    def _update_task_status(self, task_id: str, status: str, message: str, result: Dict = None):
         try:
             url = f"{self.config.api_url}/api/agent/task-status"
-            headers = {"Authorization": f"Bearer {self.config.agent_token}", "Content-Type": "application/json"}
-            payload = {"task_id": task_id, "status": status, "message": message, "result": result}
-            requests.post(url, json=payload, headers=headers, timeout=30)
+            payload = {
+                "task_id": task_id,
+                "status": status,
+                "message": message,
+                "result": result
+            }
+            requests.post(url, json=payload, headers=self._get_headers(), timeout=10, verify=self.ssl_verify)
         except Exception as e:
-            self.logger.error(f"Status update error: {str(e)}")
+            self.logger.error(f"Failed to update task status: {str(e)}")
     
     def _handle_navigate_url(self, params: Dict) -> Dict:
         url = params.get('url')
-        if not url:
-            return {"success": False, "error": "URL required"}
         if not self.selenium_agent.driver:
-            self.selenium_agent.initialize_browser(browser_type=params.get('browser', 'chrome'), headless=params.get('headless', False))
+            self.selenium_agent.initialize_browser(
+                browser_type=params.get('browser', 'chrome'),
+                headless=params.get('headless', False)
+            )
         return self.selenium_agent.navigate_to_url(url)
     
     def _handle_extract_dom(self, params: Dict) -> Dict:
         if not self.selenium_agent.driver:
-            return {"success": False, "error": "Browser not initialized"}
-        return self.selenium_agent.extract_dom()
+            return {"success": False, "error": "No browser session"}
+        return self.selenium_agent.extract_dom_info()
     
     def _handle_execute_steps(self, params: Dict) -> Dict:
         steps = params.get('steps', [])
-        if not steps:
-            return {"success": False, "error": "No steps"}
         if not self.selenium_agent.driver:
-            return {"success": False, "error": "Browser not initialized"}
-        
-        results = []
-        for step in steps:
-            result = self.selenium_agent.execute_step(step)
-            results.append(result)
-            if not result.get('success') and params.get('stop_on_failure', True):
-                break
-        
-        return {
-            "success": all(r.get('success', False) for r in results),
-            "steps_executed": len(results),
-            "results": results
-        }
+            return {"success": False, "error": "No browser session"}
+        return self.selenium_agent.execute_steps(steps)
     
     def _handle_execute_test(self, params: Dict) -> Dict:
-        test_url = params.get('test_url')
-        test_steps = params.get('test_steps', [])
-        
-        if not test_url:
-            return {"success": False, "error": "test_url required"}
-        if not test_steps:
-            return {"success": False, "error": "test_steps required"}
+        test_url = params.get('url')
+        test_steps = params.get('steps', [])
         
         if not self.selenium_agent.driver:
             self.selenium_agent.initialize_browser(
@@ -300,7 +330,9 @@ class FormDiscovererAgent:
             product_id=params.get('product_id'),
             project_id=params.get('project_id'),
             network_id=params.get('network_id'),
-            crawl_session_id=crawl_session_id
+            crawl_session_id=crawl_session_id,
+            ssl_verify=self.ssl_verify,
+            api_key=self.api_key  # Pass API key to client
         )
         api_client.max_form_pages = max_form_pages
 

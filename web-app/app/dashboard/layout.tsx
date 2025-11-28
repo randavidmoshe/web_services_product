@@ -96,7 +96,7 @@ export default function DashboardLayout({
     setLoadingNetworks(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${activeProject.id}/networks`,
+        `/api/projects/${activeProject.id}/networks`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       if (response.ok) {
@@ -147,7 +147,7 @@ export default function DashboardLayout({
     setLoadingProjects(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/?company_id=${companyId}`,
+        `/api/projects/?company_id=${companyId}`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -199,7 +199,7 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        'http://localhost:8001/api/projects/',
+        '/api/projects/',
         {
           method: 'POST',
           headers: {
@@ -244,7 +244,7 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectToDelete.id}?user_id=${userId}`,
+        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -286,7 +286,7 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${activeProject.id}/networks`,
+        `/api/projects/${activeProject.id}/networks`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       
@@ -336,8 +336,8 @@ export default function DashboardLayout({
     
     try {
       const url = editingNetwork
-        ? `http://localhost:8001/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
-        : `http://localhost:8001/api/projects/${activeProject!.id}/networks?user_id=${userId}`
+        ? `/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
+        : `/api/projects/${activeProject!.id}/networks?user_id=${userId}`
       
       const response = await fetch(url, {
         method: editingNetwork ? 'PUT' : 'POST',
@@ -379,7 +379,7 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
+        `/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -482,7 +482,7 @@ export default function DashboardLayout({
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Download Agent */}
           <button
-            onClick={() => window.open('http://localhost:8001/api/installer/download/linux', '_blank')}
+            onClick={() => window.open('/api/installer/download/linux', '_blank')}
             style={topBarButtonStyle}
           >
             🤖 Download Agent

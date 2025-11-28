@@ -121,7 +121,7 @@ export default function DashboardPage() {
   const checkActiveSessions = async (projectId: string, authToken: string) => {
     try {
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/projects/${projectId}/active-sessions`,
+        `/api/form-pages/projects/${projectId}/active-sessions`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -188,7 +188,7 @@ export default function DashboardPage() {
     setLoadingNetworks(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/networks`,
+        `/api/projects/${projectId}/networks`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -212,7 +212,7 @@ export default function DashboardPage() {
     setLoadingFormPages(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectId}/form-pages`,
+        `/api/projects/${projectId}/form-pages`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -307,7 +307,7 @@ export default function DashboardPage() {
       })
       
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/networks/${item.networkId}/locate?${params}`,
+        `/api/form-pages/networks/${item.networkId}/locate?${params}`,
         {
           method: 'POST',
           headers: {
@@ -371,7 +371,7 @@ export default function DashboardPage() {
       
       try {
         const response = await fetch(
-          `http://localhost:8001/api/form-pages/sessions/${sessionId}/status`,
+          `/api/form-pages/sessions/${sessionId}/status`,
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
         
@@ -515,7 +515,7 @@ export default function DashboardPage() {
     setSavingFormPage(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/routes/${editingFormPage.id}`,
+        `/api/form-pages/routes/${editingFormPage.id}`,
         {
           method: 'PUT',
           headers: {
@@ -557,7 +557,7 @@ export default function DashboardPage() {
     setDeletingFormPage(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/form-pages/routes/${formPageToDelete.id}`,
+        `/api/form-pages/routes/${formPageToDelete.id}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }

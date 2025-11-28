@@ -201,3 +201,6 @@ class Screenshot(Base):
     captured_at = Column(DateTime, default=datetime.utcnow)
     uploaded_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Note: Agent model is defined in models/agent_models.py to avoid duplication

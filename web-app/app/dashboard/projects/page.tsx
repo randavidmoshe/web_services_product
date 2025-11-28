@@ -66,7 +66,7 @@ export default function ProjectsPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/?company_id=${companyId}`,
+        `/api/projects/?company_id=${companyId}`,
         { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
@@ -94,7 +94,7 @@ export default function ProjectsPage() {
     
     try {
       const response = await fetch(
-        'http://localhost:8001/api/projects/',
+        '/api/projects/',
         {
           method: 'POST',
           headers: {
@@ -142,7 +142,7 @@ export default function ProjectsPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects/${projectToDelete.id}?user_id=${userId}`,
+        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }

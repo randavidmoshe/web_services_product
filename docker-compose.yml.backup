@@ -1,36 +1,16 @@
 version: '3.8'
 
 services:
-  # ==========================================================================
-  # Nginx Reverse Proxy (SSL Termination)
-  # ==========================================================================
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"      # HTTP (redirects to HTTPS)
-      - "443:443"    # HTTPS
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-      - ./nginx/certbot:/var/www/certbot:ro  # For Let's Encrypt challenges
-    depends_on:
-      - web
-      - api-server
-    restart: unless-stopped
-
-  # ==========================================================================
   # Web Application (Next.js)
-  # ==========================================================================
   web:
     build: ./web-app
-    # Removed external port - only accessible via Nginx
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:password@db:5432/formfinder
       - API_SERVER_URL=http://api-server:8000
-      - NEXTAUTH_URL=https://localhost  # Changed to HTTPS
+      - NEXTAUTH_URL=http://localhost:3000
       - NEXTAUTH_SECRET=your-secret-key-change-in-production
     depends_on:
       - db
@@ -40,17 +20,11 @@ services:
       - /app/.next
     command: npm run dev
 
-  # ==========================================================================
   # API/Processing Server (FastAPI)
-  # ==========================================================================
   api-server:
     build: ./api-server
-    # Removed external port - only accessible via Nginx
-    # Keep 8001 for local debugging if needed (comment out in production)
     ports:
-      - "8001:8000"  # TODO: Remove in production
-    expose:
-      - "8000"
+      - "8001:8000"
     env_file:
       - .env
     environment:
@@ -69,9 +43,7 @@ services:
       - ./api-server:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-  # ==========================================================================
   # PostgreSQL Database
-  # ==========================================================================
   db:
     image: postgres:15-alpine
     environment:
@@ -84,9 +56,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  # ==========================================================================
   # Redis (Message Queue)
-  # ==========================================================================
   redis:
     image: redis:7-alpine
     ports:
@@ -95,9 +65,7 @@ services:
     volumes:
       - redis_data:/data
 
-  # ==========================================================================
   # Celery Worker (Background Tasks)
-  # ==========================================================================
   celery-worker:
     build: ./api-server
     command: celery -A celery_app.celery worker --loglevel=info -Q celery
