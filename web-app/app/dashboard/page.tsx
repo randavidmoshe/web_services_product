@@ -937,8 +937,9 @@ export default function DashboardPage() {
                       ...tableRowStyle,
                       background: '#fff'
                     }} 
-                    onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'} 
+                    onMouseOver={(e) => e.currentTarget.style.background = '#e8edf3'} 
                     onMouseOut={(e) => e.currentTarget.style.background = '#fff'}
+                    onDoubleClick={() => openEditModal(form)}
                   >
                     <td style={tdStyle}>
                       <strong style={{ fontSize: '18px', color: '#1e293b' }}>{form.form_name}</strong>
@@ -955,8 +956,8 @@ export default function DashboardPage() {
                     </td>
                     <td style={tdStyle}>
                       <span style={{
-                        background: form.is_root ? '#e0e7ff' : '#fef3c7',
-                        color: form.is_root ? '#5a67d8' : '#d97706',
+                        background: form.is_root ? '#e8edf3' : '#fef3c7',
+                        color: form.is_root ? '#4a5568' : '#d97706',
                         padding: '8px 16px',
                         borderRadius: '20px',
                         fontSize: '16px',
@@ -1005,8 +1006,8 @@ export default function DashboardPage() {
           <div style={largeModalContentStyle}>
             <div style={modalHeaderStyle}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '24px', color: '#333' }}>✏️ Edit Form Page</h2>
-                <p style={{ margin: '6px 0 0', color: '#666', fontSize: '16px' }}>
+                <h2 style={{ margin: 0, fontSize: '24px', color: '#2d3a48' }}>✏️ Edit Form Page</h2>
+                <p style={{ margin: '6px 0 0', color: '#4a5a6a', fontSize: '16px' }}>
                   Editing: <strong>{editingFormPage.form_name}</strong>
                 </p>
               </div>
@@ -1016,8 +1017,8 @@ export default function DashboardPage() {
             <div style={prominentNoteStyle}>
               <div style={{ fontSize: '32px' }}>💡</div>
               <div>
-                <strong style={{ fontSize: '18px' }}>AI-Discovered Path</strong>
-                <p style={{ margin: '6px 0 0', fontSize: '16px' }}>
+                <strong style={{ fontSize: '18px', color: '#2d3a48' }}>AI-Discovered Path</strong>
+                <p style={{ margin: '6px 0 0', fontSize: '16px', color: '#4a5a6a' }}>
                   This navigation path was automatically discovered by AI. You can modify the steps below if the path needs adjustment.
                 </p>
               </div>
@@ -1250,15 +1251,18 @@ const discoveryHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '14px',
-  padding: '8px 18px',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  padding: '12px 20px',
+  background: 'linear-gradient(180deg, #d0dae4 0%, #c0ccd8 100%)',
+  border: '1px solid #9aaab8',
+  borderBottom: '3px solid #8a9aa8',
   borderRadius: '10px',
-  marginBottom: '20px'
+  marginBottom: '20px',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5)'
 }
 
 const discoveryIconStyle: React.CSSProperties = {
   fontSize: '22px',
-  background: 'rgba(255,255,255,0.2)',
+  background: '#b0bcc8',
   borderRadius: '8px',
   padding: '8px',
   display: 'flex',
@@ -1270,25 +1274,26 @@ const discoveryTitleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: '18px',
   fontWeight: 700,
-  color: '#fff'
+  color: '#2d3a48'
 }
 
 const discoverySubtitleStyle: React.CSSProperties = {
   margin: '2px 0 0',
   fontSize: '13px',
-  color: 'rgba(255,255,255,0.9)'
+  color: '#4a5a6a'
 }
 
 const discoveringBadgeStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
-  background: 'rgba(255,255,255,0.95)',
+  background: '#fff',
+  border: '1px solid #b0bcc8',
   padding: '12px 22px',
   borderRadius: '24px',
   fontSize: '16px',
   fontWeight: 600,
-  color: '#667eea',
+  color: '#3d4852',
   boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
 }
 
@@ -1337,15 +1342,16 @@ const sectionSubtitleStyle: React.CSSProperties = {
 }
 
 const selectAllBtnStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  color: '#fff',
-  border: 'none',
-  padding: '14px 28px',
+  background: 'linear-gradient(180deg, #d0dae4 0%, #c0ccd8 100%)',
+  color: '#2d3a48',
+  border: '1px solid #9aaab8',
+  borderBottom: '3px solid #8a9aa8',
+  padding: '12px 24px',
   borderRadius: '10px',
-  fontSize: '17px',
+  fontSize: '16px',
   fontWeight: 600,
   cursor: 'pointer',
-  boxShadow: '0 3px 12px rgba(102,126,234,0.3)'
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5)'
 }
 
 const networkGridStyle: React.CSSProperties = {
@@ -1492,15 +1498,16 @@ const startDiscoveryBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '14px',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  color: '#fff',
-  border: 'none',
-  padding: '18px 40px',
+  background: 'linear-gradient(180deg, #c8d4e0 0%, #b8c6d4 100%)',
+  color: '#2d3a48',
+  border: '1px solid #90a0b0',
+  borderBottom: '3px solid #8090a0',
+  padding: '16px 36px',
   borderRadius: '14px',
-  fontSize: '19px',
+  fontSize: '18px',
   fontWeight: 700,
   cursor: 'pointer',
-  boxShadow: '0 6px 20px rgba(102,126,234,0.4)',
+  boxShadow: '0 2px 6px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.5)',
   transition: 'all 0.3s ease'
 }
 
@@ -1522,9 +1529,9 @@ const tableStyle: React.CSSProperties = {
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '18px 22px',
-  borderBottom: '2px solid #c5ced9',
+  borderBottom: '2px solid #b8c4d0',
   fontWeight: 700,
-  color: '#4a5568',
+  color: '#5a4a3a',
   background: '#e8edf3',
   position: 'sticky',
   top: 0,
@@ -1541,7 +1548,7 @@ const tableRowStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = {
   padding: '18px 22px',
-  borderBottom: '1px solid #e2e8f0',
+  borderBottom: '1px solid #e0d8cc',
   verticalAlign: 'middle',
   fontSize: '17px',
   color: '#2d3748'
@@ -1549,7 +1556,7 @@ const tdStyle: React.CSSProperties = {
 
 const pathStepsBadgeStyle: React.CSSProperties = {
   background: '#e8edf3',
-  color: '#5a67d8',
+  color: '#4a5568',
   padding: '10px 18px',
   borderRadius: '20px',
   fontSize: '16px',
@@ -1558,7 +1565,7 @@ const pathStepsBadgeStyle: React.CSSProperties = {
 
 const actionButtonStyle: React.CSSProperties = {
   background: '#e8edf3',
-  border: '1px solid #c5ced9',
+  border: '1px solid #b8c4d0',
   borderRadius: '10px',
   padding: '10px 14px',
   cursor: 'pointer',
@@ -1626,21 +1633,23 @@ const closeButtonStyle: React.CSSProperties = {
 }
 
 const primaryButtonStyle: React.CSSProperties = {
-  background: '#0070f3',
-  color: 'white',
+  background: 'linear-gradient(180deg, #c8d4e0 0%, #b8c6d4 100%)',
+  color: '#2d3a48',
   padding: '14px 28px',
-  border: 'none',
+  border: '1px solid #90a0b0',
+  borderBottom: '3px solid #8090a0',
   borderRadius: '8px',
   fontSize: '16px',
   fontWeight: 600,
-  cursor: 'pointer'
+  cursor: 'pointer',
+  boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
   background: '#fff',
-  color: '#333',
+  color: '#3d4852',
   padding: '14px 28px',
-  border: '1px solid #ddd',
+  border: '1px solid #b8c4d0',
   borderRadius: '8px',
   fontSize: '16px',
   cursor: 'pointer'
@@ -1672,14 +1681,15 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const largeModalContentStyle: React.CSSProperties = {
-  background: 'white',
+  background: '#e8edf3',
   borderRadius: '16px',
   width: '100%',
   maxWidth: '1100px',
   maxHeight: '90vh',
   display: 'flex',
   flexDirection: 'column',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+  border: '1px solid #b8c4d0'
 }
 
 const modalHeaderStyle: React.CSSProperties = {
@@ -1687,26 +1697,27 @@ const modalHeaderStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'flex-start',
   padding: '28px 32px',
-  borderBottom: '1px solid #eee'
+  borderBottom: '2px solid #b8c4d0',
+  background: 'linear-gradient(180deg, #d0dae4 0%, #c0ccd8 100%)'
 }
 
 const modalCloseButtonStyle: React.CSSProperties = {
-  background: '#f5f5f5',
-  border: 'none',
+  background: '#d8e0e8',
+  border: '1px solid #b8c4d0',
   fontSize: '28px',
   cursor: 'pointer',
   padding: '10px 16px',
   borderRadius: '8px',
-  color: '#666',
+  color: '#5a4a3a',
   lineHeight: 1
 }
 
 const prominentNoteStyle: React.CSSProperties = {
   display: 'flex',
   gap: '20px',
-  background: '#e3f2fd',
-  border: '1px solid #90caf9',
-  color: '#1565c0',
+  background: 'linear-gradient(180deg, #e0e6ed 0%, #d4dce6 100%)',
+  border: '1px solid #b0bcc8',
+  color: '#3d4852',
   padding: '24px 28px',
   margin: '0',
   alignItems: 'flex-start'
@@ -1721,40 +1732,42 @@ const modalBodyStyle: React.CSSProperties = {
 const modalLeftColumnStyle: React.CSSProperties = {
   width: '340px',
   padding: '28px',
-  borderRight: '1px solid #eee',
-  overflowY: 'auto'
+  borderRight: '2px solid #c5ced9',
+  overflowY: 'auto',
+  background: '#fff'
 }
 
 const modalRightColumnStyle: React.CSSProperties = {
   flex: 1,
   padding: '28px',
   overflowY: 'auto',
-  background: '#fafafa'
+  background: '#e8edf3'
 }
 
 const modalLabelStyle: React.CSSProperties = {
   display: 'block',
   marginBottom: '10px',
   fontWeight: 600,
-  color: '#333',
+  color: '#3d4852',
   fontSize: '16px'
 }
 
 const modalInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '14px 16px',
-  border: '1px solid #ddd',
+  border: '1px solid #b8c4d0',
   borderRadius: '8px',
   fontSize: '16px',
-  boxSizing: 'border-box'
+  boxSizing: 'border-box',
+  background: '#fff'
 }
 
 const infoSectionStyle: React.CSSProperties = {
   padding: '20px',
-  background: '#f8f9fa',
+  background: '#e8edf3',
   borderRadius: '10px',
   marginBottom: '20px',
-  border: '1px solid #e0e0e0'
+  border: '1px solid #c5ced9'
 }
 
 const infoRowStyle: React.CSSProperties = {
@@ -1766,26 +1779,28 @@ const infoRowStyle: React.CSSProperties = {
 }
 
 const infoLabelStyle: React.CSSProperties = {
-  color: '#666',
+  color: '#5a4a3a',
   minWidth: '70px',
   fontSize: '15px'
 }
 
 const childBadgeStyle: React.CSSProperties = {
   display: 'inline-block',
-  background: '#e8f5e9',
-  color: '#2e7d32',
+  background: '#e8edf3',
+  color: '#4a5568',
   padding: '6px 12px',
   borderRadius: '12px',
   fontSize: '14px',
   marginRight: '8px',
-  marginBottom: '6px'
+  marginBottom: '6px',
+  border: '1px solid #c5ced9'
 }
 
 const addStepButtonStyle: React.CSSProperties = {
-  background: '#e3f2fd',
-  color: '#1565c0',
-  border: '1px solid #90caf9',
+  background: 'linear-gradient(180deg, #d0dae4 0%, #c0ccd8 100%)',
+  color: '#3d4852',
+  border: '1px solid #9aaab8',
+  borderBottom: '3px solid #8a9aa8',
   padding: '10px 20px',
   borderRadius: '8px',
   fontSize: '15px',
@@ -1801,7 +1816,7 @@ const pathStepsScrollContainerStyle: React.CSSProperties = {
 
 const pathStepCardStyle: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #ddd',
+  border: '1px solid #b8c4d0',
   borderRadius: '12px',
   marginBottom: '16px',
   overflow: 'hidden'
@@ -1812,27 +1827,28 @@ const stepHeaderStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '14px',
   padding: '14px 18px',
-  background: '#f5f5f5',
-  borderBottom: '1px solid #eee'
+  background: 'linear-gradient(180deg, #e8edf3 0%, #dce3eb 100%)',
+  borderBottom: '1px solid #b8c4d0'
 }
 
 const stepNumberBadgeStyle: React.CSSProperties = {
   width: '36px',
   height: '36px',
-  background: '#0070f3',
-  color: '#fff',
+  background: 'linear-gradient(180deg, #c0ccd8 0%, #a8b8c8 100%)',
+  color: '#3d4852',
   borderRadius: '50%',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontSize: '16px',
   fontWeight: 700,
-  flexShrink: 0
+  flexShrink: 0,
+  border: '2px solid #8a9aa8'
 }
 
 const stepActionButtonStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
+  background: '#d8e0e8',
+  border: '1px solid #b8c4d0',
   padding: '6px 10px',
   cursor: 'pointer',
   fontSize: '18px',
@@ -1840,7 +1856,8 @@ const stepActionButtonStyle: React.CSSProperties = {
 }
 
 const stepFieldsStyle: React.CSSProperties = {
-  padding: '20px'
+  padding: '20px',
+  background: '#fff'
 }
 
 const stepFieldRowStyle: React.CSSProperties = {
@@ -1871,32 +1888,34 @@ const modalFooterStyle: React.CSSProperties = {
   justifyContent: 'flex-end',
   gap: '14px',
   padding: '24px 32px',
-  borderTop: '1px solid #eee',
-  background: '#fafafa'
+  borderTop: '2px solid #b8c4d0',
+  background: 'linear-gradient(180deg, #e8edf3 0%, #dce3eb 100%)'
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: 'white',
+  background: '#e8edf3',
   borderRadius: '14px',
   padding: '32px',
   width: '100%',
   maxWidth: '450px',
-  boxShadow: '0 10px 40px rgba(0,0,0,0.15)'
+  boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+  border: '1px solid #b8c4d0'
 }
 
 const deleteModalContentStyle: React.CSSProperties = {
-  background: 'white',
+  background: '#e8edf3',
   borderRadius: '16px',
   padding: '36px',
   width: '100%',
   maxWidth: '520px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+  border: '1px solid #b8c4d0'
 }
 
 const deleteWarningBoxStyle: React.CSSProperties = {
-  background: '#fff8e1',
-  border: '1px solid #ffe082',
-  color: '#5d4037',
+  background: 'linear-gradient(180deg, #e8edf3 0%, #dce3eb 100%)',
+  border: '1px solid #b0bcc8',
+  color: '#3d4852',
   padding: '24px',
   borderRadius: '10px',
   marginTop: '20px'
