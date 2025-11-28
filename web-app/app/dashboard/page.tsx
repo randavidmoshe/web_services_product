@@ -67,6 +67,8 @@ export default function DashboardPage() {
   
   const [formPages, setFormPages] = useState<FormPage[]>([])
   const [loadingFormPages, setLoadingFormPages] = useState(false)
+  const [sortField, setSortField] = useState<'name' | 'date'>('date')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   
   const [headless, setHeadless] = useState(false)
   
@@ -227,6 +229,9 @@ export default function DashboardPage() {
     }
   }
 
+  // Get only QA networks for discovery
+  const qaNetworks = networks.filter(n => n.network_type?.toLowerCase() === 'qa')
+
   const toggleNetworkSelection = (networkId: number) => {
     setSelectedNetworkIds(prev => 
       prev.includes(networkId) 
@@ -236,10 +241,10 @@ export default function DashboardPage() {
   }
 
   const selectAllNetworks = () => {
-    if (selectedNetworkIds.length === networks.length) {
+    if (selectedNetworkIds.length === qaNetworks.length) {
       setSelectedNetworkIds([])
     } else {
-      setSelectedNetworkIds(networks.map(n => n.id))
+      setSelectedNetworkIds(qaNetworks.map(n => n.id))
     }
   }
 
@@ -666,7 +671,7 @@ export default function DashboardPage() {
               <div style={sectionHeaderStyle}>
                 <div>
                   <h3 style={sectionTitleStyle}>Select Networks</h3>
-                  <p style={sectionSubtitleStyle}>Choose which networks to scan for form pages (processed one at a time)</p>
+                  <p style={sectionSubtitleStyle}>Select QA environment networks to discover form pages (other environments available when running tests)</p>
                 </div>
                 <button 
                   onClick={selectAllNetworks} 
@@ -678,7 +683,7 @@ export default function DashboardPage() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {networks.map(network => {
+                {qaNetworks.map(network => {
                   const colors = getNetworkTypeColors(network.network_type)
                   const isSelected = selectedNetworkIds.includes(network.id)
                   const queueItem = discoveryQueue.find(q => q.networkId === network.id)
@@ -922,15 +927,53 @@ export default function DashboardPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>Form Name</th>
+                  <th 
+                    style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => {
+                      if (sortField === 'name') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('name')
+                        setSortDirection('asc')
+                      }
+                    }}
+                  >
+                    Form Name {sortField === 'name' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                  </th>
                   <th style={thStyle}>Path Steps</th>
                   <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Discovered</th>
+                  <th 
+                    style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => {
+                      if (sortField === 'date') {
+                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                      } else {
+                        setSortField('date')
+                        setSortDirection('desc')
+                      }
+                    }}
+                  >
+                    Discovered {sortField === 'date' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                  </th>
                   <th style={{ ...thStyle, width: '120px', textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {formPages.map((form, index) => (
+                {[...formPages].sort((a, b) => {
+                  if (sortField === 'name') {
+                    const nameA = (a.form_name || '').toLowerCase()
+                    const nameB = (b.form_name || '').toLowerCase()
+                    return sortDirection === 'asc' 
+                      ? nameA.localeCompare(nameB)
+                      : nameB.localeCompare(nameA)
+                  } else {
+                    const dateA = new Date(a.created_at || 0).getTime()
+                    const dateB = new Date(b.created_at || 0).getTime()
+                    return sortDirection === 'asc' 
+                      ? dateA - dateB
+                      : dateB - dateA
+                  }
+                }).map((form, index) => (
                   <tr 
                     key={form.id} 
                     style={{
@@ -1279,7 +1322,7 @@ const discoveryTitleStyle: React.CSSProperties = {
 
 const discoverySubtitleStyle: React.CSSProperties = {
   margin: '2px 0 0',
-  fontSize: '13px',
+  fontSize: '16px',
   color: '#4a5a6a'
 }
 

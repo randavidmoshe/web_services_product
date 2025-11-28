@@ -69,6 +69,7 @@ export default function DashboardLayout({
   const [networkUrl, setNetworkUrl] = useState('')
   const [networkUsername, setNetworkUsername] = useState('')
   const [networkPassword, setNetworkPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [savingNetwork, setSavingNetwork] = useState(false)
   const [editingNetwork, setEditingNetwork] = useState<Network | null>(null)
   
@@ -83,6 +84,10 @@ export default function DashboardLayout({
   
   // Active tab for left sidebar
   const [activeTab, setActiveTab] = useState<string>('form-discovery')
+  
+  // Agent status
+  const [agentStatus, setAgentStatus] = useState<'online' | 'offline' | 'unknown'>('unknown')
+  const [agentLastSeen, setAgentLastSeen] = useState<string | null>(null)
 
   // Load networks when Networks tab is selected
   useEffect(() => {
@@ -109,6 +114,60 @@ export default function DashboardLayout({
       setLoadingNetworks(false)
     }
   }
+
+  // Check agent status
+  const checkAgentStatus = async () => {
+    if (!userId || !token) return
+    
+    try {
+      const response = await fetch(
+        `/api/agent/agents?company_id=${companyId}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        // Find agent for current user
+        const userAgent = data.agents?.find((a: any) => a.user_id === parseInt(userId))
+        
+        if (userAgent && userAgent.last_heartbeat) {
+          // Parse as UTC (server returns UTC timestamps)
+          const lastHeartbeat = new Date(userAgent.last_heartbeat + 'Z')
+          const now = new Date()
+          const diffSeconds = (now.getTime() - lastHeartbeat.getTime()) / 1000
+          
+          console.log('Agent status check:', {
+            lastHeartbeat: lastHeartbeat.toISOString(),
+            now: now.toISOString(),
+            diffSeconds
+          })
+          
+          // Agent is online if last heartbeat was within 60 seconds
+          if (diffSeconds < 60) {
+            setAgentStatus('online')
+          } else {
+            setAgentStatus('offline')
+          }
+          setAgentLastSeen(userAgent.last_heartbeat)
+        } else {
+          setAgentStatus('offline')
+          setAgentLastSeen(null)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+      setAgentStatus('unknown')
+    }
+  }
+
+  // Poll agent status every 30 seconds
+  useEffect(() => {
+    if (userId && token) {
+      checkAgentStatus()
+      const interval = setInterval(checkAgentStatus, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [userId, token, companyId])
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
@@ -311,6 +370,7 @@ export default function DashboardLayout({
     setNetworkUrl('')
     setNetworkUsername('')
     setNetworkPassword('')
+    setShowPassword(false)
     setEditingNetwork(null)
     setShowAddNetworkModal(true)
   }
@@ -322,6 +382,7 @@ export default function DashboardLayout({
     setNetworkUrl(network.url)
     setNetworkUsername(network.login_username || '')
     setNetworkPassword(network.login_password || '')
+    setShowPassword(false)
     setShowAddNetworkModal(true)
   }
 
@@ -480,6 +541,97 @@ export default function DashboardLayout({
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Agent Status Indicator - Impressive Version */}
+          <div 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '10px 20px',
+              background: agentStatus === 'online' 
+                ? 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)' 
+                : agentStatus === 'offline' 
+                  ? 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)' 
+                  : '#f5f5f5',
+              borderRadius: '25px',
+              border: `2px solid ${agentStatus === 'online' ? '#66bb6a' : agentStatus === 'offline' ? '#ef5350' : '#e0e0e0'}`,
+              boxShadow: agentStatus === 'online' 
+                ? '0 4px 15px rgba(76, 175, 80, 0.3), inset 0 1px 0 rgba(255,255,255,0.5)' 
+                : agentStatus === 'offline'
+                  ? '0 4px 15px rgba(244, 67, 54, 0.2)'
+                  : '0 2px 8px rgba(0,0,0,0.1)',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+            title={agentLastSeen ? `Last seen: ${new Date(agentLastSeen + 'Z').toLocaleString()}` : 'No agent connected'}
+          >
+            {/* Animated pulse ring */}
+            <div style={{ position: 'relative', width: '16px', height: '16px' }}>
+              {agentStatus === 'online' && (
+                <div 
+                  style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    left: '-4px',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: 'rgba(76, 175, 80, 0.3)',
+                    animation: 'pulse 2s ease-in-out infinite'
+                  }}
+                />
+              )}
+              <div 
+                style={{
+                  position: 'relative',
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: agentStatus === 'online' 
+                    ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)' 
+                    : agentStatus === 'offline' 
+                      ? 'linear-gradient(135deg, #ef5350 0%, #e53935 100%)' 
+                      : '#9e9e9e',
+                  boxShadow: agentStatus === 'online' 
+                    ? '0 0 12px rgba(76, 175, 80, 0.6), inset 0 -2px 4px rgba(0,0,0,0.2)' 
+                    : agentStatus === 'offline'
+                      ? '0 0 8px rgba(244, 67, 54, 0.4)'
+                      : 'none',
+                  border: '2px solid rgba(255,255,255,0.5)'
+                }}
+              />
+            </div>
+            
+            {/* Status icon and text */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <span style={{ 
+                fontSize: '14px', 
+                fontWeight: 700,
+                color: agentStatus === 'online' ? '#2e7d32' : agentStatus === 'offline' ? '#c62828' : '#666',
+                letterSpacing: '0.3px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                {agentStatus === 'online' ? '🤖' : agentStatus === 'offline' ? '💤' : '⏳'} Agent {agentStatus === 'online' ? 'Online' : agentStatus === 'offline' ? 'Offline' : 'Checking...'}
+              </span>
+              {agentStatus === 'online' && (
+                <span style={{ fontSize: '10px', color: '#66bb6a', fontWeight: 500 }}>
+                  ● Connected & Ready
+                </span>
+              )}
+            </div>
+          </div>
+          
+          {/* CSS Animation for pulse */}
+          <style>{`
+            @keyframes pulse {
+              0% { transform: scale(1); opacity: 0.8; }
+              50% { transform: scale(1.4); opacity: 0; }
+              100% { transform: scale(1); opacity: 0; }
+            }
+          `}</style>
+          
           {/* Download Agent */}
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
@@ -650,6 +802,27 @@ export default function DashboardLayout({
                 <div>
                   <h2 style={{ margin: '0 0 4px', fontSize: '24px', color: '#333' }}>🌐 Networks</h2>
                   <p style={{ margin: 0, color: '#666', fontSize: '15px' }}>Manage your network environments for {activeProject?.name || 'this project'}</p>
+                </div>
+              </div>
+              
+              {/* Environment Info Banner */}
+              <div style={{
+                background: 'linear-gradient(135deg, #e8f4fd 0%, #e0f0ff 100%)',
+                border: '1px solid #90caf9',
+                borderRadius: '12px',
+                padding: '20px 24px',
+                marginBottom: '24px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '16px'
+              }}>
+                <span style={{ fontSize: '28px' }}>💡</span>
+                <div>
+                  <strong style={{ color: '#1565c0', fontSize: '18px' }}>Environment Usage Guide</strong>
+                  <p style={{ margin: '8px 0 0', color: '#1976d2', fontSize: '16px', lineHeight: '1.6' }}>
+                    <strong>Form Pages Discovery & Mapping</strong> are performed exclusively in the <strong>QA environment</strong> to safely explore your application. 
+                    When <strong>running tests</strong>, you can target any environment (QA, Staging, or Production) based on your testing needs.
+                  </p>
                 </div>
               </div>
               
@@ -1003,7 +1176,7 @@ export default function DashboardLayout({
             )}
             
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Login Username (optional)</label>
+              <label style={labelStyle}>Login Username <span style={{ color: '#888', fontWeight: 400 }}>(optional - if URL is a login page)</span></label>
               <input
                 type="text"
                 value={networkUsername}
@@ -1014,14 +1187,34 @@ export default function DashboardLayout({
             </div>
             
             <div style={{ marginBottom: '24px' }}>
-              <label style={labelStyle}>Login Password (optional)</label>
-              <input
-                type="password"
-                value={networkPassword}
-                onChange={(e) => setNetworkPassword(e.target.value)}
-                placeholder="Test user password"
-                style={inputStyle}
-              />
+              <label style={labelStyle}>Login Password <span style={{ color: '#888', fontWeight: 400 }}>(optional - if URL is a login page)</span></label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={networkPassword}
+                  onChange={(e) => setNetworkPassword(e.target.value)}
+                  placeholder="Test user password"
+                  style={{ ...inputStyle, paddingRight: '45px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px',
+                    color: '#666'
+                  }}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
             
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
