@@ -207,23 +207,14 @@ class FormPagesLocatorService:
         Returns:
             Created FormPageRoute object
         """
-        # Check if form with same URL already exists for this network
+        # Check if form with same URL already exists (globally, not per network)
         existing = self.db.query(FormPageRoute).filter(
-            FormPageRoute.network_id == network_id,
             FormPageRoute.url == url
         ).first()
         
         if existing:
-            # Update existing route
-            existing.form_name = form_name
-            existing.navigation_steps = navigation_steps
-            existing.id_fields = id_fields or []
-            existing.verification_attempts = verification_attempts
-            existing.last_verified_at = datetime.utcnow()
-            existing.updated_at = datetime.utcnow()
-            self.db.commit()
-            self.db.refresh(existing)
-            print(f"[FormPagesLocatorService] Updated existing form route: {form_name}")
+            # Skip - form page with this URL already exists
+            print(f"[FormPagesLocatorService] Form route already exists with URL: {url} - skipping")
             return existing
         
         # Create new route

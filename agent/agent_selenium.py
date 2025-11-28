@@ -288,6 +288,7 @@ class AgentSelenium:
                 options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 options.add_experimental_option('useAutomationExtension', False)
 
+                '''
                 try:
                     downloaded_binary_path = ChromeDriverManager().install()
                     service = Service(executable_path=downloaded_binary_path)
@@ -302,6 +303,35 @@ class AgentSelenium:
                     self.driver.set_page_load_timeout(40)
                     print("[WebDriver] ✅ Initialized successfully")
                     #return driver
+                '''
+
+                try:
+                    import os
+                    downloaded_binary_path = ChromeDriverManager().install()
+
+                    # Fix: ChromeDriverManager sometimes returns wrong file path
+                    # Make sure we get the actual chromedriver executable
+                    if 'THIRD_PARTY_NOTICES' in downloaded_binary_path or not os.access(downloaded_binary_path,
+                                                                                        os.X_OK):
+                        # Get the directory and find the actual chromedriver
+                        driver_dir = os.path.dirname(downloaded_binary_path)
+                        for filename in os.listdir(driver_dir):
+                            if filename == 'chromedriver' or filename == 'chromedriver.exe':
+                                downloaded_binary_path = os.path.join(driver_dir, filename)
+                                break
+
+                    print(f"[WebDriver] Using ChromeDriver: {downloaded_binary_path}")
+                    service = Service(executable_path=downloaded_binary_path)
+                    self.driver = webdriver.Chrome(service=service, options=options)
+                    self.driver.set_page_load_timeout(40)
+                    print("[WebDriver] ✅ Initialized successfully")
+                except Exception as e:
+                    print(f"[WebDriver] Default initialization failed: {e}")
+                    print("[WebDriver] Trying alternative initialization...")
+                    # Try without specifying service (let Selenium find it)
+                    self.driver = webdriver.Chrome(options=options)
+                    self.driver.set_page_load_timeout(40)
+                    print("[WebDriver] ✅ Initialized successfully (alternative method)")
                 
             elif browser_type.lower() == "firefox":
                 options = webdriver.FirefoxOptions()

@@ -95,11 +95,13 @@ class Network(Base):
     product_id = Column(Integer, ForeignKey("products.id"))
     name = Column(String)
     url = Column(String)
+    network_type = Column(String, nullable=False)  # "qa", "staging", or "production"
     # Login credentials for test user (used by crawler)
     login_username = Column(String, nullable=True)
     login_password = Column(String, nullable=True)  # Should be encrypted in production
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class CrawlSession(Base):
     __tablename__ = "crawl_sessions"

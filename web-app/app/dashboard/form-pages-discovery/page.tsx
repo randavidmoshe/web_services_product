@@ -1,11 +1,24 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+
+interface Project {
+  id: number
+  name: string
+}
 
 interface Network {
   id: number
   name: string
   url: string
-  login_username: string
+  network_type: string
+  login_username: string | null
+}
+
+interface NetworksByType {
+  qa: Network[]
+  staging: Network[]
+  production: Network[]
 }
 
 interface DiscoveredForm {
@@ -31,14 +44,21 @@ interface SessionStatus {
 }
 
 export default function FormDiscoveryPage() {
+  const searchParams = useSearchParams()
+  
   const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [companyId, setCompanyId] = useState<string | null>(null)
   
+  // Projects
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [loadingProjects, setLoadingProjects] = useState(true)
+  
   // Networks
   const [networks, setNetworks] = useState<Network[]>([])
   const [selectedNetworkId, setSelectedNetworkId] = useState<number | null>(null)
-  const [loadingNetworks, setLoadingNetworks] = useState(true)
+  const [loadingNetworks, setLoadingNetworks] = useState(false)
   
   // Discovery settings
   const [maxDepth, setMaxDepth] = useState(20)
@@ -67,11 +87,27 @@ export default function FormDiscoveryPage() {
     setUserId(storedUserId)
     setCompanyId(storedCompanyId)
     
-    // Load networks
+    // Load projects
     if (storedCompanyId) {
-      loadNetworks(storedCompanyId)
+      loadProjects(storedCompanyId, storedToken)
     }
   }, [])
+
+  // Handle URL query params for pre-selection
+  useEffect(() => {
+    const projectIdParam = searchParams.get('project_id')
+    const networkIdParam = searchParams.get('network_id')
+    
+    if (projectIdParam) {
+      const projectId = parseInt(projectIdParam)
+      setSelectedProjectId(projectId)
+      
+      // Load networks for this project
+      if (token) {
+        loadNetworks(projectId, token, networkIdParam ? parseInt(networkIdParam) : null)
+      }
+    }
+  }, [searchParams, token])
 
   // Poll for status when discovering
   useEffect(() => {
@@ -88,20 +124,50 @@ export default function FormDiscoveryPage() {
     }
   }, [isDiscovering, sessionId])
 
-  const loadNetworks = async (companyId: string) => {
+  const loadProjects = async (companyId: string, authToken: string) => {
+    setLoadingProjects(true)
     try {
       const response = await fetch(
-        `http://localhost:8001/api/projects?company_id=${companyId}`,
-        { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
+        `http://localhost:8001/api/projects/?company_id=${companyId}`,
+        { headers: { 'Authorization': `Bearer ${authToken}` } }
       )
       
       if (response.ok) {
-        const projects = await response.json()
-        // For now, create a mock network list or load from projects
-        // TODO: Add proper networks endpoint
-        setNetworks([
-          { id: 1, name: 'OrangeHRM Demo', url: 'https://opensource-demo.orangehrmlive.com', login_username: 'Admin' }
-        ])
+        const data = await response.json()
+        setProjects(data)
+      }
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    } finally {
+      setLoadingProjects(false)
+    }
+  }
+
+  const loadNetworks = async (projectId: number, authToken: string, preSelectNetworkId: number | null = null) => {
+    setLoadingNetworks(true)
+    setNetworks([])
+    setSelectedNetworkId(null)
+    
+    try {
+      const response = await fetch(
+        `http://localhost:8001/api/projects/${projectId}/networks`,
+        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      )
+      
+      if (response.ok) {
+        const data: NetworksByType = await response.json()
+        // Flatten networks from all types into a single array
+        const allNetworks = [
+          ...data.qa.map(n => ({ ...n, network_type: 'qa' })),
+          ...data.staging.map(n => ({ ...n, network_type: 'staging' })),
+          ...data.production.map(n => ({ ...n, network_type: 'production' }))
+        ]
+        setNetworks(allNetworks)
+        
+        // Pre-select network if provided
+        if (preSelectNetworkId && allNetworks.some(n => n.id === preSelectNetworkId)) {
+          setSelectedNetworkId(preSelectNetworkId)
+        }
       }
     } catch (err) {
       console.error('Failed to load networks:', err)
@@ -110,7 +176,21 @@ export default function FormDiscoveryPage() {
     }
   }
 
+  const handleProjectChange = (projectId: number | null) => {
+    setSelectedProjectId(projectId)
+    setSelectedNetworkId(null)
+    setNetworks([])
+    
+    if (projectId && token) {
+      loadNetworks(projectId, token)
+    }
+  }
+
   const startDiscovery = async () => {
+    if (!selectedProjectId) {
+      setError('Please select a project')
+      return
+    }
     if (!selectedNetworkId || !userId) {
       setError('Please select a network')
       return
@@ -184,6 +264,15 @@ export default function FormDiscoveryPage() {
     }
   }
 
+  const getNetworkTypeLabel = (type: string) => {
+    switch (type) {
+      case 'qa': return 'QA'
+      case 'staging': return 'Staging'
+      case 'production': return 'Production'
+      default: return type
+    }
+  }
+
   if (!token) return <p>Loading...</p>
 
   return (
@@ -202,97 +291,148 @@ export default function FormDiscoveryPage() {
       {error && (
         <div style={errorBoxStyle}>
           ❌ {error}
+          <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
         </div>
       )}
       {message && (
         <div style={successBoxStyle}>
           ✅ {message}
+          <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
+        </div>
+      )}
+
+      {/* No Projects Warning */}
+      {!loadingProjects && projects.length === 0 && (
+        <div style={warningBoxStyle}>
+          <h3 style={{ marginTop: 0 }}>No Projects Found</h3>
+          <p>You need to create a project and add networks before you can start form discovery.</p>
+          <button 
+            onClick={() => window.location.href = '/dashboard/projects'}
+            style={primaryButtonStyle}
+          >
+            Go to Projects
+          </button>
         </div>
       )}
 
       {/* Configuration Section */}
-      <div style={cardStyle}>
-        <h2>Configuration</h2>
-        
-        <div style={{ marginTop: '20px' }}>
-          <label style={labelStyle}>Select Network:</label>
-          <select
-            value={selectedNetworkId || ''}
-            onChange={(e) => setSelectedNetworkId(Number(e.target.value))}
-            style={selectStyle}
-            disabled={isDiscovering}
-          >
-            <option value="">-- Select a network --</option>
-            {networks.map(network => (
-              <option key={network.id} value={network.id}>
-                {network.name} ({network.url})
+      {projects.length > 0 && (
+        <div style={cardStyle}>
+          <h2>Configuration</h2>
+          
+          {/* Project Selection */}
+          <div style={{ marginTop: '20px' }}>
+            <label style={labelStyle}>Select Project: *</label>
+            <select
+              value={selectedProjectId || ''}
+              onChange={(e) => handleProjectChange(e.target.value ? Number(e.target.value) : null)}
+              style={selectStyle}
+              disabled={isDiscovering || loadingProjects}
+            >
+              <option value="">-- Select a project --</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Network Selection */}
+          <div style={{ marginTop: '20px' }}>
+            <label style={labelStyle}>Select Network: *</label>
+            <select
+              value={selectedNetworkId || ''}
+              onChange={(e) => setSelectedNetworkId(e.target.value ? Number(e.target.value) : null)}
+              style={selectStyle}
+              disabled={isDiscovering || !selectedProjectId || loadingNetworks}
+            >
+              <option value="">
+                {!selectedProjectId 
+                  ? '-- Select a project first --' 
+                  : loadingNetworks 
+                    ? 'Loading networks...' 
+                    : networks.length === 0 
+                      ? '-- No networks in this project --'
+                      : '-- Select a network --'
+                }
               </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
-          <div>
-            <label style={labelStyle}>Max Depth:</label>
-            <input
-              type="number"
-              value={maxDepth}
-              onChange={(e) => setMaxDepth(Number(e.target.value))}
-              style={inputStyle}
-              disabled={isDiscovering}
-              min={1}
-              max={50}
-            />
+              {networks.map(network => (
+                <option key={network.id} value={network.id}>
+                  [{getNetworkTypeLabel(network.network_type)}] {network.name} ({network.url})
+                </option>
+              ))}
+            </select>
+            {selectedProjectId && networks.length === 0 && !loadingNetworks && (
+              <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#666' }}>
+                No networks found. <a href={`/dashboard/projects/${selectedProjectId}`} style={{ color: '#0070f3' }}>Add networks to this project</a>
+              </p>
+            )}
           </div>
-          <div>
-            <label style={labelStyle}>Max Form Pages:</label>
-            <input
-              type="number"
-              value={maxFormPages}
-              onChange={(e) => setMaxFormPages(Number(e.target.value))}
-              style={inputStyle}
-              disabled={isDiscovering}
-              min={1}
-              max={200}
-            />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
+            <div>
+              <label style={labelStyle}>Max Depth:</label>
+              <input
+                type="number"
+                value={maxDepth}
+                onChange={(e) => setMaxDepth(Number(e.target.value))}
+                style={inputStyle}
+                disabled={isDiscovering}
+                min={1}
+                max={50}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Max Form Pages:</label>
+              <input
+                type="number"
+                value={maxFormPages}
+                onChange={(e) => setMaxFormPages(Number(e.target.value))}
+                style={inputStyle}
+                disabled={isDiscovering}
+                min={1}
+                max={200}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={headless}
+                onChange={(e) => setHeadless(e.target.checked)}
+                disabled={isDiscovering}
+              />
+              Headless Mode
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={slowMode}
+                onChange={(e) => setSlowMode(e.target.checked)}
+                disabled={isDiscovering}
+              />
+              Slow Mode (for observation)
+            </label>
+          </div>
+
+          <div style={{ marginTop: '30px' }}>
+            <button
+              onClick={startDiscovery}
+              disabled={isDiscovering || !selectedProjectId || !selectedNetworkId}
+              style={{
+                ...primaryButtonStyle,
+                opacity: (isDiscovering || !selectedProjectId || !selectedNetworkId) ? 0.6 : 1,
+                cursor: (isDiscovering || !selectedProjectId || !selectedNetworkId) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isDiscovering ? '🔄 Discovering...' : '🚀 Start Discovery'}
+            </button>
           </div>
         </div>
-
-        <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={headless}
-              onChange={(e) => setHeadless(e.target.checked)}
-              disabled={isDiscovering}
-            />
-            Headless Mode
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={slowMode}
-              onChange={(e) => setSlowMode(e.target.checked)}
-              disabled={isDiscovering}
-            />
-            Slow Mode (for observation)
-          </label>
-        </div>
-
-        <div style={{ marginTop: '30px' }}>
-          <button
-            onClick={startDiscovery}
-            disabled={isDiscovering || !selectedNetworkId}
-            style={{
-              ...primaryButtonStyle,
-              opacity: (isDiscovering || !selectedNetworkId) ? 0.6 : 1,
-              cursor: (isDiscovering || !selectedNetworkId) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isDiscovering ? '🔄 Discovering...' : '🚀 Start Discovery'}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Status Section */}
       {status && (
@@ -448,12 +588,23 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: 'pointer'
 }
 
+const closeButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  fontSize: '20px',
+  cursor: 'pointer',
+  padding: '0 0 0 10px'
+}
+
 const errorBoxStyle: React.CSSProperties = {
   background: '#ffebee',
   color: '#c62828',
   padding: '12px 16px',
   borderRadius: '6px',
-  marginBottom: '20px'
+  marginBottom: '20px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center'
 }
 
 const successBoxStyle: React.CSSProperties = {
@@ -461,7 +612,19 @@ const successBoxStyle: React.CSSProperties = {
   color: '#2e7d32',
   padding: '12px 16px',
   borderRadius: '6px',
-  marginBottom: '20px'
+  marginBottom: '20px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center'
+}
+
+const warningBoxStyle: React.CSSProperties = {
+  background: '#fff3e0',
+  color: '#e65100',
+  padding: '24px',
+  borderRadius: '8px',
+  marginBottom: '20px',
+  textAlign: 'center'
 }
 
 const statBoxStyle: React.CSSProperties = {

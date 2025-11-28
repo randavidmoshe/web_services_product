@@ -206,6 +206,27 @@ async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
 
 # ========== FORM ROUTES ENDPOINTS ==========
 
+@router.get("/projects/{project_id}/active-sessions")
+async def get_active_sessions(project_id: int, db: Session = Depends(get_db)):
+    """Get active (pending/running) crawl sessions for a project"""
+    sessions = db.query(CrawlSession).filter(
+        CrawlSession.project_id == project_id,
+        CrawlSession.status.in_(['pending', 'running'])
+    ).all()
+    
+    return [
+        {
+            "id": s.id,
+            "network_id": s.network_id,
+            "status": s.status,
+            "pages_crawled": s.pages_crawled,
+            "forms_found": s.forms_found,
+            "started_at": s.started_at.isoformat() if s.started_at else None
+        }
+        for s in sessions
+    ]
+
+
 @router.get("/routes")
 async def list_form_routes(
     network_id: Optional[int] = None,

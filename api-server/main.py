@@ -5,7 +5,8 @@ import os
 from dotenv import load_dotenv
 
 # Import routes
-from routes import auth, agent, projects, crawl, screenshots
+#from routes import auth, agent, projects, crawl_DEPRECATED, screenshots
+from routes import auth, agent, projects, screenshots
 from routes import agent_router
 from routes import installer_router
 from models.database import engine, Base
@@ -46,7 +47,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
-app.include_router(crawl.router, prefix="/api/crawl", tags=["crawl"])
+#app.include_router(crawl.router, prefix="/api/crawl", tags=["crawl"])
 app.include_router(screenshots.router, prefix="/api/screenshots", tags=["screenshots"])
 app.include_router(agent_router.router)
 app.include_router(installer_router.router)

@@ -307,11 +307,20 @@ class FormDiscovererAgent:
         api_client.update_crawl_session(status='running')
 
         try:
-            if not self.selenium_agent.driver:
-                self.selenium_agent.initialize_browser(
-                    browser_type=params.get('browser', 'chrome'),
-                    headless=headless
-                )
+            # Always close existing browser and create fresh session
+            # This prevents "invalid session id" errors from stale/closed sessions
+            if self.selenium_agent.driver:
+                self.logger.info("Closing existing browser session...")
+                try:
+                    self.selenium_agent.close_browser()
+                except Exception as e:
+                    self.logger.warning(f"Error closing old browser: {e}")
+            
+            # Always create a fresh browser for each discovery
+            self.selenium_agent.initialize_browser(
+                browser_type=params.get('browser', 'chrome'),
+                headless=headless
+            )
 
             driver = self.selenium_agent.driver
             driver.get(login_url)
@@ -383,6 +392,16 @@ class FormDiscovererAgent:
             self.logger.error(f"Form discovery failed: {e}")
             api_client.update_crawl_session(status='failed', error_message=str(e))
             return {"success": False, "error": str(e)}
+        
+        finally:
+            # Always close browser after discovery (success or failure)
+            # This ensures clean state for next task
+            if self.selenium_agent.driver:
+                self.logger.info("Closing browser after discovery...")
+                try:
+                    self.selenium_agent.close_browser()
+                except Exception as e:
+                    self.logger.warning(f"Error closing browser: {e}")
 
 
     def start(self):
