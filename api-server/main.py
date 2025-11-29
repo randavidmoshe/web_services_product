@@ -92,7 +92,13 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Web app
+    allow_origins=[
+        "http://localhost:3000",   # Web app (dashboard)
+        "http://localhost:3001",   # Marketing site
+        "https://localhost",       # HTTPS local
+        "https://www.quathera.com",
+        "https://app.quathera.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -208,6 +208,33 @@ export default function DashboardLayout({
   }, [userRole, companyId, token])
 
   useEffect(() => {
+    // Check URL params first (coming from marketing site login)
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlToken = urlParams.get('token')
+    const urlUserId = urlParams.get('user_id')
+    const urlCompanyId = urlParams.get('company_id')
+    const urlUserType = urlParams.get('type')
+    
+    // If token in URL, store it and clean URL
+    if (urlToken && urlUserId && urlCompanyId) {
+      localStorage.setItem('token', urlToken)
+      localStorage.setItem('user_id', urlUserId)
+      localStorage.setItem('company_id', urlCompanyId)
+      localStorage.setItem('userType', urlUserType || 'user')
+      
+      // Clean URL (remove params)
+      window.history.replaceState({}, '', '/dashboard')
+      
+      setToken(urlToken)
+      setUserId(urlUserId)
+      setCompanyId(urlCompanyId)
+      setUserRole(urlUserType || 'user')
+      
+      loadProjects(urlCompanyId, urlToken)
+      return
+    }
+    
+    // Otherwise check localStorage
     const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
     const storedCompanyId = localStorage.getItem('company_id')
@@ -789,7 +816,7 @@ export default function DashboardLayout({
               }}>
                 <span style={{ filter: activeTab === 'networks' ? 'brightness(10)' : 'none' }}>🌐</span>
               </div>
-              <span style={{ color: activeTab === 'networks' ? '#5a67d8' : '#3d4852', fontWeight: 600, fontSize: '17px' }}>Networks</span>
+              <span style={{ color: activeTab === 'networks' ? '#5a67d8' : '#3d4852', fontWeight: 600, fontSize: '17px' }}>Test Sites</span>
             </div>
           </div>
         </div>
@@ -826,8 +853,8 @@ export default function DashboardLayout({
             <div style={networksTabContentStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div>
-                  <h2 style={{ margin: '0 0 4px', fontSize: '24px', color: '#333' }}>🌐 Networks</h2>
-                  <p style={{ margin: 0, color: '#666', fontSize: '15px' }}>Manage your network environments for {activeProject?.name || 'this project'}</p>
+                  <h2 style={{ margin: '0 0 4px', fontSize: '24px', color: '#333' }}>🌐 Test Sites</h2>
+                  <p style={{ margin: 0, color: '#666', fontSize: '15px' }}>Manage your test site environments for {activeProject?.name || 'this project'}</p>
                 </div>
               </div>
               
@@ -1072,7 +1099,7 @@ export default function DashboardLayout({
         <div style={modalOverlayStyle}>
           <div style={{ ...modalContentStyle, maxWidth: '900px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>🌐 Networks - {activeProject?.name}</h2>
+              <h2 style={{ margin: 0 }}>🌐 Test Sites - {activeProject?.name}</h2>
               <button onClick={() => setShowNetworksModal(false)} style={closeButtonStyle}>×</button>
             </div>
             

@@ -691,7 +691,7 @@ export default function DashboardPage() {
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>🌐</div>
             <h3 style={{ margin: '0 0 8px', fontSize: '20px', color: '#333' }}>No Networks Found</h3>
             <p style={{ margin: 0, color: '#666', fontSize: '16px' }}>
-              Open the <strong>Networks</strong> modal from the top bar to add your first network.
+              Open the <strong>Test Sites</strong> modal from the top bar to add your first test site.
             </p>
           </div>
         ) : (
@@ -700,8 +700,8 @@ export default function DashboardPage() {
             <div style={sectionStyle}>
               <div style={sectionHeaderStyle}>
                 <div>
-                  <h3 style={sectionTitleStyle}>Select Networks</h3>
-                  <p style={sectionSubtitleStyle}>Select QA environment networks to discover form pages (other environments available when running tests)</p>
+                  <h3 style={sectionTitleStyle}>Select Test Sites</h3>
+                  <p style={sectionSubtitleStyle}>Select QA environment test sites to discover form pages (other environments available when running tests)</p>
                 </div>
                 <button 
                   onClick={selectAllNetworks} 
@@ -837,7 +837,7 @@ export default function DashboardPage() {
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginTop: '20px' }}>
             <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Networks</div>
+              <div style={statLabelStyle}>Test Sites</div>
               <div style={statValueStyle}>{completedNetworks} / {totalNetworks}</div>
             </div>
             <div style={statBoxStyle}>
@@ -883,7 +883,7 @@ export default function DashboardPage() {
 
           {/* Network Queue Status */}
           <div style={{ marginTop: '24px' }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: '16px', color: '#333' }}>Network Queue</h4>
+            <h4 style={{ margin: '0 0 12px', fontSize: '16px', color: '#333' }}>Test Site Queue</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {discoveryQueue.map((item, idx) => (
                 <div 

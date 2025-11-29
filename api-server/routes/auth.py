@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from models.database import get_db, SuperAdmin, User
+from models.database import get_db, SuperAdmin, User, Company, Product, CompanyProductSubscription, Project
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt
 import os
 import secrets
 from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter()
 
@@ -93,3 +94,109 @@ async def agent_login(
         }
     
     raise HTTPException(status_code=401, detail="Invalid email or password")
+
+
+# ========== SIGNUP ENDPOINT ==========
+
+class SignupRequest(BaseModel):
+    company_name: str
+    email: str
+    password: str
+    full_name: str
+    product_type: str = "form_testing"  # form_testing, shopping_testing, marketing_testing
+    plan: str = "trial"  # trial, trial_byok, starter, professional
+    claude_api_key: Optional[str] = None  # Only for trial_byok
+
+
+@router.post("/signup")
+async def signup(request: SignupRequest, db: Session = Depends(get_db)):
+    """
+    Create new company, admin user, and subscription.
+    Plans:
+    - trial: Free 14 days, $50 AI budget (hidden from user)
+    - trial_byok: Free 14 days, user's own API key (unlimited)
+    - starter: $300/mo, $300 AI budget
+    - professional: $500/mo, $500 AI budget
+    """
+    # Check if email already exists
+    existing_user = db.query(User).filter(User.email == request.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Get product
+    product = db.query(Product).filter(Product.type == request.product_type).first()
+    if not product:
+        raise HTTPException(status_code=400, detail="Invalid product type")
+    
+    # Plan configuration
+    plan_config = {
+        "trial": {"cost": 0, "budget": 50, "is_trial": True, "days": 14},
+        "trial_byok": {"cost": 0, "budget": 0, "is_trial": True, "days": 14},
+        "starter": {"cost": 300, "budget": 300, "is_trial": False, "days": None},
+        "professional": {"cost": 500, "budget": 500, "is_trial": False, "days": None},
+    }
+    
+    if request.plan not in plan_config:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    
+    config = plan_config[request.plan]
+    
+    # BYOK requires API key
+    if request.plan == "trial_byok" and not request.claude_api_key:
+        raise HTTPException(status_code=400, detail="API key required for BYOK plan")
+    
+    try:
+        # 1. Create company
+        company = Company(
+            name=request.company_name,
+            billing_email=request.email
+        )
+        db.add(company)
+        db.flush()  # Get company.id
+        
+        # 2. Create admin user
+        user = User(
+            company_id=company.id,
+            email=request.email,
+            password_hash=pwd_context.hash(request.password),
+            name=request.full_name,
+            role="admin"
+        )
+        db.add(user)
+        db.flush()  # Get user.id
+        
+        # 3. Create subscription
+        subscription = CompanyProductSubscription(
+            company_id=company.id,
+            product_id=product.id,
+            status="trial" if config["is_trial"] else "active",
+            is_trial=config["is_trial"],
+            trial_ends_at=datetime.utcnow() + timedelta(days=config["days"]) if config["days"] else None,
+            monthly_subscription_cost=config["cost"],
+            monthly_claude_budget=config["budget"],
+            customer_claude_api_key=request.claude_api_key if request.plan == "trial_byok" else None
+        )
+        db.add(subscription)
+        
+        # 4. Create default project
+        project = Project(
+            company_id=company.id,
+            product_id=product.id,
+            name="My First Project",
+            description="Default project created during signup",
+            created_by_user_id=user.id
+        )
+        db.add(project)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Account created successfully",
+            "company_id": company.id,
+            "user_id": user.id
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
