@@ -1,11 +1,15 @@
-# Agent API Router - Direct Redis (No Celery for Agent Tasks)
+# Agent API Router - 3-Layer Security Implementation
 # Location: api-server/routes/agent_router.py
 #
-# UPDATED: Per-user queue isolation for scalability (100,000+ users)
-# UPDATED: API Key authentication for secure agent communication
+# Security Levels:
+# - Level 1: HTTPS/SSL (handled by Nginx)
+# - Level 2: API Key - permanent agent identity
+# - Level 3: JWT Token - short-lived access with session enforcement
 #
-# Security: Each agent gets a unique API key on registration.
-# All subsequent requests must include the API key in X-Agent-API-Key header.
+# Single Agent Enforcement:
+# - Each user can only have ONE active agent
+# - Registering a new agent generates NEW API key (invalidates previous agent)
+# - JWT session_id must match DB to prevent old agents from reconnecting
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -20,6 +24,8 @@ import secrets
 from models.database import get_db
 from models.agent_models import Agent, AgentTask
 from services.agent_service import AgentService
+from utils.jwt_utils import create_jwt_token, decode_jwt_token, get_token_expiry_seconds
+from jose import JWTError
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -28,18 +34,27 @@ REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 redis_client = redis.from_url(REDIS_URL)
 
 
+# ============================================================================
+# SECURITY UTILITIES
+# ============================================================================
+
 def generate_api_key() -> str:
     """Generate a secure random API key (43 characters)"""
     return secrets.token_urlsafe(32)
 
 
-def validate_api_key(
+def generate_session_id() -> str:
+    """Generate a unique session ID (32 characters)"""
+    return secrets.token_urlsafe(24)
+
+
+def validate_api_key_only(
     x_agent_api_key: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ) -> Agent:
     """
-    Validate API key from X-Agent-API-Key header.
-    Returns the Agent if valid, raises HTTPException if not.
+    Level 2 Only: Validate API key from X-Agent-API-Key header.
+    Used for /refresh-token endpoint (doesn't need JWT).
     """
     if not x_agent_api_key:
         raise HTTPException(
@@ -52,11 +67,91 @@ def validate_api_key(
     if not agent:
         raise HTTPException(
             status_code=401,
-            detail="Invalid API key."
+            detail="Invalid API key. Agent may have been replaced by another registration."
         )
     
     return agent
 
+
+def validate_jwt_and_session(
+    authorization: Optional[str] = Header(None),
+    x_agent_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+) -> Agent:
+    """
+    Level 2+3: Full validation - API key AND JWT with session check.
+    
+    This ensures:
+    1. API key is valid
+    2. JWT token is valid and not expired
+    3. Session ID in JWT matches current session in DB (single agent enforcement)
+    """
+    # Check API key header
+    if not x_agent_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API key. Include X-Agent-API-Key header."
+        )
+    
+    # Check Authorization header
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing JWT token. Include Authorization: Bearer <token> header."
+        )
+    
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header. Use 'Bearer <token>' format."
+        )
+    
+    token = authorization[7:]  # Remove 'Bearer ' prefix
+    
+    # Decode JWT
+    try:
+        payload = decode_jwt_token(token)
+    except JWTError as e:
+        error_msg = str(e).lower()
+        if 'expired' in error_msg:
+            raise HTTPException(
+                status_code=401,
+                detail="Token expired. Call POST /api/agent/refresh-token to get a new token."
+            )
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid token: {str(e)}"
+        )
+    
+    # Verify API key matches token
+    if payload.get('api_key') != x_agent_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key mismatch. Token was issued for a different API key."
+        )
+    
+    # Get agent from DB
+    agent = db.query(Agent).filter(Agent.api_key == x_agent_api_key).first()
+    
+    if not agent:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key. Agent may have been replaced by another registration."
+        )
+    
+    # CHECK SESSION MATCHES - This kills old agents!
+    if agent.current_session_id != payload.get('session_id'):
+        raise HTTPException(
+            status_code=401,
+            detail="Session invalidated. Another agent has connected for this user. This agent is now disabled."
+        )
+    
+    return agent
+
+
+# ============================================================================
+# PUBLIC ENDPOINTS (No authentication required)
+# ============================================================================
 
 @router.post("/register")
 async def register_agent(
@@ -65,8 +160,19 @@ async def register_agent(
     db: Session = Depends(get_db)
 ):
     """
-    Register agent and return API key.
-    The API key is returned ONLY during registration - agent must store it.
+    Register agent and receive API key + JWT token.
+    
+    IMPORTANT: If user already has an agent, this generates a NEW API key,
+    which permanently invalidates the old agent.
+    
+    Returns:
+    {
+        "success": True,
+        "api_key": "new-api-key...",
+        "jwt": "eyJ...",
+        "expires_in": 1800,
+        "agent_id": "agent-test-001"
+    }
     """
     agent_id = agent_data.get('agent_id')
     company_id = agent_data.get('company_id')
@@ -75,35 +181,49 @@ async def register_agent(
     platform = agent_data.get('platform')
     version = agent_data.get('version', '2.0.0')
     
-    # Check if agent already exists
-    existing_agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id is required")
+    
+    # Check if user already has an agent (by user_id, not agent_id)
+    existing_agent = db.query(Agent).filter(Agent.user_id == user_id).first()
     
     if existing_agent:
-        # Update existing agent
+        # User already has an agent - REGENERATE API KEY to invalidate old agent!
+        existing_agent.api_key = generate_api_key()
+        existing_agent.current_session_id = generate_session_id()
+        existing_agent.agent_id = agent_id
         existing_agent.company_id = company_id
-        existing_agent.user_id = user_id
         existing_agent.hostname = hostname
         existing_agent.platform = platform
         existing_agent.version = version
         existing_agent.status = "online"
         existing_agent.last_heartbeat = datetime.utcnow()
-        
-        # If agent doesn't have an API key, generate one
-        if not existing_agent.api_key:
-            existing_agent.api_key = generate_api_key()
-        
+        existing_agent.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(existing_agent)
+        
+        # Create JWT token
+        jwt_token = create_jwt_token(
+            api_key=existing_agent.api_key,
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=existing_agent.current_session_id
+        )
         
         return {
             "success": True,
             "agent_id": existing_agent.agent_id,
             "api_key": existing_agent.api_key,
-            "message": "Agent updated. Store the API key securely - it's required for all requests."
+            "jwt": jwt_token,
+            "expires_in": get_token_expiry_seconds(),
+            "message": "Registration successful. Previous agent has been invalidated."
         }
     else:
-        # Create new agent with API key
+        # New user - create new agent with API key and session
         api_key = generate_api_key()
+        session_id = generate_session_id()
         
         new_agent = Agent(
             agent_id=agent_id,
@@ -114,29 +234,75 @@ async def register_agent(
             version=version,
             status="online",
             api_key=api_key,
+            current_session_id=session_id,
             last_heartbeat=datetime.utcnow()
         )
         db.add(new_agent)
         db.commit()
         db.refresh(new_agent)
         
+        # Create JWT token
+        jwt_token = create_jwt_token(
+            api_key=api_key,
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id
+        )
+        
         return {
             "success": True,
             "agent_id": new_agent.agent_id,
             "api_key": api_key,
-            "message": "Agent registered. Store the API key securely - it's required for all requests."
+            "jwt": jwt_token,
+            "expires_in": get_token_expiry_seconds(),
+            "message": "Agent registered. Store credentials securely."
         }
 
+
+@router.post("/refresh-token")
+async def refresh_token(
+    agent: Agent = Depends(validate_api_key_only),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a new JWT token using API key (Level 2 only).
+    Used when JWT expires but API key is still valid.
+    
+    Headers required:
+    - X-Agent-API-Key: <api_key>
+    
+    Returns:
+    {
+        "jwt": "eyJ...",
+        "expires_in": 1800
+    }
+    """
+    jwt_token = create_jwt_token(
+        api_key=agent.api_key,
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        session_id=agent.current_session_id
+    )
+    
+    return {
+        "jwt": jwt_token,
+        "expires_in": get_token_expiry_seconds()
+    }
+
+
+# ============================================================================
+# PROTECTED ENDPOINTS (Require API Key + JWT)
+# ============================================================================
 
 @router.post("/heartbeat")
 async def agent_heartbeat(
     heartbeat_data: dict,
-    agent: Agent = Depends(validate_api_key),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """
     Receive heartbeat from authenticated agent.
-    Requires X-Agent-API-Key header.
+    Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
     """
     agent.status = heartbeat_data.get('status', 'idle')
     agent.current_task_id = heartbeat_data.get('current_task_id')
@@ -150,15 +316,12 @@ async def agent_heartbeat(
 async def poll_task(
     agent_id: str,
     company_id: int,
-    agent: Agent = Depends(validate_api_key),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """
     Agent polls for tasks from their user-specific Redis queue.
-    Requires X-Agent-API-Key header.
-    
-    Each user has their own queue: 'agent:{user_id}'
-    This ensures Agent A never grabs Agent B's tasks.
+    Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
     """
     # Verify agent_id matches the authenticated agent
     if agent.agent_id != agent_id:
@@ -207,19 +370,18 @@ async def poll_task(
 @router.post("/task-result")
 async def update_task_result(
     result_data: dict,
-    agent: Agent = Depends(validate_api_key),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """
     Agent sends task result.
-    Requires X-Agent-API-Key header.
+    Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
     """
     task_id = result_data.get('task_id')
     status = result_data.get('status')
     result = result_data.get('result')
     error = result_data.get('error')
     
-    # Update database
     agent_service = AgentService(db)
     agent_service.update_celery_task_result(task_id=task_id, status=status, result=result, error=error)
     
@@ -229,19 +391,18 @@ async def update_task_result(
 @router.post("/task-status")
 async def update_task_status(
     status_data: dict,
-    agent: Agent = Depends(validate_api_key),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """
     Agent sends task status update.
-    Requires X-Agent-API-Key header.
+    Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
     """
     task_id = status_data.get('task_id')
     status = status_data.get('status')
     message = status_data.get('message')
     result = status_data.get('result')
     
-    # Update database
     agent_service = AgentService(db)
     
     if status == 'completed':
@@ -249,7 +410,6 @@ async def update_task_status(
     elif status == 'failed':
         agent_service.update_celery_task_result(task_id=task_id, status=status, error=message)
     else:
-        # Just update status (running, etc.)
         db_task = agent_service.get_celery_task(task_id)
         if db_task:
             db_task.status = status
@@ -261,22 +421,22 @@ async def update_task_status(
 @router.post("/task-progress")
 async def update_task_progress(
     progress_data: dict,
-    agent: Agent = Depends(validate_api_key)
+    agent: Agent = Depends(validate_jwt_and_session)
 ):
     """
     Agent sends progress updates.
-    Requires X-Agent-API-Key header.
+    Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
     """
-    # Just acknowledge - could log to database if needed
     return {"success": True}
 
 
+# ============================================================================
+# ADMIN ENDPOINTS (No agent authentication - for dashboard)
+# ============================================================================
+
 @router.get("/agents")
 async def list_agents(company_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """
-    List all agents.
-    Note: This endpoint does NOT require API key (for admin dashboard).
-    """
+    """List all agents (for admin dashboard - no agent auth required)."""
     query = db.query(Agent)
     if company_id:
         query = query.filter(Agent.company_id == company_id)
@@ -302,8 +462,7 @@ async def list_agents(company_id: Optional[int] = None, db: Session = Depends(ge
 @router.post("/create-task")
 async def create_task(task_data: dict, db: Session = Depends(get_db)):
     """
-    Create task (called by web app OR by server endpoints).
-    Note: This endpoint does NOT require agent API key (called from server/web app).
+    Create task (called by web app - no agent auth required).
     Tasks are pushed to user-specific Redis queue: 'agent:{user_id}'
     """
     company_id = task_data.get('company_id')
@@ -314,10 +473,8 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
     
-    # Generate task ID
     task_id = str(uuid.uuid4())
     
-    # Store in database
     agent_service = AgentService(db)
     db_task = agent_service.create_celery_task(
         task_id=task_id,
@@ -337,15 +494,12 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
     })
     redis_client.rpush(queue_name, redis_message)
     
-    return {"success": True, "task_id": task_id, "queue": queue_name, "message": "Task queued successfully"}
+    return {"success": True, "task_id": task_id, "queue": queue_name}
 
 
 @router.get("/task-status/{task_id}")
 async def get_task_status_endpoint(task_id: str, db: Session = Depends(get_db)):
-    """
-    Get task status from database.
-    Note: This endpoint does NOT require agent API key (for dashboard polling).
-    """
+    """Get task status (for dashboard - no agent auth required)."""
     agent_service = AgentService(db)
     db_task = agent_service.get_celery_task(task_id)
     
@@ -367,27 +521,17 @@ async def get_task_status_endpoint(task_id: str, db: Session = Depends(get_db)):
 
 @router.get("/queue-stats")
 async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """
-    Get queue statistics.
-    Note: This endpoint does NOT require agent API key (for admin dashboard).
-    """
+    """Get queue statistics (for admin dashboard)."""
     try:
         if user_id:
-            # Get specific user's queue length
             queue_name = f'agent:{user_id}'
             queue_length = redis_client.llen(queue_name)
-            return {
-                "user_id": user_id,
-                "queue": queue_name,
-                "queue_length": queue_length
-            }
+            return {"user_id": user_id, "queue": queue_name, "queue_length": queue_length}
         else:
-            # Get all agent:* queues
             all_queues = []
             cursor = 0
             total_tasks = 0
             
-            # Scan for all agent:* keys
             while True:
                 cursor, keys = redis_client.scan(cursor, match='agent:*', count=100)
                 for key in keys:
@@ -395,11 +539,8 @@ async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(g
                         key = key.decode('utf-8')
                     length = redis_client.llen(key)
                     total_tasks += length
-                    if length > 0:  # Only show non-empty queues
-                        all_queues.append({
-                            "queue": key,
-                            "length": length
-                        })
+                    if length > 0:
+                        all_queues.append({"queue": key, "length": length})
                 if cursor == 0:
                     break
             
@@ -413,17 +554,16 @@ async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(g
 
 
 @router.post("/regenerate-api-key")
-async def regenerate_api_key(
+async def regenerate_api_key_endpoint(
     data: dict,
     db: Session = Depends(get_db)
 ):
     """
-    Regenerate API key for an agent.
-    Called from web dashboard when user wants to reset their agent's API key.
-    Requires user authentication (not agent API key).
+    Regenerate API key for an agent (from web dashboard).
+    This also regenerates the session_id, invalidating all existing JWTs.
     """
     agent_id = data.get('agent_id')
-    user_id = data.get('user_id')  # From authenticated session
+    user_id = data.get('user_id')
     
     if not agent_id or not user_id:
         raise HTTPException(status_code=400, detail="agent_id and user_id required")
@@ -436,14 +576,14 @@ async def regenerate_api_key(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found or not owned by user")
     
-    # Generate new API key
-    new_api_key = generate_api_key()
-    agent.api_key = new_api_key
+    # Regenerate both API key and session
+    agent.api_key = generate_api_key()
+    agent.current_session_id = generate_session_id()
     db.commit()
     
     return {
         "success": True,
         "agent_id": agent_id,
-        "api_key": new_api_key,
-        "message": "API key regenerated. Update your agent configuration with the new key."
+        "api_key": agent.api_key,
+        "message": "API key and session regenerated. Agent must re-register."
     }

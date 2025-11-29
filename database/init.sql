@@ -33,8 +33,10 @@ CREATE TABLE super_admins (
 );
 
 -- Default super admin (password: admin123)
-INSERT INTO super_admins (email, password_hash, name) VALUES
-('admin@formfinder.com', '$2b$12$p7hbvVi9UJVAxdXQsai0e.xya7GZx0lKsACDn.rC3P7PXB0hwte5i', 'Super Admin');
+-- NOTE: Super admin is created at runtime from environment variables
+-- Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in production
+-- INSERT INTO super_admins (email, password_hash, name) VALUES
+-- ('admin@formfinder.com', '$2b$12$...hash...', 'Super Admin');
 
 
 -- ============================================

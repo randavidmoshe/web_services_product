@@ -38,10 +38,32 @@ interface SessionStatus {
     pages_crawled: number
     forms_found: number
     error_message: string | null
+    error_code: string | null
     started_at: string | null
     completed_at: string | null
   }
   forms: FormPage[]
+}
+
+// Error code to friendly message mapping
+const ERROR_MESSAGES: Record<string, string> = {
+  'PAGE_NOT_FOUND': '🔗 Page not found (404) - check the URL',
+  'ACCESS_DENIED': '🔒 Access denied (403) - check permissions',
+  'SERVER_ERROR': '⚠️ Server error (500) - site may be experiencing issues',
+  'SSL_ERROR': '🔐 SSL certificate error - site security issue',
+  'SITE_UNAVAILABLE': '🌐 Site unavailable - server may be down',
+  'LOGIN_FAILED': '🔑 Login failed - check credentials or login page changed',
+  'SESSION_EXPIRED': '⏰ Session expired during discovery',
+  'TIMEOUT': '⏱️ Page load timeout - site may be slow',
+  'ELEMENT_NOT_FOUND': '🔍 Required element not found on page',
+  'UNKNOWN': '❓ Unknown error occurred'
+}
+
+const getErrorMessage = (errorCode: string | null | undefined, errorMessage: string | null | undefined): string => {
+  if (errorCode && ERROR_MESSAGES[errorCode]) {
+    return ERROR_MESSAGES[errorCode]
+  }
+  return errorMessage || 'Discovery failed'
 }
 
 interface DiscoveryQueueItem {
@@ -52,6 +74,7 @@ interface DiscoveryQueueItem {
   pagesSearched: number
   formsFound: number
   errorMessage?: string
+  errorCode?: string
 }
 
 export default function DashboardPage() {
@@ -420,7 +443,8 @@ export default function DashboardPage() {
                 status: finalStatus as 'completed' | 'failed',
                 pagesSearched: data.session.pages_crawled,
                 formsFound: data.session.forms_found,
-                errorMessage: data.session.error_message || undefined
+                errorMessage: getErrorMessage(data.session.error_code, data.session.error_message),
+                errorCode: data.session.error_code || undefined
               } : q
             )
             setDiscoveryQueue(updatedQueue)
@@ -444,9 +468,15 @@ export default function DashboardPage() {
     const completed = queue.filter(q => q.status === 'completed').length
     const failed = queue.filter(q => q.status === 'failed').length
     const totalForms = queue.reduce((sum, q) => sum + q.formsFound, 0)
+    const failedItems = queue.filter(q => q.status === 'failed')
     
     if (failed > 0) {
+      // Build error details for failed networks
+      const errorDetails = failedItems.map(f => `${f.networkName}: ${f.errorMessage || 'Unknown error'}`).join('; ')
       setMessage(`Discovery finished. Completed: ${completed}, Failed: ${failed}. Found ${totalForms} form pages.`)
+      if (failedItems.length > 0 && failedItems[0].errorMessage) {
+        setError(errorDetails)
+      }
     } else {
       setMessage(`Discovery completed! Found ${totalForms} form pages across ${completed} network(s).`)
     }
@@ -735,22 +765,31 @@ export default function DashboardPage() {
                         {getNetworkTypeLabel(network.network_type)}
                       </span>
                       {queueItem && (
-                        <span style={{
-                          padding: '8px 16px',
-                          borderRadius: '12px',
-                          fontSize: '15px',
-                          fontWeight: 600,
-                          background: queueItem.status === 'running' ? '#fff3e0' :
-                                     queueItem.status === 'completed' ? '#e8f5e9' :
-                                     queueItem.status === 'failed' ? '#ffebee' : '#f5f5f5',
-                          color: queueItem.status === 'running' ? '#e65100' :
-                                queueItem.status === 'completed' ? '#2e7d32' :
-                                queueItem.status === 'failed' ? '#c62828' : '#666'
-                        }}>
-                          {queueItem.status === 'running' ? '⏳ Running' :
-                           queueItem.status === 'completed' ? '✅ Done' :
-                           queueItem.status === 'failed' ? '❌ Failed' : '⏸ Pending'}
-                        </span>
+                        <>
+                          <span style={{
+                            padding: '8px 16px',
+                            borderRadius: '12px',
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            background: queueItem.status === 'running' ? '#fff3e0' :
+                                       queueItem.status === 'completed' ? '#e8f5e9' :
+                                       queueItem.status === 'failed' ? '#ffebee' : '#f5f5f5',
+                            color: queueItem.status === 'running' ? '#e65100' :
+                                  queueItem.status === 'completed' ? '#2e7d32' :
+                                  queueItem.status === 'failed' ? '#c62828' : '#666'
+                          }}
+                          title={queueItem.status === 'failed' && queueItem.errorMessage ? queueItem.errorMessage : undefined}
+                          >
+                            {queueItem.status === 'running' ? '⏳ Running' :
+                             queueItem.status === 'completed' ? '✅ Done' :
+                             queueItem.status === 'failed' ? '❌ Failed' : '⏸ Pending'}
+                          </span>
+                          {queueItem.status === 'failed' && queueItem.errorMessage && (
+                            <div style={{ fontSize: '12px', color: '#c62828', marginTop: '4px' }}>
+                              {queueItem.errorMessage}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )
@@ -890,11 +929,18 @@ export default function DashboardPage() {
                     color: item.status === 'running' ? '#e65100' :
                           item.status === 'completed' ? '#2e7d32' :
                           item.status === 'failed' ? '#c62828' : '#666'
-                  }}>
+                  }}
+                  title={item.status === 'failed' && item.errorMessage ? item.errorMessage : undefined}
+                  >
                     {item.status === 'running' ? '⏳ Running...' :
                      item.status === 'completed' ? '✅ Completed' :
                      item.status === 'failed' ? '❌ Failed' : '⏸ Waiting'}
                   </span>
+                  {item.status === 'failed' && item.errorMessage && (
+                    <div style={{ fontSize: '11px', color: '#c62828', marginTop: '2px' }}>
+                      {item.errorMessage}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

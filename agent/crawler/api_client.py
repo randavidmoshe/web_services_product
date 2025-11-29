@@ -4,7 +4,9 @@
 # HTTP client that replaces direct server.method() calls
 # Agent crawler uses this to communicate with API server
 #
-# UPDATED: Added API Key authentication (X-Agent-API-Key header)
+# Security:
+# - Level 2: API Key authentication (X-Agent-API-Key header)
+# - Level 3: JWT Token authentication (Authorization: Bearer header)
 
 import requests
 import urllib3
@@ -29,22 +31,26 @@ class FormPagesAPIClient:
         project_id: int,
         network_id: int,
         crawl_session_id: int,
+        user_id: int = 0,
         ssl_verify: bool = False,
-        api_key: str = ""
+        api_key: str = "",
+        jwt_token: str = ""
     ):
         """
         Initialize API client.
         
         Args:
             api_url: Base URL of API server (e.g., https://localhost)
-            agent_token: Agent authentication token
+            agent_token: Agent authentication token (legacy)
             company_id: Company ID
             product_id: Product ID
             project_id: Project ID
             network_id: Network ID
             crawl_session_id: Current crawl session ID
+            user_id: User ID for API usage tracking
             ssl_verify: Whether to verify SSL certificates (False for self-signed)
-            api_key: API key for authentication (Part 2)
+            api_key: Level 2 - API key for authentication
+            jwt_token: Level 3 - JWT token for session authentication
         """
         self.api_url = api_url.rstrip('/')
         self.agent_token = agent_token
@@ -53,8 +59,10 @@ class FormPagesAPIClient:
         self.project_id = project_id
         self.network_id = network_id
         self.crawl_session_id = crawl_session_id
+        self.user_id = user_id
         self.ssl_verify = ssl_verify
         self.api_key = api_key
+        self.jwt_token = jwt_token
         
         # Track created form names (to avoid duplicates)
         self.created_form_names: List[str] = []
@@ -70,17 +78,27 @@ class FormPagesAPIClient:
         self.current_form_parent_fields: List[Dict] = []
     
     def _headers(self) -> Dict[str, str]:
-        """Get request headers with auth token and API key"""
+        """Get request headers with API key and JWT token"""
         headers = {
-            "Authorization": f"Bearer {self.agent_token}",
             "Content-Type": "application/json"
         }
         
-        # Add API key if available (Part 2 authentication)
+        # Level 2: API Key (permanent identity)
         if self.api_key:
             headers["X-Agent-API-Key"] = self.api_key
         
+        # Level 3: JWT Token (short-lived session)
+        if self.jwt_token:
+            headers["Authorization"] = f"Bearer {self.jwt_token}"
+        elif self.agent_token:
+            # Fallback to legacy token if no JWT
+            headers["Authorization"] = f"Bearer {self.agent_token}"
+        
         return headers
+    
+    def update_jwt_token(self, jwt_token: str):
+        """Update the JWT token (called when token is refreshed)"""
+        self.jwt_token = jwt_token
     
     def _post(self, endpoint: str, data: Dict) -> Dict:
         """Make POST request to API"""
@@ -122,7 +140,8 @@ class FormPagesAPIClient:
         status: Optional[str] = None,
         pages_crawled: Optional[int] = None,
         forms_found: Optional[int] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None
     ):
         """Update crawl session status"""
         data = {}
@@ -134,6 +153,8 @@ class FormPagesAPIClient:
             data["forms_found"] = forms_found
         if error_message:
             data["error_message"] = error_message
+        if error_code:
+            data["error_code"] = error_code
         
         self._put(f"/api/form-pages/sessions/{self.crawl_session_id}", data)
     
@@ -155,7 +176,9 @@ class FormPagesAPIClient:
             "username": username,
             "password": password,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         steps = result.get("steps", [])
@@ -174,7 +197,9 @@ class FormPagesAPIClient:
             "page_html": page_html,
             "screenshot_base64": screenshot_base64,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         steps = result.get("steps", [])
@@ -199,7 +224,9 @@ class FormPagesAPIClient:
             "form_labels": context_data.get("form_labels", []),
             "existing_names": self.created_form_names,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         form_name = result.get("form_name", "unknown_form")
@@ -226,7 +253,9 @@ class FormPagesAPIClient:
             "page_html": page_html,
             "screenshot_base64": screenshot_base64,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         return result.get("fields", [])
@@ -242,7 +271,9 @@ class FormPagesAPIClient:
             "form_name": form_name,
             "screenshot_base64": screenshot_base64,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         defects = result.get("defects", "")
@@ -258,7 +289,9 @@ class FormPagesAPIClient:
         result = self._post("/api/form-pages/ai/is-submission-button", {
             "button_text": button_text,
             "company_id": self.company_id,
-            "product_id": self.product_id
+            "product_id": self.product_id,
+            "user_id": self.user_id,
+            "crawl_session_id": self.crawl_session_id
         })
         
         return result.get("is_submission", False)
@@ -266,12 +299,7 @@ class FormPagesAPIClient:
     # ========== FORM ROUTE OPERATIONS ==========
     
     def check_form_exists(self, project_name: str, form_url: str) -> bool:
-        """Check if form with this URL already exists
-        
-        Args:
-            project_name: Project name (for compatibility, stored in DB via network)
-            form_url: URL of the form page
-        """
+        """Check if form with this URL already exists"""
         result = self._get("/api/form-pages/routes", {
             "network_id": self.network_id
         })
@@ -286,7 +314,7 @@ class FormPagesAPIClient:
             existing_url = route.get("url", "")
             existing_url_base = existing_url.split('#')[0].split('?')[0]
             if url_base == existing_url_base:
-                print(f"[APIClient] ⭐️ Form URL already exists: {url_base}")
+                print(f"[APIClient] ⭐ Form URL already exists: {url_base}")
                 return True
         
         return False
@@ -298,19 +326,7 @@ class FormPagesAPIClient:
         username: str = None,
         login_url: str = None
     ) -> bool:
-        """
-        Save discovered form route to database.
-        (Replaces server.create_form_folder which saved to JSON)
-        
-        Args:
-            project_name: Project name (for logging)
-            form: Form dictionary with form_name, navigation_steps, form_url, etc.
-            username: Username used for login
-            login_url: Login URL
-            
-        Returns:
-            True if saved, False if limit reached
-        """
+        """Save discovered form route to database."""
         # Check limit
         if self.max_form_pages is not None and self.new_form_pages_count >= self.max_form_pages:
             print(f"[APIClient] ⛔ Limit reached: {self.new_form_pages_count}/{self.max_form_pages}")
@@ -359,19 +375,10 @@ class FormPagesAPIClient:
         verification_attempts: int = 1
     ):
         """Update form route with verified navigation steps"""
-        # This is handled by the save_form_route API endpoint
-        # The verification updates are part of the same save operation
         print(f"[APIClient] ✅ Form '{form_name}' verified (attempts: {verification_attempts})")
     
     def build_hierarchy(self, project_name: str = None) -> Dict[str, Any]:
-        """Build parent-child relationships for all routes
-        
-        Args:
-            project_name: Project name (for compatibility)
-            
-        Returns:
-            Dict with ordered_forms key for crawler compatibility
-        """
+        """Build parent-child relationships for all routes"""
         print("[APIClient] 🔗 Building hierarchy...")
         
         result = self._post("/api/form-pages/routes/build-hierarchy", {
@@ -383,7 +390,6 @@ class FormPagesAPIClient:
         else:
             print(f"[APIClient] ⚠️ Hierarchy build failed: {result.get('error')}")
         
-        # Return format expected by crawler
         return {"ordered_forms": self.created_form_names}
     
     # ========== UTILITY ==========

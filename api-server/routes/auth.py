@@ -37,9 +37,13 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if user and pwd_context.verify(password, user.password_hash):
         user.last_login_at = datetime.utcnow()
         db.commit()
+        
+        # Use actual user role from database (admin, user, etc.)
+        user_type = user.role if user.role else "user"
+        
         return {
-            "token": create_token({"user_id": user.id, "type": "user"}),
-            "type": "user",
+            "token": create_token({"user_id": user.id, "type": user_type}),
+            "type": user_type,
             "user_id": user.id,
             "company_id": user.company_id
         }

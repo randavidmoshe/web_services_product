@@ -496,30 +496,31 @@ Your response:"""
     
     def is_submission_button(self, button_text: str) -> bool:
         """
-        Determine if button is a form submission button vs navigation button.
+        Determine if button indicates this is a form page (submission or multi-step form).
         
         Args:
             button_text: Text on the button
             
         Returns:
-            True if submission button, False otherwise
+            True if form page indicator, False otherwise
         """
-        prompt = f"""You are analyzing a button on a web page to determine if it's a form SUBMISSION button.
+        prompt = f"""You are analyzing a button on a web page to determine if it indicates this is a FORM PAGE.
             Button text: "{button_text}"
             
-            CRITICAL: Distinguish between two types of buttons:
-            ✅ SUBMISSION BUTTONS (answer YES):
-            - Buttons that SUBMIT/SAVE data on the CURRENT form
-            - Examples: 'Submit', 'Save', 'Update', 'Confirm', 'Apply', 'Send'
-            - These buttons process data that's already entered in the form
-            ❌ NOT SUBMISSION BUTTONS (answer NO):
-            - Buttons that NAVIGATE to a NEW form page to create/add something
-            - Examples: 'Add', 'Create', 'New', 'Insert', 'Register'
-            - These buttons OPEN a form, they don't submit one
-            - Also: search buttons, filter buttons, navigation buttons, cancel buttons
-            Question: Does this button SUBMIT data on the current form, or does it OPEN a new form page?
-            If it opens a new form → answer 'no'
-            If it submits current form data → answer 'yes'
+            CRITICAL: We want to identify if this page contains a form that collects user input.
+            
+            ✅ FORM PAGE INDICATORS (answer YES):
+            - Submission buttons: 'Submit', 'Save', 'Update', 'Confirm', 'Apply', 'Send'
+            - Multi-step form buttons: 'Next', 'Continue', 'Proceed', 'Forward', 'Step'
+            - These buttons indicate the page has a form collecting data
+            
+            ❌ NOT FORM PAGE INDICATORS (answer NO):
+            - Buttons that OPEN/NAVIGATE to a NEW form: 'Add', 'Create', 'New', 'Insert', 'Register'
+            - Search buttons, filter buttons, menu buttons
+            - Cancel, Back, Close buttons
+            - Navigation links
+            
+            Question: Does this button indicate the current page IS a form (collecting data)?
             Answer ONLY 'yes' or 'no'."""
         
         response = self.client.messages.create(

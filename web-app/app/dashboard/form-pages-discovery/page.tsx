@@ -37,10 +37,32 @@ interface SessionStatus {
     pages_crawled: number
     forms_found: number
     error_message: string | null
+    error_code: string | null
     started_at: string | null
     completed_at: string | null
   }
   forms: DiscoveredForm[]
+}
+
+// Error code to friendly message mapping
+const ERROR_MESSAGES: Record<string, string> = {
+  'PAGE_NOT_FOUND': '🔗 Page not found (404) - check the URL',
+  'ACCESS_DENIED': '🔒 Access denied (403) - check permissions',
+  'SERVER_ERROR': '⚠️ Server error (500) - site may be experiencing issues',
+  'SSL_ERROR': '🔐 SSL certificate error - site security issue',
+  'SITE_UNAVAILABLE': '🌐 Site unavailable - server may be down',
+  'LOGIN_FAILED': '🔑 Login failed - check credentials or login page changed',
+  'SESSION_EXPIRED': '⏰ Session expired during discovery',
+  'TIMEOUT': '⏱️ Page load timeout - site may be slow',
+  'ELEMENT_NOT_FOUND': '🔍 Required element not found on page',
+  'UNKNOWN': '❓ Unknown error occurred'
+}
+
+const getErrorMessage = (errorCode: string | null, errorMessage: string | null): string => {
+  if (errorCode && ERROR_MESSAGES[errorCode]) {
+    return ERROR_MESSAGES[errorCode]
+  }
+  return errorMessage || 'Discovery failed'
 }
 
 export default function FormDiscoveryPage() {
@@ -255,7 +277,7 @@ export default function FormDiscoveryPage() {
           if (data.session.status === 'completed') {
             setMessage(`Discovery completed! Found ${data.session.forms_found} forms.`)
           } else {
-            setError(data.session.error_message || 'Discovery failed')
+            setError(getErrorMessage(data.session.error_code, data.session.error_message))
           }
         }
       }

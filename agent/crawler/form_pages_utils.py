@@ -507,3 +507,98 @@ def dismiss_all_popups_and_overlays(driver):
         print("[Popup] ✓ No popups detected")
 
     return dismissed
+
+
+# ------------------------------------------------------------
+# Page Error Detection
+# ------------------------------------------------------------
+class PageErrorCode:
+    """Standard error codes for page-level errors"""
+    PAGE_NOT_FOUND = "PAGE_NOT_FOUND"
+    ACCESS_DENIED = "ACCESS_DENIED"
+    SERVER_ERROR = "SERVER_ERROR"
+    SSL_ERROR = "SSL_ERROR"
+    SITE_UNAVAILABLE = "SITE_UNAVAILABLE"
+    LOGIN_FAILED = "LOGIN_FAILED"
+    SESSION_EXPIRED = "SESSION_EXPIRED"
+    TIMEOUT = "TIMEOUT"
+    ELEMENT_NOT_FOUND = "ELEMENT_NOT_FOUND"
+    UNKNOWN = "UNKNOWN"
+
+
+# Human-friendly messages for each error code
+PAGE_ERROR_MESSAGES = {
+    PageErrorCode.PAGE_NOT_FOUND: "Page not found (404) - check the URL",
+    PageErrorCode.ACCESS_DENIED: "Access denied (403) - check permissions",
+    PageErrorCode.SERVER_ERROR: "Server error (500) - site may be experiencing issues",
+    PageErrorCode.SSL_ERROR: "SSL certificate error - site security issue",
+    PageErrorCode.SITE_UNAVAILABLE: "Site unavailable - server may be down",
+    PageErrorCode.LOGIN_FAILED: "Login failed - check credentials or login page changed",
+    PageErrorCode.SESSION_EXPIRED: "Session expired during discovery",
+    PageErrorCode.TIMEOUT: "Page load timeout - site may be slow or unresponsive",
+    PageErrorCode.ELEMENT_NOT_FOUND: "Required element not found on page",
+    PageErrorCode.UNKNOWN: "Unknown error occurred",
+}
+
+
+def detect_page_error(driver) -> Optional[str]:
+    """
+    Detect page-level errors like 404, 500, SSL errors, etc.
+    
+    Args:
+        driver: Selenium WebDriver instance
+        
+    Returns:
+        PageErrorCode string if error detected, None if page is OK
+    """
+    try:
+        page_source = driver.page_source.lower() if driver.page_source else ""
+        title = driver.title.lower() if driver.title else ""
+        
+        # Only check first 3000 chars of page source for performance
+        page_text = page_source[:3000]
+        
+        # Error patterns to check (order matters - more specific first)
+        error_patterns = {
+            PageErrorCode.PAGE_NOT_FOUND: [
+                '404', 'not found', 'page not found', 'does not exist',
+                'page doesn\'t exist', 'cannot be found', 'no longer available'
+            ],
+            PageErrorCode.ACCESS_DENIED: [
+                '403', 'forbidden', 'access denied', 'unauthorized',
+                'not authorized', 'permission denied', 'login required'
+            ],
+            PageErrorCode.SERVER_ERROR: [
+                '500', 'internal server error', 'server error',
+                'something went wrong', 'unexpected error'
+            ],
+            PageErrorCode.SITE_UNAVAILABLE: [
+                '502', '503', '504', 'bad gateway', 'service unavailable',
+                'temporarily unavailable', 'under maintenance', 'site is down'
+            ],
+            PageErrorCode.SSL_ERROR: [
+                'ssl', 'certificate', 'secure connection failed',
+                'connection is not private', 'security error'
+            ],
+            PageErrorCode.SESSION_EXPIRED: [
+                'session expired', 'session timed out', 'please log in again',
+                'your session has', 'logged out'
+            ]
+        }
+        
+        for error_code, patterns in error_patterns.items():
+            for pattern in patterns:
+                if pattern in title or pattern in page_text:
+                    print(f"[PageError] ⚠️ Detected {error_code}: found '{pattern}'")
+                    return error_code
+        
+        return None
+        
+    except Exception as e:
+        print(f"[PageError] Error checking page: {e}")
+        return None
+
+
+def get_error_message(error_code: str) -> str:
+    """Get human-friendly message for error code"""
+    return PAGE_ERROR_MESSAGES.get(error_code, PAGE_ERROR_MESSAGES[PageErrorCode.UNKNOWN])

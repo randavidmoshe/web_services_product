@@ -2,6 +2,7 @@
 # Location: web_services_product/api-server/models/agent_models.py
 #
 # UPDATED: Added api_key field for Part 2 authentication
+# UPDATED: Added current_session_id for Part 3 JWT + single agent enforcement
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
@@ -20,8 +21,12 @@ class Agent(Base):
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     
-    # API Key for authentication (Part 2)
+    # Level 2: API Key for authentication (permanent until new agent registers)
     api_key = Column(String(64), unique=True, index=True, nullable=True)
+    
+    # Level 3: Session ID for JWT validation (ensures single agent per user)
+    # When a new agent registers, this changes, invalidating old agent's JWT
+    current_session_id = Column(String(64), nullable=True)
     
     # Agent info
     hostname = Column(String(255))

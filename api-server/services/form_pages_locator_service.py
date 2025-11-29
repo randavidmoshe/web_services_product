@@ -1,9 +1,14 @@
 # Form Pages Locator Service - Business Logic
 # Location: web_services_product/api-server/services/form_pages_locator_service.py
+#
+# UPDATED: Added AI budget checking and BYOK mode support
+# - Checks budget before allowing AI calls
+# - Auto-resets budget every 30 days
+# - BYOK mode (customer's own API key) has no limits
 
 import os
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 from models.database import (
@@ -15,6 +20,11 @@ from models.database import (
     CompanyProductSubscription
 )
 from services.form_pages_ai_helper import FormPagesAIHelper
+
+
+class AIBudgetExceededError(Exception):
+    """Raised when company has exceeded their AI budget"""
+    pass
 
 
 class FormPagesLocatorService:
@@ -43,10 +53,92 @@ class FormPagesLocatorService:
         
         # UI verification flag
         self.ui_verification = True
+        
+        # Subscription reference (for budget tracking)
+        self.subscription: Optional[CompanyProductSubscription] = None
+        self.is_byok = False  # Bring Your Own Key - no limits
+    
+    def _check_and_reset_budget(self, subscription: CompanyProductSubscription) -> None:
+        """
+        Check if budget needs to be reset (30 days passed).
+        
+        Args:
+            subscription: The subscription to check
+        """
+        if subscription.budget_reset_date:
+            # Handle both date and datetime types
+            reset_date = subscription.budget_reset_date
+            if hasattr(reset_date, 'date'):
+                reset_date = reset_date.date()
+            
+            if datetime.utcnow().date() >= reset_date:
+                # Reset budget
+                old_usage = subscription.claude_used_this_month
+                subscription.claude_used_this_month = 0.0
+                subscription.budget_reset_date = datetime.utcnow().date() + timedelta(days=30)
+                self.db.commit()
+                print(f"[FormPagesLocatorService] Budget reset for subscription {subscription.id}. Previous usage: ${old_usage:.2f}")
+        else:
+            # Set initial reset date if not set
+            subscription.budget_reset_date = datetime.utcnow().date() + timedelta(days=30)
+            self.db.commit()
+            print(f"[FormPagesLocatorService] Set initial budget reset date for subscription {subscription.id}")
+    
+    def _check_budget(self, company_id: int, product_id: int) -> bool:
+        """
+        Check if company has remaining AI budget.
+        
+        Args:
+            company_id: Company ID
+            product_id: Product ID
+            
+        Returns:
+            True if budget available or BYOK mode
+            
+        Raises:
+            AIBudgetExceededError if budget exceeded
+        """
+        subscription = self.db.query(CompanyProductSubscription).filter(
+            CompanyProductSubscription.company_id == company_id,
+            CompanyProductSubscription.product_id == product_id
+        ).first()
+        
+        if not subscription:
+            print(f"[FormPagesLocatorService] No subscription found for company {company_id}, product {product_id}")
+            return True  # No subscription = allow (shouldn't happen in production)
+        
+        self.subscription = subscription
+        
+        # BYOK mode - customer uses their own key, no limits
+        if subscription.customer_claude_api_key:
+            self.is_byok = True
+            print(f"[FormPagesLocatorService] BYOK mode - no budget limits")
+            return True
+        
+        # Check and reset budget if needed
+        self._check_and_reset_budget(subscription)
+        
+        # Check if budget exceeded
+        if subscription.claude_used_this_month >= subscription.monthly_claude_budget:
+            days_until_reset = 0
+            if subscription.budget_reset_date:
+                delta = subscription.budget_reset_date - datetime.utcnow()
+                days_until_reset = max(0, delta.days)
+            
+            raise AIBudgetExceededError(
+                f"AI budget exceeded. Used: ${subscription.claude_used_this_month:.2f}, "
+                f"Budget: ${subscription.monthly_claude_budget:.2f}. "
+                f"Resets in {days_until_reset} days."
+            )
+        
+        remaining = subscription.monthly_claude_budget - subscription.claude_used_this_month
+        print(f"[FormPagesLocatorService] Budget check passed. Used: ${subscription.claude_used_this_month:.2f}, Remaining: ${remaining:.2f}")
+        return True
     
     def _init_ai_helper(self, company_id: int, product_id: int) -> bool:
         """
         Initialize AI helper with API key from subscription or environment.
+        Checks budget before initializing.
         
         Args:
             company_id: Company ID to look up subscription
@@ -54,18 +146,20 @@ class FormPagesLocatorService:
             
         Returns:
             True if AI helper initialized successfully
-        """
-        # Try to get API key from subscription first
-        if not self.api_key:
-            subscription = self.db.query(CompanyProductSubscription).filter(
-                CompanyProductSubscription.company_id == company_id,
-                CompanyProductSubscription.product_id == product_id
-            ).first()
             
-            if subscription and subscription.customer_claude_api_key:
-                self.api_key = subscription.customer_claude_api_key
+        Raises:
+            AIBudgetExceededError if budget exceeded (only for non-BYOK)
+        """
+        # Check budget first (will set self.subscription and self.is_byok)
+        self._check_budget(company_id, product_id)
         
-        # Fall back to environment variable
+        # Try to get API key from subscription first (BYOK mode)
+        if not self.api_key and self.subscription:
+            if self.subscription.customer_claude_api_key:
+                self.api_key = self.subscription.customer_claude_api_key
+                self.is_byok = True
+        
+        # Fall back to environment variable (our key)
         if not self.api_key:
             self.api_key = os.environ.get("ANTHROPIC_API_KEY")
         
@@ -129,7 +223,8 @@ class FormPagesLocatorService:
         status: Optional[str] = None,
         pages_crawled: Optional[int] = None,
         forms_found: Optional[int] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None
     ):
         """
         Update crawl session status and counts.
@@ -140,6 +235,7 @@ class FormPagesLocatorService:
             pages_crawled: Number of pages crawled
             forms_found: Number of forms found
             error_message: Error message if failed
+            error_code: Machine-readable error code (e.g., PAGE_NOT_FOUND, LOGIN_FAILED)
         """
         session = self.db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
         
@@ -161,6 +257,9 @@ class FormPagesLocatorService:
         
         if error_message:
             session.error_message = error_message
+        
+        if error_code:
+            session.error_code = error_code
         
         self.db.commit()
     
@@ -239,11 +338,10 @@ class FormPagesLocatorService:
         self.db.commit()
         self.db.refresh(route)
         
-        # Track form name
-        if form_name not in self.created_form_names:
-            self.created_form_names.append(form_name)
+        # Track the form name
+        self.created_form_names.append(form_name)
         
-        print(f"[FormPagesLocatorService] Saved new form route: {form_name}")
+        print(f"[FormPagesLocatorService] Saved form route: {form_name} ({url})")
         return route
     
     def get_form_routes(
@@ -267,83 +365,44 @@ class FormPagesLocatorService:
         
         if network_id:
             query = query.filter(FormPageRoute.network_id == network_id)
-        
         if project_id:
             query = query.filter(FormPageRoute.project_id == project_id)
-        
         if company_id:
             query = query.filter(FormPageRoute.company_id == company_id)
         
-        return query.order_by(FormPageRoute.form_name).all()
-    
-    def check_form_exists(self, network_id: int, form_url: str) -> bool:
-        """
-        Check if a form with this URL already exists.
-        
-        Args:
-            network_id: Network ID
-            form_url: URL of the form page to check
-            
-        Returns:
-            True if form already exists, False otherwise
-        """
-        # Normalize URL for comparison (remove query params and hash)
-        url_base = form_url.split('#')[0].split('?')[0]
-        
-        existing = self.db.query(FormPageRoute).filter(
-            FormPageRoute.network_id == network_id
-        ).all()
-        
-        for route in existing:
-            existing_url_base = route.url.split('#')[0].split('?')[0]
-            if url_base == existing_url_base:
-                print(f"[FormPagesLocatorService] Form URL already exists: {url_base}")
-                return True
-        
-        return False
+        return query.order_by(FormPageRoute.created_at.desc()).all()
     
     def build_hierarchy(self, network_id: int):
         """
-        Build parent-child relationships based on id_fields.
-        Called after all forms are discovered.
+        Build parent-child relationships for form routes in a network.
+        Uses id_fields to determine relationships.
         
         Args:
             network_id: Network ID to build hierarchy for
         """
-        print("[FormPagesLocatorService] Building parent-child hierarchy...")
-        
         routes = self.db.query(FormPageRoute).filter(
             FormPageRoute.network_id == network_id
         ).all()
         
+        print(f"[FormPagesLocatorService] Building hierarchy for {len(routes)} routes")
+        
         relationships_found = 0
         
         for route in routes:
-            id_fields = route.id_fields or []
-            
-            if not id_fields:
+            if not route.id_fields:
                 continue
             
-            for id_field in id_fields:
-                # Extract potential parent name from ID field
-                # e.g., "employee_id" -> "employee"
-                potential_parent_base = (id_field
-                                         .replace("_id", "")
-                                         .replace("id", "")
-                                         .replace("-", "")
-                                         .replace("_", "")
-                                         .strip()
-                                         .lower())
+            # Look for parent forms based on id_fields
+            for id_field in route.id_fields:
+                # id_field might be like "employee_id" - look for "employee" form
+                potential_parent = id_field.replace('_id', '').replace('Id', '').lower()
                 
-                if not potential_parent_base:
-                    continue
-                
-                # Find matching parent form
                 for parent_route in routes:
                     if parent_route.id == route.id:
                         continue
                     
-                    parent_name_normalized = parent_route.form_name.replace("_", "").replace("-", "").lower()
+                    parent_name_normalized = parent_route.form_name.lower().replace('_', '')
+                    potential_parent_base = potential_parent.replace('_', '')
                     
                     if potential_parent_base in parent_name_normalized or parent_name_normalized in potential_parent_base:
                         print(f"  🔗 {route.form_name} is child of {parent_route.form_name} (via {id_field})")
@@ -445,6 +504,7 @@ class FormPagesLocatorService:
     ):
         """
         Save API usage to database for billing tracking.
+        Skips tracking for BYOK mode.
         
         Args:
             company_id: Company ID
@@ -458,12 +518,22 @@ class FormPagesLocatorService:
         
         cost_summary = self.ai_helper.get_cost_summary()
         
-        # Get subscription ID
+        # Skip tracking if no usage
+        if cost_summary["total_tokens"] == 0:
+            return
+        
+        # Get subscription
         subscription = self.db.query(CompanyProductSubscription).filter(
             CompanyProductSubscription.company_id == company_id,
             CompanyProductSubscription.product_id == product_id
         ).first()
         
+        # Skip tracking for BYOK mode
+        if subscription and subscription.customer_claude_api_key:
+            print(f"[FormPagesLocatorService] BYOK mode - skipping usage tracking")
+            return
+        
+        # Log usage to api_usage table
         usage = ApiUsage(
             company_id=company_id,
             product_id=product_id,
@@ -477,13 +547,82 @@ class FormPagesLocatorService:
         
         self.db.add(usage)
         
-        # Update subscription usage
+        # Update subscription usage (accumulated total)
         if subscription:
-            subscription.claude_used_this_month += cost_summary["total_cost"]
+            old_value = subscription.claude_used_this_month
+            subscription.claude_used_this_month = old_value + cost_summary["total_cost"]
+            print(f"[FormPagesLocatorService] Updating subscription {subscription.id}: {old_value} + {cost_summary['total_cost']} = {subscription.claude_used_this_month}")
+            self.db.add(subscription)  # Explicitly mark as modified
         
-        self.db.commit()
+        try:
+            self.db.commit()
+            print(f"[FormPagesLocatorService] Commit successful")
+        except Exception as e:
+            print(f"[FormPagesLocatorService] Commit failed: {e}")
+            self.db.rollback()
+            return
         
         print(f"[FormPagesLocatorService] Saved API usage: {cost_summary['total_tokens']} tokens, ${cost_summary['total_cost']:.4f}")
+        if subscription:
+            print(f"[FormPagesLocatorService] Total used this month: ${subscription.claude_used_this_month:.2f} / ${subscription.monthly_claude_budget:.2f}")
+    
+    # ========== AI USAGE QUERY (for dashboard) ==========
+    
+    @staticmethod
+    def get_ai_usage_for_company(db: Session, company_id: int, product_id: int = 1) -> Dict[str, Any]:
+        """
+        Get AI usage information for dashboard display.
+        
+        Args:
+            db: Database session
+            company_id: Company ID
+            product_id: Product ID (default 1)
+            
+        Returns:
+            Dictionary with usage info for dashboard
+        """
+        subscription = db.query(CompanyProductSubscription).filter(
+            CompanyProductSubscription.company_id == company_id,
+            CompanyProductSubscription.product_id == product_id
+        ).first()
+        
+        if not subscription:
+            return {
+                "used": 0,
+                "budget": 200,
+                "is_byok": False,
+                "reset_date": None,
+                "days_until_reset": None
+            }
+        
+        # BYOK mode - no tracking
+        if subscription.customer_claude_api_key:
+            return {
+                "used": None,
+                "budget": None,
+                "is_byok": True,
+                "reset_date": None,
+                "days_until_reset": None
+            }
+        
+        # Calculate days until reset
+        days_until_reset = None
+        if subscription.budget_reset_date:
+            # Handle both date and datetime types
+            reset_date = subscription.budget_reset_date
+            if hasattr(reset_date, 'date'):
+                # It's a datetime, convert to date
+                reset_date = reset_date.date()
+            delta = reset_date - datetime.utcnow().date()
+            days_until_reset = max(0, delta.days)
+        
+        return {
+            "used": int(subscription.claude_used_this_month),  # Integer for display
+            "budget": int(subscription.monthly_claude_budget),
+            "is_byok": False,
+            "reset_date": subscription.budget_reset_date.isoformat() if subscription.budget_reset_date else None,
+            "days_until_reset": days_until_reset
+        }
     
     # ========== UTILITY METHODS ==========
     
@@ -540,6 +679,9 @@ class FormPagesLocatorService:
             
         Returns:
             Dictionary with task parameters or None if network not found
+            
+        Raises:
+            AIBudgetExceededError if budget exceeded
         """
         config = self.get_network_config(network_id)
         
@@ -547,7 +689,7 @@ class FormPagesLocatorService:
             print(f"[FormPagesLocatorService] Network {network_id} not found")
             return None
         
-        # Initialize AI helper
+        # Initialize AI helper (this checks budget)
         self._init_ai_helper(config["company_id"], config["product_id"])
         self.ui_verification = ui_verification
         

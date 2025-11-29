@@ -119,6 +119,7 @@ class CrawlSession(Base):
     pages_crawled = Column(Integer, default=0)
     forms_found = Column(Integer, default=0)
     error_message = Column(Text)
+    error_code = Column(String(50))  # Machine-readable error code (e.g., PAGE_NOT_FOUND, LOGIN_FAILED)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class FormPageRoute(Base):

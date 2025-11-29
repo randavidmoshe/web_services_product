@@ -2,8 +2,8 @@
 # Location: web_services_product/api-server/routes/form_pages.py
 #
 # UPDATED: Added Redis queue integration to trigger agent tasks
-# - locate_form_pages now creates agent_task and pushes to user's Redis queue
-# - Added check for online agent before starting discovery
+# UPDATED: Added AI usage endpoint for dashboard
+# UPDATED: Added budget exceeded error handling
 
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
@@ -22,6 +22,30 @@ router = APIRouter()
 # Redis connection
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 redis_client = redis.from_url(REDIS_URL)
+
+
+# ========== AI USAGE ENDPOINT (for dashboard) ==========
+
+@router.get("/ai-usage")
+async def get_ai_usage(
+    company_id: int,
+    product_id: int = 1,
+    db: Session = Depends(get_db)
+):
+    """
+    Get AI usage information for dashboard display.
+    
+    Returns:
+        - used: Current usage in dollars (integer)
+        - budget: Monthly budget in dollars (integer)
+        - is_byok: True if customer uses their own API key
+        - reset_date: When budget resets
+        - days_until_reset: Days until next reset
+    """
+    from services.form_pages_locator_service import FormPagesLocatorService
+    
+    usage = FormPagesLocatorService.get_ai_usage_for_company(db, company_id, product_id)
+    return usage
 
 
 # ========== CRAWL SESSION ENDPOINTS ==========
@@ -45,8 +69,12 @@ async def locate_form_pages(
         - crawl_session_id: ID to poll for status
         - task_id: Agent task ID
         - status: 'pending'
+        
+    Raises:
+        - 400: No online agent found
+        - 402: AI budget exceeded (BUDGET_EXCEEDED)
     """
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     # Verify network exists
     network = db.query(Network).filter(Network.id == network_id).first()
@@ -74,16 +102,26 @@ async def locate_form_pages(
     # Initialize service
     service = FormPagesLocatorService(db)
     
-    # Prepare crawl task (creates crawl_session)
-    task_params = service.prepare_crawl_task(
-        network_id=network_id,
-        user_id=user_id,
-        max_depth=max_depth,
-        max_form_pages=max_form_pages,
-        headless=headless,
-        slow_mode=slow_mode,
-        ui_verification=ui_verification
-    )
+    # Prepare crawl task (creates crawl_session) - may raise AIBudgetExceededError
+    try:
+        task_params = service.prepare_crawl_task(
+            network_id=network_id,
+            user_id=user_id,
+            max_depth=max_depth,
+            max_form_pages=max_form_pages,
+            headless=headless,
+            slow_mode=slow_mode,
+            ui_verification=ui_verification
+        )
+    except AIBudgetExceededError as e:
+        raise HTTPException(
+            status_code=402,  # Payment Required
+            detail={
+                "error": "AI budget exceeded",
+                "message": str(e),
+                "code": "BUDGET_EXCEEDED"
+            }
+        )
     
     if not task_params:
         raise HTTPException(status_code=400, detail="Failed to prepare crawl task")
@@ -158,7 +196,8 @@ async def update_crawl_session(
         status=data.get("status"),
         pages_crawled=data.get("pages_crawled"),
         forms_found=data.get("forms_found"),
-        error_message=data.get("error_message")
+        error_message=data.get("error_message"),
+        error_code=data.get("error_code")
     )
     
     return {"success": True}
@@ -187,6 +226,7 @@ async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
             "pages_crawled": session.pages_crawled,
             "forms_found": session.forms_found,
             "error_message": session.error_message,
+            "error_code": session.error_code if hasattr(session, 'error_code') else None,
             "started_at": session.started_at.isoformat() if session.started_at else None,
             "completed_at": session.completed_at.isoformat() if session.completed_at else None
         },
@@ -243,15 +283,28 @@ async def list_form_routes(
         project_id=project_id,
         company_id=company_id
     )
-    return routes
+    
+    return [
+        {
+            "id": r.id,
+            "form_name": r.form_name,
+            "url": r.url,
+            "navigation_steps": r.navigation_steps,
+            "id_fields": r.id_fields,
+            "is_root": r.is_root,
+            "parent_form_route_id": r.parent_form_route_id,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        }
+        for r in routes
+    ]
 
 
 @router.post("/routes")
-async def save_form_route(
+async def create_form_route(
     data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Save a discovered form route (called by agent)"""
+    """Create a new form route (called by agent)"""
     from services.form_pages_locator_service import FormPagesLocatorService
     
     service = FormPagesLocatorService(db)
@@ -359,10 +412,21 @@ async def generate_login_steps(
     db: Session = Depends(get_db)
 ):
     """Generate login automation steps using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
-    service._init_ai_helper(data.get("company_id"), data.get("product_id"))
+    company_id = data.get("company_id")
+    product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
+    try:
+        service._init_ai_helper(company_id, product_id)
+    except AIBudgetExceededError as e:
+        raise HTTPException(
+            status_code=402,
+            detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+        )
     
     steps = service.generate_login_steps(
         data.get("page_html"),
@@ -370,6 +434,11 @@ async def generate_login_steps(
         data.get("username"),
         data.get("password")
     )
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "login_steps")
+    
     return {"steps": steps}
 
 
@@ -379,15 +448,31 @@ async def generate_logout_steps(
     db: Session = Depends(get_db)
 ):
     """Generate logout automation steps using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
-    service._init_ai_helper(data.get("company_id"), data.get("product_id"))
+    company_id = data.get("company_id")
+    product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
+    try:
+        service._init_ai_helper(company_id, product_id)
+    except AIBudgetExceededError as e:
+        raise HTTPException(
+            status_code=402,
+            detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+        )
     
     steps = service.generate_logout_steps(
         data.get("page_html"),
         data.get("screenshot_base64")
     )
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "logout_steps")
+    
     return {"steps": steps}
 
 
@@ -397,13 +482,22 @@ async def extract_form_name(
     db: Session = Depends(get_db)
 ):
     """Extract semantic form name using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
     product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
     if company_id and product_id:
-        service._init_ai_helper(company_id, product_id)
+        try:
+            service._init_ai_helper(company_id, product_id)
+        except AIBudgetExceededError as e:
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+            )
     
     service.created_form_names = data.get("existing_names", [])
     
@@ -417,6 +511,11 @@ async def extract_form_name(
     }
     
     form_name = service.extract_form_name(context_data)
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "form_name")
+    
     return {"form_name": form_name}
 
 
@@ -426,19 +525,33 @@ async def extract_parent_fields(
     db: Session = Depends(get_db)
 ):
     """Extract parent reference fields using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
     product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
     if company_id and product_id:
-        service._init_ai_helper(company_id, product_id)
+        try:
+            service._init_ai_helper(company_id, product_id)
+        except AIBudgetExceededError as e:
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+            )
     
     fields = service.extract_parent_reference_fields(
         data.get("form_name"),
         data.get("page_html"),
         data.get("screenshot_base64")
     )
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "parent_fields")
+    
     return {"fields": fields}
 
 
@@ -448,18 +561,32 @@ async def verify_ui_defects(
     db: Session = Depends(get_db)
 ):
     """Check for UI defects using AI Vision"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
     product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
     if company_id and product_id:
-        service._init_ai_helper(company_id, product_id)
+        try:
+            service._init_ai_helper(company_id, product_id)
+        except AIBudgetExceededError as e:
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+            )
     
     defects = service.verify_ui_defects(
         data.get("form_name"),
         data.get("screenshot_base64")
     )
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "ui_defects")
+    
     return {"defects": defects, "has_defects": bool(defects)}
 
 
@@ -469,15 +596,29 @@ async def is_submission_button(
     db: Session = Depends(get_db)
 ):
     """Determine if button is a form submission button"""
-    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
     product_id = data.get("product_id")
+    user_id = data.get("user_id")
+    crawl_session_id = data.get("crawl_session_id")
+    
     if company_id and product_id:
-        service._init_ai_helper(company_id, product_id)
+        try:
+            service._init_ai_helper(company_id, product_id)
+        except AIBudgetExceededError as e:
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
+            )
     
     is_submission = service.is_submission_button(data.get("button_text"))
+    
+    # Track AI cost immediately after call
+    if company_id and product_id and user_id:
+        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "is_submission_button")
+    
     return {"is_submission": is_submission}
 
 

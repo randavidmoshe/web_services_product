@@ -88,6 +88,11 @@ export default function DashboardLayout({
   // Agent status
   const [agentStatus, setAgentStatus] = useState<'online' | 'offline' | 'unknown'>('unknown')
   const [agentLastSeen, setAgentLastSeen] = useState<string | null>(null)
+  
+  // AI usage (for admin only)
+  const [aiUsed, setAiUsed] = useState<number | null>(null)
+  const [aiBudget, setAiBudget] = useState<number | null>(null)
+  const [isByok, setIsByok] = useState<boolean>(false)
 
   // Load networks when Networks tab is selected
   useEffect(() => {
@@ -168,6 +173,39 @@ export default function DashboardLayout({
       return () => clearInterval(interval)
     }
   }, [userId, token, companyId])
+
+  // Check AI usage (for admin only)
+  const checkAiUsage = async () => {
+    if (!companyId || !token || userRole !== 'admin') return
+    
+    try {
+      const response = await fetch(
+        `/api/form-pages/ai-usage?company_id=${companyId}&product_id=1`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        setIsByok(data.is_byok)
+        
+        if (!data.is_byok) {
+          setAiUsed(data.used)
+          setAiBudget(data.budget)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check AI usage:', err)
+    }
+  }
+
+  // Fetch AI usage on load and every 60 seconds (for admin only)
+  useEffect(() => {
+    if (userRole === 'admin' && companyId && token) {
+      checkAiUsage()
+      const interval = setInterval(checkAiUsage, 60000)
+      return () => clearInterval(interval)
+    }
+  }, [userRole, companyId, token])
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
@@ -540,108 +578,96 @@ export default function DashboardLayout({
           </div>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Agent Status Indicator - Impressive Version */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* AI Usage Indicator (Admin only, non-BYOK only) */}
+          {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 14px',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
+              }}
+              title={`AI Usage: $${aiUsed} / $${aiBudget}`}
+            >
+              <span style={{ 
+                fontSize: '13px',
+                fontWeight: 600,
+                color: aiUsed >= aiBudget ? '#dc2626' : aiUsed >= aiBudget * 0.8 ? '#d97706' : '#475569'
+              }}>
+                AI: {Math.round(aiUsed)} / {aiBudget}
+              </span>
+            </div>
+          )}
+          
+          {/* Agent Status Indicator - Clean Version */}
           <div 
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              padding: '10px 20px',
-              background: agentStatus === 'online' 
-                ? 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)' 
-                : agentStatus === 'offline' 
-                  ? 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)' 
-                  : '#f5f5f5',
-              borderRadius: '25px',
-              border: `2px solid ${agentStatus === 'online' ? '#66bb6a' : agentStatus === 'offline' ? '#ef5350' : '#e0e0e0'}`,
-              boxShadow: agentStatus === 'online' 
-                ? '0 4px 15px rgba(76, 175, 80, 0.3), inset 0 1px 0 rgba(255,255,255,0.5)' 
-                : agentStatus === 'offline'
-                  ? '0 4px 15px rgba(244, 67, 54, 0.2)'
-                  : '0 2px 8px rgba(0,0,0,0.1)',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease'
+              gap: '8px',
+              padding: '8px 14px',
+              background: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0'
             }}
             title={agentLastSeen ? `Last seen: ${new Date(agentLastSeen + 'Z').toLocaleString()}` : 'No agent connected'}
           >
-            {/* Animated pulse ring */}
-            <div style={{ position: 'relative', width: '16px', height: '16px' }}>
-              {agentStatus === 'online' && (
-                <div 
-                  style={{
-                    position: 'absolute',
-                    top: '-4px',
-                    left: '-4px',
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: 'rgba(76, 175, 80, 0.3)',
-                    animation: 'pulse 2s ease-in-out infinite'
-                  }}
-                />
-              )}
-              <div 
-                style={{
-                  position: 'relative',
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  background: agentStatus === 'online' 
-                    ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)' 
-                    : agentStatus === 'offline' 
-                      ? 'linear-gradient(135deg, #ef5350 0%, #e53935 100%)' 
-                      : '#9e9e9e',
-                  boxShadow: agentStatus === 'online' 
-                    ? '0 0 12px rgba(76, 175, 80, 0.6), inset 0 -2px 4px rgba(0,0,0,0.2)' 
-                    : agentStatus === 'offline'
-                      ? '0 0 8px rgba(244, 67, 54, 0.4)'
-                      : 'none',
-                  border: '2px solid rgba(255,255,255,0.5)'
-                }}
-              />
-            </div>
-            
-            {/* Status icon and text */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              <span style={{ 
-                fontSize: '14px', 
-                fontWeight: 700,
-                color: agentStatus === 'online' ? '#2e7d32' : agentStatus === 'offline' ? '#c62828' : '#666',
-                letterSpacing: '0.3px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                {agentStatus === 'online' ? '🤖' : agentStatus === 'offline' ? '💤' : '⏳'} Agent {agentStatus === 'online' ? 'Online' : agentStatus === 'offline' ? 'Offline' : 'Checking...'}
-              </span>
-              {agentStatus === 'online' && (
-                <span style={{ fontSize: '10px', color: '#66bb6a', fontWeight: 500 }}>
-                  ● Connected & Ready
-                </span>
-              )}
-            </div>
+            {/* Status dot */}
+            <div 
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: agentStatus === 'online' ? '#22c55e' : agentStatus === 'offline' ? '#94a3b8' : '#94a3b8'
+              }}
+            />
+            <span style={{ 
+              fontSize: '13px', 
+              fontWeight: 600,
+              color: '#475569'
+            }}>
+              Agent {agentStatus === 'online' ? 'Online' : 'Offline'}
+            </span>
           </div>
-          
-          {/* CSS Animation for pulse */}
-          <style>{`
-            @keyframes pulse {
-              0% { transform: scale(1); opacity: 0.8; }
-              50% { transform: scale(1.4); opacity: 0; }
-              100% { transform: scale(1); opacity: 0; }
-            }
-          `}</style>
           
           {/* Download Agent */}
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
-            style={topBarButtonStyle}
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
-            🤖 Download Agent
+            <span style={{ fontSize: '14px' }}>⬇</span> Download Agent
           </button>
           
           {/* Logout */}
-          <button onClick={handleLogout} style={logoutButtonStyle}>
+          <button 
+            onClick={handleLogout} 
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: '#475569'
+            }}
+          >
             Logout
           </button>
         </div>
