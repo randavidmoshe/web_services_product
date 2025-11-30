@@ -1,9 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from models.database import get_db, User
+from models.agent_models import Agent
+from datetime import datetime, timedelta
 import secrets
 
 router = APIRouter()
+
+# Heartbeat timeout - agent is offline if no heartbeat for this long
+HEARTBEAT_TIMEOUT_SECONDS = 60
+
+
+@router.get("/status")
+async def get_agent_status(user_id: int, db: Session = Depends(get_db)):
+    """
+    Get agent status for a specific user.
+    Scalable endpoint - returns only ONE agent's status.
+    """
+    agent = db.query(Agent).filter(Agent.user_id == user_id).first()
+    
+    if not agent:
+        return {
+            "status": "not_registered",
+            "last_heartbeat": None
+        }
+    
+    # Check if agent is online (heartbeat within timeout)
+    is_online = False
+    if agent.last_heartbeat:
+        timeout_threshold = datetime.utcnow() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
+        is_online = agent.last_heartbeat > timeout_threshold
+    
+    return {
+        "status": "online" if is_online else "offline",
+        "last_heartbeat": agent.last_heartbeat.isoformat() if agent.last_heartbeat else None
+    }
 
 @router.post("/generate-token")
 async def generate_agent_token(user_id: int, db: Session = Depends(get_db)):

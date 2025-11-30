@@ -46,8 +46,22 @@ def check_api_connection(api_url):
     """Check if API server is reachable"""
     try:
         import requests
-        response = requests.get(f"{api_url}/", timeout=5)
-        return response.status_code == 200
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        # Try /health endpoint first, then root
+        for endpoint in ['/health', '/']:
+            try:
+                response = requests.get(
+                    f"{api_url}{endpoint}", 
+                    timeout=5,
+                    verify=False  # Allow self-signed certs in development
+                )
+                if response.status_code == 200:
+                    return True
+            except:
+                continue
+        return False
     except:
         return False
 
@@ -112,7 +126,7 @@ def settings():
         'company_id': get_env_value('COMPANY_ID'),
         'user_id': get_env_value('USER_ID'),
         'browser': get_env_value('BROWSER', 'chrome'),
-        'headless': get_env_value('HEADLESS', 'false') == 'true',
+        'headless': get_env_value('DEFAULT_HEADLESS', 'false') == 'true',
         'screenshot_folder': screenshot_folder,
         'log_folder': log_folder,
         'files_folder': files_folder,
@@ -219,7 +233,7 @@ def api_save_setup():
         save_env_value('USER_ID', data.get('user_id'))
         save_env_value('AGENT_ID', data.get('agent_id'))
         save_env_value('BROWSER', data.get('browser', 'chrome'))
-        save_env_value('HEADLESS', str(data.get('headless', False)).lower())
+        save_env_value('DEFAULT_HEADLESS', str(data.get('headless', False)).lower())
         save_env_value('SCREENSHOT_FOLDER', data.get('screenshot_folder'))
         save_env_value('LOG_FOLDER', data.get('log_folder'))
         save_env_value('FILES_FOLDER', data.get('files_folder'))
@@ -244,7 +258,7 @@ def api_save_settings():
         # Update configuration - save ALL fields
         save_env_value('API_URL', data.get('api_url'))
         save_env_value('BROWSER', data.get('browser'))
-        save_env_value('HEADLESS', str(data.get('headless')).lower())
+        save_env_value('DEFAULT_HEADLESS', str(data.get('headless')).lower())
         save_env_value('SCREENSHOT_FOLDER', data.get('screenshot_folder'))
         save_env_value('LOG_FOLDER', data.get('log_folder'))
         save_env_value('FILES_FOLDER', data.get('files_folder'))
@@ -299,7 +313,12 @@ def api_logs_stream():
 def api_logs_history():
     """Get last N lines of automation results logs (customer-facing)"""
     lines = int(request.args.get('lines', 1000))
-    log_folder = Path(get_env_value('LOG_FOLDER', '/home/ranlaser/Desktop/automation_files/logs'))
+    
+    # Get log folder from env, default to ~/Desktop/automation_files/logs
+    default_desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+    base_folder = get_env_value('BASE_FOLDER', default_desktop)
+    default_log_folder = os.path.join(base_folder, 'automation_files', 'logs')
+    log_folder = Path(get_env_value('LOG_FOLDER', default_log_folder))
     
     # Find the most recent results_log file (automation logs, not system logs)
     try:

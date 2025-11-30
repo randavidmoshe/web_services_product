@@ -338,6 +338,13 @@ class FormPagesLocatorService:
         self.db.commit()
         self.db.refresh(route)
         
+        # Increment forms_found in crawl session
+        if crawl_session_id:
+            session = self.db.query(CrawlSession).filter(CrawlSession.id == crawl_session_id).first()
+            if session:
+                session.forms_found = (session.forms_found or 0) + 1
+                self.db.commit()
+        
         # Track the form name
         self.created_form_names.append(form_name)
         

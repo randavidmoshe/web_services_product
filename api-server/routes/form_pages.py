@@ -208,11 +208,33 @@ async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
     """
     Get discovery status including session info, task status, and discovered forms.
     Designed for frontend polling.
+    
+    If session is 'running' but agent is offline, marks session as failed.
     """
+    # Heartbeat timeout - agent is offline if no heartbeat for this long
+    HEARTBEAT_TIMEOUT_SECONDS = 60
+    
     # Get crawl session
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
+    
+    # If session is running, check if agent is still online
+    if session.status == 'running':
+        agent = db.query(Agent).filter(Agent.user_id == session.user_id).first()
+        
+        agent_offline = True
+        if agent and agent.last_heartbeat:
+            timeout_threshold = datetime.utcnow() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
+            agent_offline = agent.last_heartbeat < timeout_threshold
+        
+        if agent_offline:
+            # Mark session as failed
+            session.status = 'failed'
+            session.error_code = 'AGENT_DISCONNECTED'
+            session.error_message = 'Agent disconnected - no heartbeat received'
+            session.completed_at = datetime.utcnow()
+            db.commit()
     
     # Get discovered forms for this session
     forms = db.query(FormPageRoute).filter(
@@ -242,6 +264,31 @@ async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
             for form in forms
         ]
     }
+
+
+@router.post("/sessions/{session_id}/cancel")
+async def cancel_discovery_session(session_id: int, db: Session = Depends(get_db)):
+    """
+    Cancel a running discovery session.
+    Updates DB status so heartbeat returns cancel_requested to agent.
+    """
+    # Get crawl session
+    session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Crawl session not found")
+    
+    # Only cancel if running or pending
+    if session.status not in ['running', 'pending']:
+        return {"success": True, "message": f"Session already {session.status}"}
+    
+    # Update session status
+    session.status = 'cancelled'
+    session.error_code = 'USER_CANCELLED'
+    session.error_message = 'Cancelled by user'
+    session.completed_at = datetime.utcnow()
+    db.commit()
+    
+    return {"success": True, "message": "Discovery cancelled"}
 
 
 # ========== FORM ROUTES ENDPOINTS ==========
@@ -603,6 +650,7 @@ async def is_submission_button(
     product_id = data.get("product_id")
     user_id = data.get("user_id")
     crawl_session_id = data.get("crawl_session_id")
+    network_id = data.get("network_id")
     
     if company_id and product_id:
         try:
@@ -613,7 +661,14 @@ async def is_submission_button(
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
             )
     
-    is_submission = service.is_submission_button(data.get("button_text"))
+    # Check if screenshot should be used (from network settings)
+    screenshot_base64 = None
+    if network_id:
+        network = db.query(Network).filter(Network.id == network_id).first()
+        if network and network.form_pages_use_screenshot_for_button_check:
+            screenshot_base64 = data.get("screenshot_base64")
+    
+    is_submission = service.is_submission_button(data.get("button_text"), screenshot_base64)
     
     # Track AI cost immediately after call
     if company_id and product_id and user_id:

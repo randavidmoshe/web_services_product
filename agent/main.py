@@ -49,11 +49,12 @@ class FormDiscovererAgent:
     def __init__(self, config_file: Optional[str] = None):
         self.config = AgentConfig(config_file)
         self._setup_logging()
-        self.selenium_agent = AgentSelenium(screenshot_folder=self.config.screenshot_folder)
+        self.selenium_agent = AgentSelenium()  # Uses default Desktop path
         self.is_running = False
         self.current_task_id = None
         self.heartbeat_thread = None
         self.tray_icon = None
+        self.cancel_requested = False  # Set by heartbeat when server requests cancellation
         
         # SSL verification setting (False for self-signed certs)
         self.ssl_verify = getattr(self.config, 'ssl_verify', False)
@@ -74,30 +75,34 @@ class FormDiscovererAgent:
             self.traffic = None
             self.logger.info("✓ Browser traffic capture disabled")
         
-        self.logger.info("="*70)
-        self.logger.info("Form Discoverer Agent Initialized (3-Layer Security)")
-        self.logger.info(f"API URL: {self.config.api_url}")
-        self.logger.info(f"Agent ID: {self.config.agent_id}")
-        self.logger.info(f"Company ID: {self.config.company_id}")
-        self.logger.info(f"User ID: {self.config.user_id}")
-        self.logger.info(f"SSL Verify: {self.ssl_verify}")
-        self.logger.info(f"API Key: {'Configured' if self.api_key else 'Not set (will get on registration)'}")
-        self.logger.info("="*70)
+        # Log header to console AND to selenium_agent's results_logger (customer-facing)
+        header_lines = [
+            "="*70,
+            "Form Discoverer Agent Initialized (3-Layer Security)",
+            f"API URL: {self.config.api_url}",
+            f"Agent ID: {self.config.agent_id}",
+            f"Company ID: {self.config.company_id}",
+            f"User ID: {self.config.user_id}",
+            f"SSL Verify: {self.ssl_verify}",
+            f"API Key: {'Configured' if self.api_key else 'Not set (will get on registration)'}",
+            "="*70
+        ]
+        for line in header_lines:
+            self.logger.info(line)
+            self.selenium_agent.results_logger.info(line)
     
     def _setup_logging(self):
-        log_dir = getattr(self.config, 'log_folder', 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f"agent_{time.strftime('%Y%m%d_%H%M%S')}.log")
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
+        # Console-only logger for system messages (not written to file)
         self.logger = logging.getLogger('FormDiscovererAgent')
+        self.logger.setLevel(logging.INFO)
+        self.logger.handlers.clear()
+        self.logger.propagate = False
+        
+        # Console handler only
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(console_handler)
     
     def _ensure_valid_jwt(self):
         """
@@ -275,6 +280,16 @@ class FormDiscovererAgent:
                 if self.tray_icon:
                     self.tray_icon.update_status(response.status_code == 200)
                 
+                # Check for cancel request from server
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        if data.get('cancel_requested'):
+                            self.logger.info("⏹ Cancel requested by server")
+                            self.cancel_requested = True
+                    except:
+                        pass
+                
                 # Check for authentication errors
                 if response.status_code == 401:
                     error_detail = ""
@@ -447,8 +462,12 @@ class FormDiscovererAgent:
         project_name = params.get('project_name', 'default')
         max_depth = params.get('max_depth', 20)
         max_form_pages = params.get('max_form_pages')
-        headless = params.get('headless', False)
         slow_mode = params.get('slow_mode', True)
+        
+        # Use agent's settings from .env (set via web UI), ignore server's values
+        headless = self.config.default_headless
+        browser = self.config.default_browser
+        self.logger.info(f"[Browser Config] browser={browser}, headless={headless} (from agent config)")
 
         api_client = FormPagesAPIClient(
             api_url=self.config.api_url,
@@ -478,7 +497,7 @@ class FormDiscovererAgent:
             
             # Create fresh browser
             self.selenium_agent.initialize_browser(
-                browser_type=params.get('browser', 'chrome'),
+                browser_type=browser,
                 headless=headless
             )
 
@@ -610,6 +629,9 @@ class FormDiscovererAgent:
 
             base_url = driver.current_url
 
+            # Reset cancel flag before starting crawl
+            self.cancel_requested = False
+
             crawler = FormPagesCrawler(
                 driver=driver,
                 start_url=base_url,
@@ -622,7 +644,8 @@ class FormDiscovererAgent:
                 server=api_client,
                 username=login_username,
                 login_url=login_url,
-                agent=self.selenium_agent  # Pass selenium_agent for log_message support
+                agent=self.selenium_agent,  # Pass selenium_agent for log_message support
+                form_agent=self  # Pass FormAgent for cancel_requested check
             )
 
             crawler.crawl()

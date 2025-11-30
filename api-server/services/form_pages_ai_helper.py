@@ -494,16 +494,48 @@ Your response:"""
     
     # ========== BUTTON CLASSIFICATION ==========
     
-    def is_submission_button(self, button_text: str) -> bool:
+    def is_submission_button(self, button_text: str, screenshot_base64: str = None) -> bool:
         """
         Determine if button indicates this is a form page (submission or multi-step form).
         
         Args:
             button_text: Text on the button
+            screenshot_base64: Optional screenshot for visual context
             
         Returns:
             True if form page indicator, False otherwise
         """
+        # If screenshot provided, use vision for better accuracy
+        if screenshot_base64:
+            prompt = f"""You are analyzing a web page screenshot to determine if it contains a FORM PAGE.
+
+Button text found: "{button_text}"
+
+Look at the screenshot and determine:
+1. Does this page have input fields (text boxes, dropdowns, checkboxes, etc.)?
+2. Is the button "{button_text}" a submission button for a form that collects data?
+
+✅ FORM PAGE INDICATORS (answer YES):
+- Page has visible input fields AND a submission button like 'Submit', 'Save', 'Update', 'Confirm', 'Apply', 'Send'
+- Page has visible input fields AND a multi-step button like 'Next', 'Continue', 'Proceed'
+
+❌ NOT FORM PAGE INDICATORS (answer NO):
+- No input fields visible on the page
+- Button opens/navigates to a NEW form: 'Add', 'Create', 'New', 'Insert', 'Register'
+- Search buttons, filter buttons, menu buttons
+- Cancel, Back, Close buttons
+
+Question: Is this a form page with a submission button?
+Answer ONLY 'yes' or 'no'."""
+
+            response = self._call_claude_vision(prompt, screenshot_base64, max_tokens=10)
+            answer = response.strip().upper()
+            is_submission = answer.startswith("YES")
+            
+            print(f"[FormPagesAIHelper] Button '{button_text}' + screenshot → {'submission' if is_submission else 'navigation'}")
+            return is_submission
+        
+        # No screenshot - use text-only prompt (original logic)
         prompt = f"""You are analyzing a button on a web page to determine if it indicates this is a FORM PAGE.
             Button text: "{button_text}"
             

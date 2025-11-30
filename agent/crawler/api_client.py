@@ -284,10 +284,12 @@ class FormPagesAPIClient:
         
         return defects
     
-    def is_submission_button(self, button_text: str) -> bool:
+    def is_submission_button(self, button_text: str, screenshot_base64: str = None) -> bool:
         """Determine if button is a form submission button"""
         result = self._post("/api/form-pages/ai/is-submission-button", {
             "button_text": button_text,
+            "screenshot_base64": screenshot_base64,
+            "network_id": self.network_id,
             "company_id": self.company_id,
             "product_id": self.product_id,
             "user_id": self.user_id,

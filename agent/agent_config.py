@@ -53,15 +53,18 @@ class AgentConfig:
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '30'))  # seconds
         self.heartbeat_interval = int(os.getenv('HEARTBEAT_INTERVAL', '30'))  # seconds
         
-        # Folder paths - expand ~ for cross-platform support
-        screenshot_folder_raw = os.getenv('SCREENSHOT_FOLDER', '')
-        self.screenshot_folder = os.path.expanduser(screenshot_folder_raw) if screenshot_folder_raw else ''  # Empty = use Desktop
-
-        log_folder_raw = os.getenv('LOG_FOLDER', os.path.join(os.path.expanduser('~'), 'FormDiscovererAgent', 'logs'))
-        self.log_folder = os.path.expanduser(log_folder_raw)
+        # Folder paths - Default: ~/Desktop/automation_files/
+        # User can change base folder from web app (not yet implemented)
+        default_base = os.path.join(os.path.expanduser('~'), 'Desktop', 'automation_files')
         
-        files_folder_raw = os.getenv('FILES_FOLDER', os.path.join(os.path.expanduser('~'), 'FormDiscovererAgent', 'files'))
-        self.files_folder = os.path.expanduser(files_folder_raw)
+        screenshot_folder_raw = os.getenv('SCREENSHOT_FOLDER', '')
+        self.screenshot_folder = os.path.expanduser(screenshot_folder_raw) if screenshot_folder_raw else os.path.join(default_base, 'screenshots')
+
+        log_folder_raw = os.getenv('LOG_FOLDER', '')
+        self.log_folder = os.path.expanduser(log_folder_raw) if log_folder_raw else os.path.join(default_base, 'logs')
+        
+        files_folder_raw = os.getenv('FILES_FOLDER', '')
+        self.files_folder = os.path.expanduser(files_folder_raw) if files_folder_raw else os.path.join(default_base, 'files')
         
         self.capture_traffic = os.getenv('CAPTURE_TRAFFIC', 'false').lower() == 'true'
 

@@ -51,8 +51,61 @@ export default function LoginPage() {
       <div style={contentStyle}>
         {/* Logo */}
         <div style={logoContainerStyle}>
-          <span style={logoTextStyle}>QUATHERA</span>
-          <span style={logoDotStyle}>.COM</span>
+          <svg width="280" height="70" viewBox="150 180 700 140" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="circuitGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style={{stopColor:'#00F5D4'}}/>
+                <stop offset="50%" style={{stopColor:'#00BBF9'}}/>
+                <stop offset="100%" style={{stopColor:'#9B5DE5'}}/>
+              </linearGradient>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            
+            <g transform="translate(500, 250)">
+              {/* Q Icon */}
+              <g transform="translate(-280, 0)">
+                <polygon points="0,-75 65,-37.5 65,37.5 0,75 -65,37.5 -65,-37.5" 
+                         fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2"/>
+                <circle cx="0" cy="0" r="52" fill="none" stroke="url(#circuitGradient)" strokeWidth="5" filter="url(#glow)"/>
+                <g stroke="url(#circuitGradient)" strokeWidth="3" fill="none" strokeLinecap="round" filter="url(#glow)">
+                  <path d="M -35 -20 Q -42 0 -38 20 Q -30 42 0 48 Q 30 42 38 20 Q 42 0 35 -20 Q 25 -42 0 -45 Q -25 -42 -35 -20"/>
+                  <path d="M -20 -10 Q -25 5 -18 18 Q -5 28 12 22 Q 25 12 22 -5 Q 18 -22 0 -25 Q -15 -22 -20 -10" opacity="0.6"/>
+                  <path d="M 25 30 L 50 55 L 65 50"/>
+                  <circle cx="65" cy="50" r="4" fill="url(#circuitGradient)"/>
+                </g>
+                <g fill="url(#circuitGradient)" filter="url(#glow)">
+                  <circle cx="-38" cy="-18" r="4"/>
+                  <circle cx="-40" cy="18" r="4"/>
+                  <circle cx="0" cy="48" r="4"/>
+                  <circle cx="38" cy="18" r="4"/>
+                  <circle cx="38" cy="-18" r="4"/>
+                  <circle cx="0" cy="-45" r="4"/>
+                  <circle cx="-30" cy="-35" r="3"/>
+                  <circle cx="30" cy="-35" r="3"/>
+                </g>
+                <circle cx="0" cy="0" r="8" fill="#0A0E17" stroke="url(#circuitGradient)" strokeWidth="2"/>
+                <circle cx="0" cy="0" r="3" fill="url(#circuitGradient)" opacity="0.8"/>
+              </g>
+              
+              {/* Quathera Text */}
+              <g transform="translate(-180, 0)">
+                <text x="0" y="18" 
+                      fontFamily="'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
+                      fontSize="82" 
+                      fontWeight="300" 
+                      fill="#FFFFFF" 
+                      letterSpacing="6">
+                  <tspan fill="url(#circuitGradient)" fontWeight="600">Q</tspan>uathera
+                </text>
+              </g>
+            </g>
+          </svg>
         </div>
         
         {/* Tagline */}
@@ -155,7 +208,7 @@ const overlayStyle: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.85) 0%, rgba(22, 33, 62, 0.75) 100%)'
+  background: 'linear-gradient(135deg, rgba(10, 14, 23, 0.9) 0%, rgba(15, 21, 32, 0.8) 100%)'
 }
 
 const contentStyle: React.CSSProperties = {
@@ -171,20 +224,6 @@ const logoContainerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   marginBottom: '8px'
-}
-
-const logoTextStyle: React.CSSProperties = {
-  fontSize: '36px',
-  fontWeight: 700,
-  color: '#fff',
-  letterSpacing: '6px'
-}
-
-const logoDotStyle: React.CSSProperties = {
-  fontSize: '36px',
-  fontWeight: 700,
-  color: '#4da8da',
-  letterSpacing: '6px'
 }
 
 const taglineStyle: React.CSSProperties = {
@@ -240,7 +279,7 @@ const inputStyle: React.CSSProperties = {
 const buttonStyle: React.CSSProperties = {
   width: '100%',
   padding: '14px',
-  background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+  background: 'linear-gradient(135deg, #0A0E17 0%, #1a2535 100%)',
   color: 'white',
   border: 'none',
   borderRadius: '8px',

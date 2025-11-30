@@ -21,7 +21,7 @@ import os
 import uuid
 import secrets
 
-from models.database import get_db
+from models.database import get_db, CrawlSession
 from models.agent_models import Agent, AgentTask
 from services.agent_service import AgentService
 from utils.jwt_utils import create_jwt_token, decode_jwt_token, get_token_expiry_seconds
@@ -303,13 +303,24 @@ async def agent_heartbeat(
     """
     Receive heartbeat from authenticated agent.
     Requires X-Agent-API-Key AND Authorization: Bearer <jwt> headers.
+    Returns cancel_requested if agent has a cancelled running session.
     """
     agent.status = heartbeat_data.get('status', 'idle')
     agent.current_task_id = heartbeat_data.get('current_task_id')
     agent.last_heartbeat = datetime.utcnow()
     db.commit()
     
-    return {"success": True}
+    # Check if there's a cancelled session for this agent's user
+    cancel_requested = False
+    cancelled_session = db.query(CrawlSession).filter(
+        CrawlSession.user_id == agent.user_id,
+        CrawlSession.status == 'cancelled'
+    ).first()
+    
+    if cancelled_session:
+        cancel_requested = True
+    
+    return {"success": True, "cancel_requested": cancel_requested}
 
 
 @router.get("/poll-task")

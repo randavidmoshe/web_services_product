@@ -126,38 +126,21 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `/api/agent/agents?company_id=${companyId}`,
+        `/api/agent/status?user_id=${userId}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       
       if (response.ok) {
         const data = await response.json()
-        // Find agent for current user
-        const userAgent = data.agents?.find((a: any) => a.user_id === parseInt(userId))
         
-        if (userAgent && userAgent.last_heartbeat) {
-          // Parse as UTC (server returns UTC timestamps)
-          const lastHeartbeat = new Date(userAgent.last_heartbeat + 'Z')
-          const now = new Date()
-          const diffSeconds = (now.getTime() - lastHeartbeat.getTime()) / 1000
-          
-          console.log('Agent status check:', {
-            lastHeartbeat: lastHeartbeat.toISOString(),
-            now: now.toISOString(),
-            diffSeconds
-          })
-          
-          // Agent is online if last heartbeat was within 60 seconds
-          if (diffSeconds < 60) {
-            setAgentStatus('online')
-          } else {
-            setAgentStatus('offline')
-          }
-          setAgentLastSeen(userAgent.last_heartbeat)
-        } else {
+        if (data.status === 'online') {
+          setAgentStatus('online')
+        } else if (data.status === 'offline') {
           setAgentStatus('offline')
-          setAgentLastSeen(null)
+        } else {
+          setAgentStatus('unknown')
         }
+        setAgentLastSeen(data.last_heartbeat)
       }
     } catch (err) {
       console.error('Failed to check agent status:', err)
@@ -550,8 +533,61 @@ export default function DashboardLayout({
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {/* QUATHERA Logo */}
           <div style={logoStyle}>
-            <span style={{ fontSize: '28px', marginRight: '8px' }}>🔬</span>
-            <span style={logoTextStyle}>QUATHERA</span>
+            <svg width="220" height="50" viewBox="150 180 700 140" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="circuitGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style={{stopColor:'#00F5D4'}}/>
+                  <stop offset="50%" style={{stopColor:'#00BBF9'}}/>
+                  <stop offset="100%" style={{stopColor:'#9B5DE5'}}/>
+                </linearGradient>
+                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+              
+              <g transform="translate(500, 250)">
+                {/* Q Icon */}
+                <g transform="translate(-280, 0)">
+                  <polygon points="0,-75 65,-37.5 65,37.5 0,75 -65,37.5 -65,-37.5" 
+                           fill="none" stroke="#e2e8f0" strokeWidth="2"/>
+                  <circle cx="0" cy="0" r="52" fill="none" stroke="url(#circuitGradient)" strokeWidth="5" filter="url(#glow)"/>
+                  <g stroke="url(#circuitGradient)" strokeWidth="3" fill="none" strokeLinecap="round" filter="url(#glow)">
+                    <path d="M -35 -20 Q -42 0 -38 20 Q -30 42 0 48 Q 30 42 38 20 Q 42 0 35 -20 Q 25 -42 0 -45 Q -25 -42 -35 -20"/>
+                    <path d="M -20 -10 Q -25 5 -18 18 Q -5 28 12 22 Q 25 12 22 -5 Q 18 -22 0 -25 Q -15 -22 -20 -10" opacity="0.6"/>
+                    <path d="M 25 30 L 50 55 L 65 50"/>
+                    <circle cx="65" cy="50" r="4" fill="url(#circuitGradient)"/>
+                  </g>
+                  <g fill="url(#circuitGradient)" filter="url(#glow)">
+                    <circle cx="-38" cy="-18" r="4"/>
+                    <circle cx="-40" cy="18" r="4"/>
+                    <circle cx="0" cy="48" r="4"/>
+                    <circle cx="38" cy="18" r="4"/>
+                    <circle cx="38" cy="-18" r="4"/>
+                    <circle cx="0" cy="-45" r="4"/>
+                    <circle cx="-30" cy="-35" r="3"/>
+                    <circle cx="30" cy="-35" r="3"/>
+                  </g>
+                  <circle cx="0" cy="0" r="8" fill="#ffffff" stroke="url(#circuitGradient)" strokeWidth="2"/>
+                  <circle cx="0" cy="0" r="3" fill="url(#circuitGradient)" opacity="0.8"/>
+                </g>
+                
+                {/* Quathera Text */}
+                <g transform="translate(-180, 0)">
+                  <text x="0" y="18" 
+                        fontFamily="'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
+                        fontSize="82" 
+                        fontWeight="300" 
+                        fill="#0A0E17" 
+                        letterSpacing="6">
+                    <tspan fill="url(#circuitGradient)" fontWeight="600">Q</tspan>uathera
+                  </text>
+                </g>
+              </g>
+            </svg>
           </div>
           
           <div style={dividerStyle} />
@@ -614,9 +650,10 @@ export default function DashboardLayout({
                 alignItems: 'center',
                 gap: '8px',
                 padding: '8px 14px',
-                background: '#f8fafc',
+                background: '#ffffff',
                 borderRadius: '8px',
-                border: '1px solid #e2e8f0'
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
               }}
               title={`AI Usage: $${aiUsed} / $${aiBudget}`}
             >
@@ -637,9 +674,10 @@ export default function DashboardLayout({
               alignItems: 'center',
               gap: '8px',
               padding: '8px 14px',
-              background: '#f8fafc',
+              background: '#ffffff',
               borderRadius: '8px',
-              border: '1px solid #e2e8f0'
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
             }}
             title={agentLastSeen ? `Last seen: ${new Date(agentLastSeen + 'Z').toLocaleString()}` : 'No agent connected'}
           >
@@ -665,7 +703,7 @@ export default function DashboardLayout({
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
             style={{
-              background: '#f8fafc',
+              background: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
               padding: '8px 14px',
@@ -675,7 +713,8 @@ export default function DashboardLayout({
               color: '#475569',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
             }}
           >
             <span style={{ fontSize: '14px' }}>⬇</span> Download Agent
@@ -685,14 +724,15 @@ export default function DashboardLayout({
           <button 
             onClick={handleLogout} 
             style={{
-              background: '#f8fafc',
+              background: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
               padding: '8px 14px',
               fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
-              color: '#475569'
+              color: '#475569',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
             }}
           >
             Logout
@@ -1333,9 +1373,9 @@ const topBarStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '14px 40px',
-  background: '#c8d1dc',
-  borderBottom: '1px solid #b8c2cf',
+  padding: '12px 40px',
+  background: '#e2e8f0',
+  borderBottom: '1px solid #cbd5e1',
   position: 'sticky',
   top: 0,
   zIndex: 100
@@ -1362,7 +1402,7 @@ const logoDotStyle: React.CSSProperties = {
 const dividerStyle: React.CSSProperties = {
   width: '1px',
   height: '30px',
-  background: '#e8eef3',
+  background: '#e2e8f0',
   margin: '0 10px'
 }
 

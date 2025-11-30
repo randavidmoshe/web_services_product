@@ -99,6 +99,7 @@ class Network(Base):
     # Login credentials for test user (used by crawler)
     login_username = Column(String, nullable=True)
     login_password = Column(String, nullable=True)  # Should be encrypted in production
+    form_pages_use_screenshot_for_button_check = Column(Boolean, default=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

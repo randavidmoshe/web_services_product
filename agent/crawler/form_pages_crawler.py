@@ -43,11 +43,13 @@ class FormPagesCrawler:
         server=None,
         username: str = None,
         login_url: str = None,
-        agent=None
+        agent=None,
+        form_agent=None  # FormAgent instance for cancel_requested check
     ):
         self.driver = driver
         self.server = server
         self.agent = agent
+        self.form_agent = form_agent  # For checking cancel_requested flag
         
         # Store username and login_url for tagging forms
         self.username = username if username else "no_login"
@@ -548,6 +550,11 @@ class FormPagesCrawler:
         explored_count = 0
 
         while queue and explored_count < 500:  # Safety limit for exploration states
+            # Check if cancellation was requested via heartbeat
+            if self.form_agent and getattr(self.form_agent, 'cancel_requested', False):
+                print(f"\n[Crawler] ⏹ Discovery cancelled by user")
+                return all_forms
+            
             # Use DFS: Pop from END to explore children before siblings
             state = queue.pop()  # ← Changed from pop(0) to pop()
             
@@ -1100,7 +1107,16 @@ class FormPagesCrawler:
 
         # Not in whitelist - ask server AI for uncertain cases
         print(f"    [AI] Button '{button_text}' → Not in whitelist, asking server AI...")
-        return self.server.is_submission_button(button_text)
+        
+        # Capture screenshot for AI analysis
+        screenshot_base64 = None
+        try:
+            screenshot_base64 = self.driver.get_screenshot_as_base64()
+            print(f"    [AI] 📸 Captured screenshot for button classification")
+        except Exception as e:
+            print(f"    [AI] ⚠️ Could not capture screenshot: {e}")
+        
+        return self.server.is_submission_button(button_text, screenshot_base64)
 
 
     def _wait_for_page_stable(self, timeout: float = None):
@@ -1504,7 +1520,7 @@ class FormPagesCrawler:
                                     'tag': el.tag_name.lower()
                                 })
                         else:
-                            print(f"[DEBUG]       ❌ No match for: '{text}'")
+                            print(f"[DEBUG]       ❌ Not a form entry button - No match for: '{text}'")
 
                     except (StaleElementReferenceException, Exception) as e:
                         print(f"[DEBUG]     Error processing element: {e}")
@@ -1580,6 +1596,21 @@ class FormPagesCrawler:
             "[class*='nav']:not([data-inside-table])",
             "[class*='menu']:not([data-inside-table])",
             "[class*='tab']:not([data-inside-table])",
+
+            # ═══════════════════════════════════════════════════════════════
+            # NEW SELECTORS
+            # ═══════════════════════════════════════════════════════════════
+            #"[class*='card']:not([data-inside-table])",
+            #"[class*='tile']:not([data-inside-table])",
+            #"[class*='category']:not([data-inside-table])",
+            #"[class*='dropdown-item']:not([data-inside-table])",
+            #"[data-toggle]:not([data-inside-table])",
+            #"[data-bs-toggle]:not([data-inside-table])",
+            #"[class*='sidebar'] a:not([data-inside-table])",
+            #"[class*='sidenav'] a:not([data-inside-table])",
+            #"[role='treeitem']:not([data-inside-table])",
+            #"[tabindex]:not([data-inside-table]):not([tabindex='-1'])",
+
         ]
 
         for selector in clickable_selectors:
@@ -1687,6 +1718,91 @@ class FormPagesCrawler:
             
             except Exception:
                 continue
+
+        # Add after selector loop, before clickables.sort(...)
+        # ════════════════════════════════════════════════════════════════════
+        # CATCH-ALL: Find elements with cursor:pointer that selectors missed
+        # ════════════════════════════════════════════════════════════════════
+        try:
+            print("    [Catch-all] Looking for cursor:pointer elements...")
+            pointer_elements = self.driver.execute_script("""
+                var results = [];
+                var all = document.querySelectorAll('div, span, li, article, section');
+                for (var i = 0; i < all.length; i++) {
+                    var el = all[i];
+                    if (el.getAttribute('data-inside-table')) continue;
+                    var style = window.getComputedStyle(el);
+                    if (style.cursor === 'pointer') {
+                        var rect = el.getBoundingClientRect();
+                        if (rect.width > 30 && rect.height > 20 && rect.top < window.innerHeight) {
+                            results.push(el);
+                        }
+                    }
+                }
+                return results.slice(0, 50);
+            """)
+
+            print(f"    [Catch-all] Found {len(pointer_elements)} cursor:pointer elements")
+
+            for el in pointer_elements:
+                try:
+                    if not el.is_displayed():
+                        continue
+
+                    text = visible_text(el).strip()
+
+                    if not text or len(text) > 100 or '\n' in text:
+                        continue
+
+                    if text.lower() in self.global_navigation_items:
+                        continue
+
+                    if text in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+                                '«', '»', '‹', '›', '<', '>', 'next', 'prev', 'previous']:
+                        continue
+
+                    try:
+                        href = el.get_attribute("href") or ""
+                        onclick = el.get_attribute("onclick") or ""
+                        key = (text.lower(), href, onclick)
+                    except:
+                        loc = el.location
+                        key = (text.lower(), loc.get('x', 0), loc.get('y', 0))
+
+                    if key in seen:
+                        continue
+
+                    seen.add(key)
+
+                    better_selector = self._get_unique_selector(el)
+
+                    try:
+                        location = el.location
+                        pos_y = location.get('y', 0)
+                        pos_x = location.get('x', 0)
+                    except:
+                        pos_y = 0
+                        pos_x = 0
+
+                    clickables.append({
+                        'element': el,
+                        'text': text,
+                        'selector': better_selector,
+                        'tag': el.tag_name.lower(),
+                        'id': f"pointer_{text[:20]}_{len(clickables)}",
+                        'pos_y': pos_y,
+                        'pos_x': pos_x
+                    })
+                    print(f"    🎯 Catch-all found: '{text[:40]}'")
+
+                except (StaleElementReferenceException, Exception):
+                    continue
+
+        except Exception as e:
+            print(f"    [Catch-all] Error: {e}")
+
+
+
 
         clickables.sort(key=lambda c: (c.get('pos_y', 0), c.get('pos_x', 0)))
 

@@ -133,6 +133,7 @@ class AgentSelenium:
         self.results_logger = logging.getLogger('agent_results')
         self.results_logger.setLevel(logging.INFO)
         self.results_logger.handlers.clear()
+        self.results_logger.propagate = False  # Don't inherit from root logger
         
         results_handler = logging.FileHandler(results_log_path)
         results_handler.setLevel(logging.INFO)

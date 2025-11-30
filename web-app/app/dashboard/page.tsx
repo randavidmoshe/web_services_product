@@ -56,6 +56,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   'SESSION_EXPIRED': '⏰ Session expired during discovery',
   'TIMEOUT': '⏱️ Page load timeout - site may be slow',
   'ELEMENT_NOT_FOUND': '🔍 Required element not found on page',
+  'AGENT_DISCONNECTED': '🔌 Agent disconnected - no heartbeat received',
+  'USER_CANCELLED': '⏹ Cancelled by user',
   'UNKNOWN': '❓ Unknown error occurred'
 }
 
@@ -69,7 +71,7 @@ const getErrorMessage = (errorCode: string | null | undefined, errorMessage: str
 interface DiscoveryQueueItem {
   networkId: number
   networkName: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   sessionId?: number
   pagesSearched: number
   formsFound: number
@@ -271,12 +273,36 @@ export default function DashboardPage() {
     }
   }
 
-  const stopDiscovery = () => {
+  const stopDiscovery = async () => {
+    // Stop frontend polling
     shouldContinueRef.current = false
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
       pollingRef.current = null
     }
+    
+    // Call backend to cancel running sessions
+    if (currentSessionId && token) {
+      try {
+        await fetch(
+          `/api/form-pages/sessions/${currentSessionId}/cancel`,
+          { 
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` } 
+          }
+        )
+      } catch (err) {
+        console.error('Failed to cancel session:', err)
+      }
+    }
+    
+    // Update queue to show cancelled status
+    setDiscoveryQueue(prev => prev.map(q => 
+      q.status === 'running' || q.status === 'pending'
+        ? { ...q, status: 'cancelled' }
+        : q
+    ))
+    
     setIsDiscovering(false)
     setCurrentSessionId(null)
     setCurrentNetworkIndex(-1)
@@ -624,9 +650,10 @@ export default function DashboardPage() {
     const completedCount = discoveryQueue.filter(q => q.status === 'completed').length
     const runningCount = discoveryQueue.filter(q => q.status === 'running').length
     const failedCount = discoveryQueue.filter(q => q.status === 'failed').length
+    const cancelledCount = discoveryQueue.filter(q => q.status === 'cancelled').length
     const pendingCount = discoveryQueue.filter(q => q.status === 'pending').length
     
-    return { totalPagesSearched, totalFormsFound, completedCount, runningCount, failedCount, pendingCount }
+    return { totalPagesSearched, totalFormsFound, completedCount, runningCount, failedCount, cancelledCount, pendingCount }
   }
 
   if (!token) return <p style={{ fontSize: '16px', padding: '20px' }}>Loading...</p>
@@ -647,7 +674,7 @@ export default function DashboardPage() {
 
   const stats = getOverallStats()
   const totalNetworks = discoveryQueue.length
-  const completedNetworks = stats.completedCount + stats.failedCount
+  const completedNetworks = stats.completedCount + stats.failedCount + stats.cancelledCount
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -776,13 +803,15 @@ export default function DashboardPage() {
                                        queueItem.status === 'failed' ? '#ffebee' : '#f5f5f5',
                             color: queueItem.status === 'running' ? '#e65100' :
                                   queueItem.status === 'completed' ? '#2e7d32' :
-                                  queueItem.status === 'failed' ? '#c62828' : '#666'
+                                  queueItem.status === 'failed' ? '#c62828' :
+                                  queueItem.status === 'cancelled' ? '#f57c00' : '#666'
                           }}
                           title={queueItem.status === 'failed' && queueItem.errorMessage ? queueItem.errorMessage : undefined}
                           >
                             {queueItem.status === 'running' ? '⏳ Running' :
                              queueItem.status === 'completed' ? '✅ Done' :
-                             queueItem.status === 'failed' ? '❌ Failed' : '⏸ Pending'}
+                             queueItem.status === 'failed' ? '❌ Failed' :
+                             queueItem.status === 'cancelled' ? '⏹ Cancelled' : '⏸ Pending'}
                           </span>
                           {queueItem.status === 'failed' && queueItem.errorMessage && (
                             <div style={{ fontSize: '12px', color: '#c62828', marginTop: '4px' }}>
@@ -814,17 +843,29 @@ export default function DashboardPage() {
 
             {/* Action - Centered */}
             <div style={{ ...actionSectionStyle, justifyContent: 'center' }}>
-              <button
-                onClick={startDiscovery}
-                disabled={isDiscovering || selectedNetworkIds.length === 0}
-                style={{
-                  ...startDiscoveryBtnStyle,
-                  opacity: (isDiscovering || selectedNetworkIds.length === 0) ? 0.6 : 1,
-                  cursor: (isDiscovering || selectedNetworkIds.length === 0) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {isDiscovering ? '⟳ Discovering...' : '🚀 Start Discovery'}
-              </button>
+              {isDiscovering ? (
+                <button
+                  onClick={stopDiscovery}
+                  style={{
+                    ...stopDiscoveryBtnStyle,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ⏹ Stop Discovery
+                </button>
+              ) : (
+                <button
+                  onClick={startDiscovery}
+                  disabled={selectedNetworkIds.length === 0}
+                  style={{
+                    ...startDiscoveryBtnStyle,
+                    opacity: selectedNetworkIds.length === 0 ? 0.6 : 1,
+                    cursor: selectedNetworkIds.length === 0 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  🚀 Start Discovery
+                </button>
+              )}
             </div>
           </>
         )}
@@ -841,8 +882,8 @@ export default function DashboardPage() {
               <div style={statValueStyle}>{completedNetworks} / {totalNetworks}</div>
             </div>
             <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Forms Found</div>
-              <div style={{ ...statValueStyle, color: '#2e7d32' }}>{formPages.length}</div>
+              <div style={statLabelStyle}>New Forms Found</div>
+              <div style={{ ...statValueStyle, color: '#2e7d32' }}>{stats.totalFormsFound}</div>
             </div>
             <div style={statBoxStyle}>
               <div style={statLabelStyle}>Current</div>
@@ -857,9 +898,13 @@ export default function DashboardPage() {
               <div style={{ 
                 ...statValueStyle, 
                 fontSize: '16px',
-                color: isDiscovering ? '#f57c00' : stats.failedCount > 0 ? '#c62828' : '#2e7d32'
+                color: isDiscovering ? '#f57c00' : 
+                       stats.cancelledCount > 0 ? '#f57c00' :
+                       stats.failedCount > 0 ? '#c62828' : '#2e7d32'
               }}>
-                {isDiscovering ? 'IN PROGRESS' : stats.failedCount > 0 ? 'COMPLETED (with errors)' : 'COMPLETED'}
+                {isDiscovering ? 'IN PROGRESS' : 
+                 stats.cancelledCount > 0 ? 'CANCELLED' :
+                 stats.failedCount > 0 ? 'COMPLETED (with errors)' : 'COMPLETED'}
               </div>
             </div>
           </div>
@@ -928,13 +973,15 @@ export default function DashboardPage() {
                     fontWeight: 600,
                     color: item.status === 'running' ? '#e65100' :
                           item.status === 'completed' ? '#2e7d32' :
-                          item.status === 'failed' ? '#c62828' : '#666'
+                          item.status === 'failed' ? '#c62828' :
+                          item.status === 'cancelled' ? '#f57c00' : '#666'
                   }}
                   title={item.status === 'failed' && item.errorMessage ? item.errorMessage : undefined}
                   >
                     {item.status === 'running' ? '⏳ Running...' :
                      item.status === 'completed' ? '✅ Completed' :
-                     item.status === 'failed' ? '❌ Failed' : '⏸ Waiting'}
+                     item.status === 'failed' ? '❌ Failed' :
+                     item.status === 'cancelled' ? '⏹ Cancelled' : '⏸ Waiting'}
                   </span>
                   {item.status === 'failed' && item.errorMessage && (
                     <div style={{ fontSize: '11px', color: '#c62828', marginTop: '2px' }}>
@@ -1591,6 +1638,23 @@ const startDiscoveryBtnStyle: React.CSSProperties = {
   color: '#2d3a48',
   border: '1px solid #90a0b0',
   borderBottom: '3px solid #8090a0',
+  padding: '16px 36px',
+  borderRadius: '14px',
+  fontSize: '18px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  boxShadow: '0 2px 6px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.5)',
+  transition: 'all 0.3s ease'
+}
+
+const stopDiscoveryBtnStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '14px',
+  background: 'linear-gradient(180deg, #ffcdd2 0%, #ef9a9a 100%)',
+  color: '#c62828',
+  border: '1px solid #e57373',
+  borderBottom: '3px solid #d32f2f',
   padding: '16px 36px',
   borderRadius: '14px',
   fontSize: '18px',
