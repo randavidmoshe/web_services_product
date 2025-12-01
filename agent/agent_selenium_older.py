@@ -339,72 +339,61 @@ class AgentSelenium:
                 
             elif browser_type.lower() == "firefox":
                 print("[WebDriver] Initializing Firefox browser...")
-                import subprocess
+                import tempfile
                 import os as os_module
-                import shutil
-                import time
+                import subprocess
                 
                 try:
+                    options = webdriver.FirefoxOptions()
+                    
+                    if headless:
+                        options.add_argument('-headless')
+                        print("[WebDriver] Adding headless argument for Firefox")
+                    
                     # Check if Firefox is Snap version
                     firefox_path = subprocess.run(['which', 'firefox'], capture_output=True, text=True).stdout.strip()
                     is_snap = '/snap/' in firefox_path
                     print(f"[WebDriver] Firefox path: {firefox_path}, is_snap: {is_snap}")
                     
-                    # Set TMPDIR before anything else
-                    selenium_tmp = os_module.path.expanduser('~/selenium_tmp')
-                    os_module.makedirs(selenium_tmp, exist_ok=True)
-                    os_module.environ['TMPDIR'] = selenium_tmp
-                    print(f"[WebDriver] Set TMPDIR: {selenium_tmp}")
+                    if is_snap:
+                        # For Snap Firefox, create profile in ~/snap/firefox/common
+                        # This is a location Snap Firefox can access
+                        snap_profile_base = os_module.path.expanduser('~/snap/firefox/common/selenium_profiles')
+                        os_module.makedirs(snap_profile_base, exist_ok=True)
+                        temp_profile = tempfile.mkdtemp(prefix='ff_', dir=snap_profile_base)
+                    else:
+                        # For non-Snap Firefox, use regular temp directory
+                        temp_profile = tempfile.mkdtemp(prefix='ff_profile_')
                     
-                    # Cleanup old temp profiles (older than 1 day)
-                    try:
-                        one_day_ago = time.time() - (24 * 60 * 60)
-                        for item in os_module.listdir(selenium_tmp):
-                            item_path = os_module.path.join(selenium_tmp, item)
-                            if os_module.path.isdir(item_path):
-                                if os_module.path.getmtime(item_path) < one_day_ago:
-                                    shutil.rmtree(item_path, ignore_errors=True)
-                                    print(f"[WebDriver] Cleaned up old profile: {item}")
-                    except Exception as cleanup_error:
-                        print(f"[WebDriver] Cleanup warning (non-fatal): {cleanup_error}")
+                    print(f"[WebDriver] Creating profile at: {temp_profile}")
                     
-                    options = webdriver.FirefoxOptions()
-                    
-                    if headless:
-                        options.add_argument('-headless')
-                        os_module.environ['MOZ_HEADLESS'] = '1'
-                        print("[WebDriver] Adding headless argument for Firefox")
+                    # Create prefs.js with required settings
+                    prefs_content = 'user_pref("browser.shell.checkDefaultBrowser", false);\n'
+                    prefs_content += 'user_pref("toolkit.startup.max_resumed_crashes", -1);\n'
+                    prefs_content += 'user_pref("browser.sessionstore.resume_from_crash", false);\n'
+                    prefs_content += 'user_pref("datareporting.policy.dataSubmissionEnabled", false);\n'
                     
                     if download_dir:
-                        options.set_preference("browser.download.folderList", 2)
-                        options.set_preference("browser.download.dir", download_dir)
+                        prefs_content += f'user_pref("browser.download.folderList", 2);\n'
+                        prefs_content += f'user_pref("browser.download.dir", "{download_dir}");\n'
                     
-                    if is_snap:
-                        # Use Snap Firefox binary
-                        options.binary_location = '/snap/bin/firefox'
-                        print("[WebDriver] Using Snap Firefox binary")
-                        
-                        # Try to use Snap geckodriver first
-                        snap_geckodriver = '/snap/bin/firefox.geckodriver'
-                        if os_module.path.exists(snap_geckodriver):
-                            gecko_path = snap_geckodriver
-                            print(f"[WebDriver] Using Snap geckodriver: {gecko_path}")
-                        else:
-                            print("[WebDriver] Snap geckodriver not found, downloading...")
-                            gecko_path = GeckoDriverManager().install()
-                    else:
-                        print("[WebDriver] Getting geckodriver...")
-                        gecko_path = GeckoDriverManager().install()
+                    with open(os_module.path.join(temp_profile, 'prefs.js'), 'w') as f:
+                        f.write(prefs_content)
                     
-                    service = FirefoxService(gecko_path)
+                    with open(os_module.path.join(temp_profile, 'user.js'), 'w') as f:
+                        f.write(prefs_content)
+                    
+                    print("[WebDriver] Profile files created, setting options.profile...")
+                    options.profile = temp_profile
+                    
+                    print("[WebDriver] Getting geckodriver...")
+                    service = FirefoxService(GeckoDriverManager().install())
                     
                     print("[WebDriver] Starting Firefox...")
                     self.driver = webdriver.Firefox(service=service, options=options)
                     print("[WebDriver] ✅ Firefox initialized successfully")
                 except Exception as firefox_error:
                     print(f"[WebDriver] ❌ Firefox initialization failed: {firefox_error}")
-                    self.results_logger.error(f"❌ FIREFOX ERROR: {firefox_error}")
-                    self.results_logger.error("💡 TIP: Try switching to Chrome in Settings, or restart the agent")
                     raise firefox_error
                 
             elif browser_type.lower() == "edge":
@@ -485,8 +474,6 @@ class AgentSelenium:
             
         except Exception as e:
             self.info_logger.error(f"Browser initialization failed: {str(e)}")
-            # Log to results_logger so it shows in web UI logs
-            self.results_logger.error(f"❌ BROWSER ERROR: {browser_type} failed to start - {str(e)}")
             return {"success": False, "error": str(e)}
     
     def navigate_to_url(self, url: str) -> Dict:

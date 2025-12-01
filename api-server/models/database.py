@@ -161,6 +161,10 @@ class FormPageRoute(Base):
     
     # Relationships
     parent = relationship("FormPageRoute", remote_side=[id], backref="children")
+    
+    # Form Mapper relationships  # <-- ADD THESE
+    mapper_sessions = relationship("FormMapperSession", back_populates="form_page_route")
+    map_results = relationship("FormMapResult", back_populates="form_page_route")
 
 class ApiUsage(Base):
     __tablename__ = "api_usage"
