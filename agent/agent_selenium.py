@@ -27,6 +27,8 @@ from selenium.common.exceptions import (
     NoAlertPresentException
 )
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 try:
     from reportlab.pdfgen import canvas
@@ -336,22 +338,75 @@ class AgentSelenium:
                     print("[WebDriver] ✅ Initialized successfully (alternative method)")
                 
             elif browser_type.lower() == "firefox":
-                options = webdriver.FirefoxOptions()
-                if headless:
-                    options.add_argument('--headless')
+                print("[WebDriver] Initializing Firefox browser...")
+                import tempfile
+                import os as os_module
+                import subprocess
                 
-                if download_dir:
-                    options.set_preference("browser.download.folderList", 2)
-                    options.set_preference("browser.download.dir", download_dir)
-                
-                self.driver = webdriver.Firefox(options=options)
+                try:
+                    options = webdriver.FirefoxOptions()
+                    
+                    if headless:
+                        options.add_argument('-headless')
+                        print("[WebDriver] Adding headless argument for Firefox")
+                    
+                    # Check if Firefox is Snap version
+                    firefox_path = subprocess.run(['which', 'firefox'], capture_output=True, text=True).stdout.strip()
+                    is_snap = '/snap/' in firefox_path
+                    print(f"[WebDriver] Firefox path: {firefox_path}, is_snap: {is_snap}")
+                    
+                    if is_snap:
+                        # For Snap Firefox, create profile in ~/snap/firefox/common
+                        # This is a location Snap Firefox can access
+                        snap_profile_base = os_module.path.expanduser('~/snap/firefox/common/selenium_profiles')
+                        os_module.makedirs(snap_profile_base, exist_ok=True)
+                        temp_profile = tempfile.mkdtemp(prefix='ff_', dir=snap_profile_base)
+                    else:
+                        # For non-Snap Firefox, use regular temp directory
+                        temp_profile = tempfile.mkdtemp(prefix='ff_profile_')
+                    
+                    print(f"[WebDriver] Creating profile at: {temp_profile}")
+                    
+                    # Create prefs.js with required settings
+                    prefs_content = 'user_pref("browser.shell.checkDefaultBrowser", false);\n'
+                    prefs_content += 'user_pref("toolkit.startup.max_resumed_crashes", -1);\n'
+                    prefs_content += 'user_pref("browser.sessionstore.resume_from_crash", false);\n'
+                    prefs_content += 'user_pref("datareporting.policy.dataSubmissionEnabled", false);\n'
+                    
+                    if download_dir:
+                        prefs_content += f'user_pref("browser.download.folderList", 2);\n'
+                        prefs_content += f'user_pref("browser.download.dir", "{download_dir}");\n'
+                    
+                    with open(os_module.path.join(temp_profile, 'prefs.js'), 'w') as f:
+                        f.write(prefs_content)
+                    
+                    with open(os_module.path.join(temp_profile, 'user.js'), 'w') as f:
+                        f.write(prefs_content)
+                    
+                    print("[WebDriver] Profile files created, setting options.profile...")
+                    options.profile = temp_profile
+                    
+                    print("[WebDriver] Getting geckodriver...")
+                    service = FirefoxService(GeckoDriverManager().install())
+                    
+                    print("[WebDriver] Starting Firefox...")
+                    self.driver = webdriver.Firefox(service=service, options=options)
+                    print("[WebDriver] ✅ Firefox initialized successfully")
+                except Exception as firefox_error:
+                    print(f"[WebDriver] ❌ Firefox initialization failed: {firefox_error}")
+                    raise firefox_error
                 
             elif browser_type.lower() == "edge":
+                print("[WebDriver] Initializing Edge browser...")
                 options = webdriver.EdgeOptions()
                 if headless:
                     options.add_argument('--headless')
+                    print("[WebDriver] Adding headless argument for Edge")
                 
-                self.driver = webdriver.Edge(options=options)
+                # Use webdriver_manager to auto-download edgedriver
+                service = EdgeService(EdgeChromiumDriverManager().install())
+                self.driver = webdriver.Edge(service=service, options=options)
+                print("[WebDriver] ✅ Edge initialized successfully")
             
             elif browser_type.lower() == "electron":
                 # Electron support - uses ChromeDriver since Electron is Chromium-based

@@ -78,13 +78,7 @@ class FormDiscovererAgent:
         # Log header to console AND to selenium_agent's results_logger (customer-facing)
         header_lines = [
             "="*70,
-            "Form Discoverer Agent Initialized (3-Layer Security)",
-            f"API URL: {self.config.api_url}",
-            f"Agent ID: {self.config.agent_id}",
-            f"Company ID: {self.config.company_id}",
-            f"User ID: {self.config.user_id}",
-            f"SSL Verify: {self.ssl_verify}",
-            f"API Key: {'Configured' if self.api_key else 'Not set (will get on registration)'}",
+            "Form Discoverer Agent Initialized",
             "="*70
         ]
         for line in header_lines:
@@ -464,10 +458,12 @@ class FormDiscovererAgent:
         max_form_pages = params.get('max_form_pages')
         slow_mode = params.get('slow_mode', True)
         
-        # Use agent's settings from .env (set via web UI), ignore server's values
-        headless = self.config.default_headless
-        browser = self.config.default_browser
-        self.logger.info(f"[Browser Config] browser={browser}, headless={headless} (from agent config)")
+        # Re-read browser settings from .env file (allows changes without restart)
+        from dotenv import load_dotenv
+        load_dotenv(override=True)  # Reload .env to pick up changes
+        headless = os.getenv('DEFAULT_HEADLESS', 'false').lower() == 'true'
+        browser = os.getenv('BROWSER', 'chrome')
+        self.logger.info(f"[Browser Config] browser={browser}, headless={headless} (fresh from .env)")
 
         api_client = FormPagesAPIClient(
             api_url=self.config.api_url,
