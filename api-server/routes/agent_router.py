@@ -363,7 +363,7 @@ async def poll_task(
         task_id = task_msg.get('task_id')
 
         # Return directly for forms_runner tasks (Redis-only for scale)
-        if task_msg.get('task_type') and task_msg.get('task_type').startswith('forms_runner_'):
+        if task_msg.get('task_type') and (task_msg.get('task_type').startswith('forms_runner_') or task_msg.get('task_type').startswith('form_mapper_')):
             return {
                 'task_id': task_id,
                 'task_type': task_msg.get('task_type'),

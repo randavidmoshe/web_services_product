@@ -886,7 +886,7 @@ export default function DashboardPage() {
 
         {/* Edit Form Page Card */}
         <div style={{
-          background: 'rgba(75, 85, 99, 0.5)',
+          background: 'rgba(51, 65, 85, 0.5)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '28px',
@@ -1877,7 +1877,7 @@ export default function DashboardPage() {
 // ==================== STYLES ====================
 
 const welcomeCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '80px',
@@ -1887,7 +1887,7 @@ const welcomeCardStyle: React.CSSProperties = {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '28px',
@@ -2242,7 +2242,7 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const largeModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   width: '100%',
   maxWidth: '1200px',
@@ -2457,7 +2457,7 @@ const modalFooterStyle: React.CSSProperties = {
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '24px',
   padding: '40px',
   width: '100%',
@@ -2467,7 +2467,7 @@ const smallModalContentStyle: React.CSSProperties = {
 }
 
 const deleteModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   padding: '44px',
   width: '100%',

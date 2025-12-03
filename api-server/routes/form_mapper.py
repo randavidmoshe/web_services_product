@@ -133,6 +133,7 @@ async def start_form_mapping(
     # Create orchestrator and session
     orchestrator = FormMapperOrchestrator(db)
     
+    # Write result to Redis for Celery worker
     try:
         # First create database record to get integer ID
         db_session = FormMapperSession(
@@ -253,7 +254,7 @@ async def cancel_session(
         raise HTTPException(status_code=400, detail=f"Session already {session.status}")
     
     orchestrator = FormMapperOrchestrator(db)
-    success = orchestrator.cancel_session(session_id)
+    
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to cancel session")
@@ -415,6 +416,14 @@ async def agent_task_result(
     }
     
     orchestrator = FormMapperOrchestrator(db)
+    
+    # Write result to Redis for Celery worker
+    import redis
+    import json
+    redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+    result_key = f"runner_step_result:{session_id}"
+    redis_client.setex(result_key, 300, json.dumps(result))
+    logger.info(f"[API] Wrote result to Redis: {result_key}")
     
     try:
         response = orchestrator.process_agent_result(session_id, result)

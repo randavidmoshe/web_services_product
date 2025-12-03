@@ -546,7 +546,7 @@ export default function DashboardLayout({
   if (!token) return (
     <div style={{ 
       minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+      background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center'
@@ -556,7 +556,7 @@ export default function DashboardLayout({
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%)' }}>
       {/* CSS Animations */}
       <style>{`
         @keyframes fadeIn {
@@ -589,34 +589,35 @@ export default function DashboardLayout({
       
       {/* Top Bar - Sleek Dark Glass Design */}
       <div style={topBarStyle}>
-        {/* Left side - Logo only */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '52px',
-            height: '52px',
-            background: 'linear-gradient(135deg, #00F5D4 0%, #00BBF9 50%, #9B5DE5 100%)',
-            borderRadius: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(0, 187, 249, 0.35)'
-          }}>
-            <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>Q</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, #00F5D4 0%, #00BBF9 50%, #9B5DE5 100%)',
+              borderRadius: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 20px rgba(0, 187, 249, 0.35)'
+            }}>
+              <span style={{ fontSize: '24px', fontWeight: 700, color: '#fff' }}>Q</span>
+            </div>
+            <span style={{ 
+              fontSize: '28px', 
+              fontWeight: 700, 
+              background: 'linear-gradient(135deg, #fff 0%, #cbd5e1 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              letterSpacing: '-0.5px'
+            }}>
+              Quathera
+            </span>
           </div>
-          <span style={{ 
-            fontSize: '32px', 
-            fontWeight: 700, 
-            background: 'linear-gradient(135deg, #fff 0%, #cbd5e1 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            letterSpacing: '-0.5px'
-          }}>
-            Quathera
-          </span>
-        </div>
-        
-        {/* Right side - Project selector + all controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          
+          <div style={{ width: '1px', height: '36px', background: 'rgba(255,255,255,0.12)' }} />
+          
           {/* Project Selector */}
           <div className="project-dropdown" style={{ position: 'relative' }}>
             <button
@@ -625,13 +626,13 @@ export default function DashboardLayout({
             >
               <span style={{ 
                 background: 'linear-gradient(135deg, #00F5D4, #00BBF9)',
-                padding: '10px 14px',
+                padding: '8px 12px',
                 borderRadius: '10px',
-                marginRight: '14px',
-                fontSize: '18px'
+                marginRight: '12px',
+                fontSize: '16px'
               }}>📁</span>
-              <span style={{ fontSize: '17px' }}>{activeProject ? activeProject.name : 'Select Project'}</span>
-              <span style={{ marginLeft: '12px', opacity: 0.7, fontSize: '14px' }}>▼</span>
+              {activeProject ? activeProject.name : 'Select Project'}
+              <span style={{ marginLeft: '10px', opacity: 0.7 }}>▼</span>
             </button>
             
             {showProjectDropdown && (
@@ -650,39 +651,39 @@ export default function DashboardLayout({
                         background: activeProject?.id === project.id ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
                       }}
                     >
-                      <span style={{ flex: 1, fontSize: '16px' }}>{project.name}</span>
-                      <span style={{ fontSize: '15px', color: '#64748b' }}>
+                      <span style={{ flex: 1 }}>{project.name}</span>
+                      <span style={{ fontSize: '14px', color: '#64748b' }}>
                         {project.network_count} sites
                       </span>
                     </div>
                   ))
                 )}
-                <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '12px 0' }} />
+                <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '10px 0' }} />
                 <div
                   onClick={() => { setShowProjectDropdown(false); setShowAddProjectModal(true) }}
                   className="dropdown-item"
-                  style={{ ...dropdownItemStyle, color: '#00BBF9', fontSize: '16px' }}
+                  style={{ ...dropdownItemStyle, color: '#00BBF9' }}
                 >
                   <span>＋</span> Add Project
                 </div>
                 <div
                   onClick={() => { setShowProjectDropdown(false); setShowProjectsModal(true) }}
                   className="dropdown-item"
-                  style={{ ...dropdownItemStyle, fontSize: '16px' }}
+                  style={dropdownItemStyle}
                 >
                   <span>⚙️</span> Manage Projects
                 </div>
               </div>
             )}
           </div>
-          
-          <div style={{ width: '1px', height: '40px', background: 'rgba(255,255,255,0.15)' }} />
-          
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* AI Usage Indicator */}
           {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
             <div style={topBarBadgeStyle} title={`AI Usage: $${aiUsed} / $${aiBudget}`}>
               <span style={{ 
-                fontSize: '16px',
+                fontSize: '14px',
                 background: 'linear-gradient(135deg, #a855f7, #6366f1)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -690,44 +691,29 @@ export default function DashboardLayout({
               }}>AI:</span>
               <span style={{ 
                 color: aiUsed >= aiBudget ? '#ef4444' : aiUsed >= aiBudget * 0.8 ? '#f59e0b' : '#10b981',
-                fontWeight: 700,
-                fontSize: '16px'
+                fontWeight: 700
               }}>
                 {Math.round(aiUsed)} / {aiBudget}
               </span>
             </div>
           )}
           
-          {/* Agent Status - Strong Indicator */}
+          {/* Agent Status */}
           <div 
-            style={{
-              ...topBarBadgeStyle,
-              background: agentStatus === 'online' 
-                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(52, 211, 153, 0.2))'
-                : 'rgba(255,255,255,0.05)',
-              border: agentStatus === 'online' 
-                ? '2px solid rgba(16, 185, 129, 0.6)'
-                : '1px solid rgba(255,255,255,0.08)',
-              padding: '14px 22px'
-            }}
+            style={topBarBadgeStyle}
             title={agentLastSeen ? `Last seen: ${new Date(agentLastSeen + 'Z').toLocaleString()}` : 'No agent connected'}
           >
             <div style={{
-              width: '14px',
-              height: '14px',
+              width: '10px',
+              height: '10px',
               borderRadius: '50%',
               background: agentStatus === 'online' 
-                ? '#22c55e' 
-                : '#6b7280',
-              boxShadow: agentStatus === 'online' ? '0 0 20px rgba(34, 197, 94, 0.8), 0 0 40px rgba(34, 197, 94, 0.4)' : 'none',
-              animation: agentStatus === 'online' ? 'pulse 1.5s infinite' : 'none'
+                ? 'linear-gradient(135deg, #10b981, #34d399)' 
+                : 'linear-gradient(135deg, #6b7280, #9ca3af)',
+              boxShadow: agentStatus === 'online' ? '0 0 10px rgba(16, 185, 129, 0.5)' : 'none',
+              animation: agentStatus === 'online' ? 'pulse 2s infinite' : 'none'
             }} />
-            <span style={{ 
-              color: agentStatus === 'online' ? '#22c55e' : '#9ca3af', 
-              fontWeight: 700, 
-              fontSize: '16px',
-              textShadow: agentStatus === 'online' ? '0 0 10px rgba(34, 197, 94, 0.5)' : 'none'
-            }}>
+            <span style={{ color: agentStatus === 'online' ? '#10b981' : '#9ca3af', fontWeight: 600 }}>
               Agent {agentStatus === 'online' ? 'Online' : 'Offline'}
             </span>
           </div>
@@ -1286,7 +1272,7 @@ const topBarStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '16px 36px',
-  background: 'rgba(55, 65, 81, 0.95)',
+  background: 'rgba(30, 41, 59, 0.95)',
   backdropFilter: 'blur(20px)',
   borderBottom: '1px solid rgba(255,255,255,0.08)',
   position: 'sticky',
@@ -1313,7 +1299,7 @@ const dropdownMenuStyle: React.CSSProperties = {
   position: 'absolute',
   top: 'calc(100% + 10px)',
   left: 0,
-  background: 'rgba(55, 65, 81, 0.98)',
+  background: 'rgba(30, 41, 59, 0.98)',
   backdropFilter: 'blur(20px)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: '18px',
@@ -1422,50 +1408,49 @@ const toastCloseStyle: React.CSSProperties = {
 }
 
 const sidebarStyle: React.CSSProperties = {
-  width: '320px',
-  background: 'rgba(55, 65, 81, 0.7)',
+  width: '300px',
+  background: 'rgba(30, 41, 59, 0.7)',
   backdropFilter: 'blur(20px)',
   borderRight: '1px solid rgba(255,255,255,0.08)',
   flexShrink: 0
 }
 
 const sidebarHeaderStyle: React.CSSProperties = {
-  padding: '36px 28px 24px',
-  fontSize: '14px',
+  padding: '32px 28px 20px',
+  fontSize: '12px',
   fontWeight: 600,
   color: '#64748b',
-  letterSpacing: '2.5px',
+  letterSpacing: '2px',
   textTransform: 'uppercase'
 }
 
 const sidebarItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '18px',
-  padding: '20px 24px',
+  gap: '16px',
+  padding: '16px 20px',
   cursor: 'pointer',
-  fontSize: '18px',
+  fontSize: '16px',
   fontWeight: 500,
   transition: 'all 0.2s ease',
   borderRadius: '14px',
-  margin: '8px 0',
-  border: '1px solid transparent',
-  color: '#e2e8f0'
+  margin: '6px 0',
+  border: '1px solid transparent'
 }
 
 const sidebarIconStyle: React.CSSProperties = {
-  width: '52px',
-  height: '52px',
+  width: '44px',
+  height: '44px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  borderRadius: '14px',
-  fontSize: '24px',
+  borderRadius: '12px',
+  fontSize: '20px',
   transition: 'all 0.2s ease'
 }
 
 const placeholderCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.4)',
+  background: 'rgba(51, 65, 85, 0.4)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '100px 80px',
@@ -1475,20 +1460,20 @@ const placeholderCardStyle: React.CSSProperties = {
 }
 
 const placeholderIconStyle: React.CSSProperties = {
-  width: '110px',
-  height: '110px',
+  width: '100px',
+  height: '100px',
   background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
-  borderRadius: '28px',
+  borderRadius: '24px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '48px',
+  fontSize: '44px',
   margin: '0 auto 28px',
   border: '1px solid rgba(99, 102, 241, 0.3)'
 }
 
 const contentCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '24px',
   padding: '32px',
@@ -1581,7 +1566,7 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const modalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '24px',
   width: '100%',
   maxWidth: '500px',

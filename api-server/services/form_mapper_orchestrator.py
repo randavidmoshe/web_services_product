@@ -1,4 +1,5 @@
 # form_mapper_orchestrator.py
+import time
 # UPDATED: Added LOGIN and NAVIGATE phases using Forms Runner
 # Distributed Form Mapper Orchestrator - manages state machine for form analysis
 
@@ -430,6 +431,23 @@ class FormMapperOrchestrator:
         config = session.get("config", {})
         
         # Now at the form page - start DOM extraction
+        
+        # Push task to agent queue
+        import json
+        task = {
+            "task_id": f"mapper_{session_id}_dom_{int(time.time())}",
+            "task_type": "form_mapper_extract_dom",
+            "session_id": session_id,
+            "payload": {
+                "use_full_dom": config.get("use_full_dom", True),
+                "use_optimized_dom": config.get("use_optimized_dom", False),
+                "use_forms_dom": config.get("use_forms_dom", False),
+                "include_js": config.get("include_js_in_dom", True)
+            }
+        }
+        user_id = session.get("user_id", 1)
+        self.redis.lpush(f"agent:{user_id}", json.dumps(task))
+        logger.info(f"[Orchestrator] Pushed DOM extraction task for session {session_id}")
         self.transition_to(session_id, MapperState.EXTRACTING_DOM,
             current_path=1
         )
@@ -867,7 +885,7 @@ class FormMapperOrchestrator:
         state = session.get("state")
         
         # Route based on current state and task type
-        if task_type == "extract_dom":
+        if task_type in ("extract_dom", "form_mapper_extract_dom"):
             return self.handle_dom_extraction_result(
                 session_id,
                 result.get("dom_html", ""),

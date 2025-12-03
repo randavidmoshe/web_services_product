@@ -830,442 +830,15 @@ export default function DashboardPage() {
   const totalNetworks = discoveryQueue.length
   const completedNetworks = stats.completedCount + stats.failedCount + stats.cancelledCount
 
-  // ============ FULL PAGE EDIT VIEW ============
-  if (showEditPanel && editingFormPage) {
-    return (
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {/* CSS Animations */}
-        <style>{`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .step-card:hover {
-            border-color: rgba(99, 102, 241, 0.4) !important;
-          }
-          .expand-btn:hover {
-            background: rgba(99, 102, 241, 0.15) !important;
-          }
-        `}</style>
-
-        {error && (
-          <div style={errorBoxStyle}>
-            <span>❌</span> {error}
-            <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-        {message && (
-          <div style={successBoxStyle}>
-            <span>✅</span> {message}
-            <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-
-        {/* Back Button */}
-        <button
-          onClick={() => setShowEditPanel(false)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: '#94a3b8',
-            padding: '14px 24px',
-            borderRadius: '14px',
-            fontSize: '16px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            marginBottom: '28px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span style={{ fontSize: '20px' }}>←</span>
-          Back to Form Pages
-        </button>
-
-        {/* Edit Form Page Card */}
-        <div style={{
-          background: 'rgba(75, 85, 99, 0.5)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '28px',
-          overflow: 'hidden',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-          animation: 'fadeIn 0.3s ease'
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: '32px 40px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08))'
-          }}>
-            <h1 style={{ margin: 0, fontSize: '32px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
-              <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
-            </h1>
-            <p style={{ margin: '12px 0 0', color: '#94a3b8', fontSize: '18px' }}>
-              Editing: <strong style={{ color: '#fff' }}>{editingFormPage.form_name}</strong>
-            </p>
-          </div>
-
-          {/* Content - Two Column Layout */}
-          <div style={{ display: 'flex', gap: '0' }}>
-            {/* Left Column - Form Info */}
-            <div style={{ 
-              width: '420px', 
-              minWidth: '420px',
-              padding: '36px 40px',
-              borderRight: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(0,0,0,0.1)'
-            }}>
-              {/* Form Name */}
-              <div style={{ marginBottom: '32px' }}>
-                <label style={{ display: 'block', marginBottom: '14px', fontWeight: 600, color: '#e2e8f0', fontSize: '18px' }}>Form Name</label>
-                <input
-                  type="text"
-                  value={editFormName}
-                  onChange={(e) => setEditFormName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '18px 22px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: '14px',
-                    fontSize: '18px',
-                    boxSizing: 'border-box',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              {/* Hierarchy Info */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '16px',
-                padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)',
-                marginBottom: '28px'
-              }}>
-                <h4 style={{ margin: '0 0 20px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Type:</span>
-                  <span style={{
-                    background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                    color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
-                    padding: '10px 20px',
-                    borderRadius: '10px',
-                    fontSize: '16px',
-                    fontWeight: 600
-                  }}>
-                    {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
-                  </span>
-                </div>
-                {editingFormPage.parent_form_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Parent:</span>
-                    <span style={{ fontSize: '17px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
-                  </div>
-                )}
-                {editingFormPage.children && editingFormPage.children.length > 0 && (
-                  <div style={{ marginTop: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b' }}>Children:</span>
-                    <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                      {editingFormPage.children.map((c, i) => (
-                        <span key={i} style={{
-                          background: 'rgba(245, 158, 11, 0.15)',
-                          color: '#fbbf24',
-                          padding: '8px 16px',
-                          borderRadius: '8px',
-                          fontSize: '15px'
-                        }}>{c.form_name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* URL Info */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '16px',
-                padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)'
-              }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
-                <div style={{ fontSize: '15px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
-                  {editingFormPage.url}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Steps */}
-            <div style={{ flex: 1, padding: '36px 40px', minWidth: 0 }}>
-              {/* AI-Discovered Path Banner */}
-              <div style={{
-                display: 'flex',
-                gap: '20px',
-                background: 'rgba(0, 187, 249, 0.1)',
-                border: '1px solid rgba(0, 187, 249, 0.2)',
-                padding: '26px 30px',
-                borderRadius: '18px',
-                marginBottom: '32px',
-                alignItems: 'flex-start'
-              }}>
-                <div style={{ fontSize: '36px' }}>💡</div>
-                <div>
-                  <strong style={{ fontSize: '20px', color: '#00BBF9' }}>AI-Discovered Path</strong>
-                  <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8', lineHeight: 1.5 }}>
-                    This navigation path was automatically discovered by AI. Click on a step to expand and edit it.
-                  </p>
-                </div>
-              </div>
-
-              {/* Path Steps Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 600 }}>
-                  Path Steps ({editNavigationSteps.length})
-                </h3>
-                <button onClick={addStepAtEnd} style={{
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  color: '#818cf8',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
-                  padding: '14px 22px',
-                  borderRadius: '12px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  ＋ Add Step
-                </button>
-              </div>
-
-              {/* Steps List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {editNavigationSteps.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '60px 30px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '18px', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                    <p style={{ fontSize: '18px', marginBottom: '24px' }}>No path steps defined.</p>
-                    <button onClick={addStepAtEnd} style={{
-                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: '#fff',
-                      border: 'none',
-                      padding: '16px 28px',
-                      borderRadius: '14px',
-                      fontSize: '17px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}>＋ Add First Step</button>
-                  </div>
-                ) : (
-                  editNavigationSteps.map((step, index) => (
-                    <div 
-                      key={index} 
-                      className="step-card"
-                      style={{
-                        background: expandedSteps.has(index) ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)',
-                        border: expandedSteps.has(index) ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: '16px',
-                        overflow: 'hidden',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      {/* Step Header - Always Visible */}
-                      <div 
-                        onClick={() => toggleStepExpansion(index)}
-                        className="expand-btn"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '18px',
-                          padding: '20px 24px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <div style={{
-                          width: '44px',
-                          height: '44px',
-                          borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                          color: '#fff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '18px',
-                          fontWeight: 700,
-                          flexShrink: 0
-                        }}>{index + 1}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
-                            {step.description || `Step ${index + 1}`}
-                          </div>
-                          <div style={{ fontSize: '15px', color: '#64748b' }}>
-                            {step.action || 'click'} • {step.selector ? (step.selector.length > 50 ? step.selector.substring(0, 50) + '...' : step.selector) : 'No selector'}
-                          </div>
-                        </div>
-                        <span style={{ 
-                          fontSize: '22px', 
-                          color: '#64748b',
-                          transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease'
-                        }}>▼</span>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {expandedSteps.has(index) && (
-                        <div style={{ padding: '0 24px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', padding: '16px 0' }}>
-                            <button 
-                              onClick={() => addStepAfter(index)} 
-                              style={{
-                                background: 'rgba(99, 102, 241, 0.15)',
-                                border: '1px solid rgba(99, 102, 241, 0.3)',
-                                color: '#818cf8',
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Insert After</button>
-                            <button 
-                              onClick={() => confirmDeleteStep(index)} 
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.15)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                color: '#f87171',
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Delete</button>
-                          </div>
-                          <div style={{ display: 'flex', gap: '18px', marginBottom: '18px' }}>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Action</label>
-                              <input
-                                type="text"
-                                value={step.action || ''}
-                                disabled
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.08)',
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  color: '#64748b',
-                                  cursor: 'not-allowed'
-                                }}
-                              />
-                            </div>
-                            <div style={{ flex: 2 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Description</label>
-                              <input
-                                type="text"
-                                value={step.description || ''}
-                                onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.12)',
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.05)',
-                                  color: '#fff',
-                                  outline: 'none'
-                                }}
-                                placeholder="Describe this action"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Selector (Locator)</label>
-                            <input
-                              type="text"
-                              value={step.selector || ''}
-                              onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '16px 20px',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                borderRadius: '12px',
-                                fontSize: '16px',
-                                boxSizing: 'border-box',
-                                background: 'rgba(255,255,255,0.05)',
-                                color: '#fff',
-                                outline: 'none'
-                              }}
-                              placeholder="CSS selector or XPath"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div style={{
-            padding: '28px 44px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(0,0,0,0.2)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '18px'
-          }}>
-            <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
-              Cancel
-            </button>
-            <button 
-              onClick={saveFormPage} 
-              style={primaryButtonStyle}
-              disabled={savingFormPage}
-            >
-              {savingFormPage ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </div>
-
-        {/* Delete Step Confirmation Modal */}
-        {showDeleteStepConfirm && (
-          <div style={modalOverlayStyle}>
-            <div style={smallModalContentStyle}>
-              <h3 style={{ marginTop: 0, color: '#ef4444', fontSize: '20px', fontWeight: 700 }}>
-                <span style={{ marginRight: '8px' }}>⚠️</span>Delete Step?
-              </h3>
-              <p style={{ fontSize: '15px', color: '#e2e8f0', margin: '16px 0' }}>
-                Are you sure you want to delete <strong style={{ color: '#fff' }}>Step {(stepToDeleteIndex || 0) + 1}</strong>?
-              </p>
-              <p style={{ fontSize: '14px', color: '#94a3b8', margin: '0 0 24px' }}>This action cannot be undone.</p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button onClick={() => { setShowDeleteStepConfirm(false); setStepToDeleteIndex(null) }} style={secondaryButtonStyle}>
-                  Cancel
-                </button>
-                <button onClick={deleteStep} style={dangerButtonStyle}>
-                  Delete Step
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ============ MAIN DISCOVERY PAGE ============
   return (
-    <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', gap: '0' }}>
+      {/* Main Content Area */}
+      <div style={{ 
+        flex: showEditPanel ? '1 1 60%' : '1 1 100%',
+        maxWidth: showEditPanel ? 'calc(100% - 520px)' : '1300px', 
+        margin: showEditPanel ? '0' : '0 auto',
+        transition: 'all 0.3s ease'
+      }}>
         {/* CSS Animations */}
         <style>{`
           @keyframes fadeIn {
@@ -1280,6 +853,10 @@ export default function DashboardPage() {
             0% { background-position: -200% 0; }
             100% { background-position: 200% 0; }
           }
+          @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+          }
           .network-card:hover {
             border-color: rgba(99, 102, 241, 0.5) !important;
             transform: translateY(-2px);
@@ -1290,6 +867,12 @@ export default function DashboardPage() {
           }
           .action-btn:hover {
             transform: scale(1.1);
+            background: rgba(99, 102, 241, 0.2) !important;
+          }
+          .step-card:hover {
+            border-color: rgba(99, 102, 241, 0.4) !important;
+          }
+          .expand-btn:hover {
             background: rgba(99, 102, 241, 0.2) !important;
           }
         `}</style>
@@ -1724,9 +1307,9 @@ export default function DashboardPage() {
                     onDoubleClick={() => openEditPanel(form)}
                   >
                     <td style={tdStyle}>
-                      <strong style={{ fontSize: '18px', color: '#fff' }}>{form.form_name}</strong>
+                      <strong style={{ fontSize: '15px', color: '#fff' }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: '#64748b', marginTop: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
@@ -1740,9 +1323,9 @@ export default function DashboardPage() {
                       <span style={{
                         background: form.is_root ? 'rgba(99, 102, 241, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                         color: form.is_root ? '#818cf8' : '#fbbf24',
-                        padding: '10px 18px',
+                        padding: '8px 14px',
                         borderRadius: '20px',
-                        fontSize: '15px',
+                        fontSize: '13px',
                         fontWeight: 600,
                         border: form.is_root ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
                       }}>
@@ -1750,10 +1333,10 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td style={tdStyle}>
-                      <div style={{ fontSize: '16px', color: '#e2e8f0' }}>
+                      <div style={{ fontSize: '14px', color: '#e2e8f0' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
@@ -1762,11 +1345,11 @@ export default function DashboardPage() {
                         {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(245, 158, 11, 0.15)',
                             color: '#f59e0b',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(245, 158, 11, 0.3)'
                           }}>
@@ -1774,11 +1357,11 @@ export default function DashboardPage() {
                           </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(16, 185, 129, 0.15)',
                             color: '#10b981',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(16, 185, 129, 0.3)'
                           }}>
@@ -1828,6 +1411,384 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      </div>
+      
+      {/* Edit Form Page - Side Panel (not modal) */}
+      {showEditPanel && editingFormPage && (
+        <div style={{
+          width: '520px',
+          minWidth: '520px',
+          background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98))',
+          borderLeft: '1px solid rgba(255,255,255,0.12)',
+          height: 'calc(100vh - 88px)',
+          position: 'sticky',
+          top: '88px',
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'slideIn 0.3s ease'
+        }}>
+          {/* Panel Header */}
+          <div style={{
+            padding: '28px 28px 24px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08))'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '26px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
+                  <span style={{ marginRight: '12px' }}>✏️</span>Edit Form Page
+                </h2>
+                <p style={{ margin: '10px 0 0', color: '#94a3b8', fontSize: '16px' }}>
+                  Editing: <strong style={{ color: '#fff' }}>{editingFormPage.form_name}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowEditPanel(false)} 
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  color: '#94a3b8',
+                  lineHeight: 1,
+                  transition: 'all 0.2s ease'
+                }}
+              >×</button>
+            </div>
+          </div>
+
+          {/* Panel Content - Scrollable */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px' }}>
+            {/* Form Name */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600, color: '#e2e8f0', fontSize: '16px' }}>Form Name</label>
+              <input
+                type="text"
+                value={editFormName}
+                onChange={(e) => setEditFormName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '16px 20px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '14px',
+                  fontSize: '17px',
+                  boxSizing: 'border-box',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: '#fff',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Hierarchy Info */}
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '16px',
+              padding: '20px 22px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              marginBottom: '24px'
+            }}>
+              <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '15px', color: '#64748b', minWidth: '60px' }}>Type:</span>
+                <span style={{
+                  background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                  color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 600
+                }}>
+                  {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
+                </span>
+              </div>
+              {editingFormPage.parent_form_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <span style={{ fontSize: '15px', color: '#64748b', minWidth: '60px' }}>Parent:</span>
+                  <span style={{ fontSize: '16px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
+                </div>
+              )}
+            </div>
+
+            {/* URL Info */}
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '16px',
+              padding: '20px 22px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              marginBottom: '28px'
+            }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
+              <div style={{ fontSize: '14px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
+                {editingFormPage.url}
+              </div>
+            </div>
+
+            {/* AI-Discovered Path Section Header */}
+            <div style={{
+              display: 'flex',
+              gap: '16px',
+              background: 'rgba(0, 187, 249, 0.1)',
+              border: '1px solid rgba(0, 187, 249, 0.2)',
+              padding: '20px 22px',
+              borderRadius: '16px',
+              marginBottom: '20px',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{ fontSize: '28px' }}>💡</div>
+              <div>
+                <strong style={{ fontSize: '17px', color: '#00BBF9' }}>AI-Discovered Path</strong>
+                <p style={{ margin: '8px 0 0', fontSize: '15px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  This navigation path was automatically discovered by AI. Click on a step to expand and edit it.
+                </p>
+              </div>
+            </div>
+
+            {/* Path Steps Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#fff', fontWeight: 600 }}>
+                Path Steps ({editNavigationSteps.length})
+              </h3>
+              <button onClick={addStepAtEnd} style={{
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: '#818cf8',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                padding: '12px 18px',
+                borderRadius: '12px',
+                fontSize: '15px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                ＋ Add Step
+              </button>
+            </div>
+
+            {/* Collapsible Steps */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {editNavigationSteps.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 24px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                  <p style={{ fontSize: '17px', marginBottom: '20px' }}>No path steps defined.</p>
+                  <button onClick={addStepAtEnd} style={{
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '14px 24px',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}>＋ Add First Step</button>
+                </div>
+              ) : (
+                editNavigationSteps.map((step, index) => (
+                  <div 
+                    key={index} 
+                    className="step-card"
+                    style={{
+                      background: expandedSteps.has(index) ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)',
+                      border: expandedSteps.has(index) ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '14px',
+                      overflow: 'hidden',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {/* Step Header - Always Visible */}
+                    <div 
+                      onClick={() => toggleStepExpansion(index)}
+                      className="expand-btn"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px',
+                        padding: '16px 18px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '15px',
+                        fontWeight: 700,
+                        flexShrink: 0
+                      }}>{index + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: '#fff', marginBottom: '4px' }}>
+                          {step.description || `Step ${index + 1}`}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#64748b' }}>
+                          {step.action || 'click'} • {step.selector ? step.selector.substring(0, 40) + '...' : 'No selector'}
+                        </div>
+                      </div>
+                      <span style={{ 
+                        fontSize: '18px', 
+                        color: '#64748b',
+                        transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s ease'
+                      }}>▼</span>
+                    </div>
+
+                    {/* Expanded Content */}
+                    {expandedSteps.has(index) && (
+                      <div style={{ padding: '0 18px 18px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '12px 0' }}>
+                          <button 
+                            onClick={() => addStepAfter(index)} 
+                            style={{
+                              background: 'rgba(99, 102, 241, 0.15)',
+                              border: '1px solid rgba(99, 102, 241, 0.3)',
+                              borderRadius: '10px',
+                              padding: '10px 14px',
+                              cursor: 'pointer',
+                              fontSize: '15px',
+                              color: '#818cf8'
+                            }}
+                            title="Add step after this"
+                          >
+                            ➕ Insert After
+                          </button>
+                          <button 
+                            onClick={() => confirmDeleteStep(index)} 
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '10px',
+                              padding: '10px 14px',
+                              cursor: 'pointer',
+                              fontSize: '15px',
+                              color: '#ef4444'
+                            }}
+                            title="Delete this step"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '14px', marginBottom: '14px' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#94a3b8' }}>Action</label>
+                            <input
+                              type="text"
+                              value={step.action || ''}
+                              disabled
+                              style={{
+                                width: '100%',
+                                padding: '14px 16px',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: '12px',
+                                fontSize: '15px',
+                                boxSizing: 'border-box',
+                                background: 'rgba(255,255,255,0.02)',
+                                color: '#64748b',
+                                cursor: 'not-allowed'
+                              }}
+                            />
+                          </div>
+                          <div style={{ flex: 2 }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#94a3b8' }}>Description</label>
+                            <input
+                              type="text"
+                              value={step.description || ''}
+                              onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '14px 16px',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                borderRadius: '12px',
+                                fontSize: '15px',
+                                boxSizing: 'border-box',
+                                background: 'rgba(255,255,255,0.05)',
+                                color: '#fff',
+                                outline: 'none'
+                              }}
+                              placeholder="Describe this action"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#94a3b8' }}>Selector (Locator)</label>
+                          <input
+                            type="text"
+                            value={step.selector || ''}
+                            onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '14px 16px',
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              borderRadius: '12px',
+                              fontSize: '15px',
+                              boxSizing: 'border-box',
+                              background: 'rgba(255,255,255,0.05)',
+                              color: '#fff',
+                              outline: 'none'
+                            }}
+                            placeholder="CSS selector or XPath"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Panel Footer */}
+          <div style={{
+            padding: '20px 28px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(0,0,0,0.2)',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '14px'
+          }}>
+            <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
+              Cancel
+            </button>
+            <button 
+              onClick={saveFormPage} 
+              style={primaryButtonStyle}
+              disabled={savingFormPage}
+            >
+              {savingFormPage ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Step Confirmation */}
+      {showDeleteStepConfirm && (
+        <div style={modalOverlayStyle}>
+          <div style={smallModalContentStyle}>
+            <h3 style={{ marginTop: 0, color: '#ef4444', fontSize: '20px', fontWeight: 700 }}>
+              <span style={{ marginRight: '8px' }}>⚠️</span>Delete Step?
+            </h3>
+            <p style={{ fontSize: '15px', color: '#e2e8f0', margin: '16px 0' }}>
+              Are you sure you want to delete <strong style={{ color: '#fff' }}>Step {(stepToDeleteIndex || 0) + 1}</strong>?
+            </p>
+            <p style={{ fontSize: '14px', color: '#94a3b8', margin: '0 0 24px' }}>This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowDeleteStepConfirm(false); setStepToDeleteIndex(null) }} style={secondaryButtonStyle}>
+                Cancel
+              </button>
+              <button onClick={deleteStep} style={dangerButtonStyle}>
+                Delete Step
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Form Page Modal */}
       {showDeleteModal && formPageToDelete && (
@@ -1877,7 +1838,7 @@ export default function DashboardPage() {
 // ==================== STYLES ====================
 
 const welcomeCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '80px',
@@ -1887,7 +1848,7 @@ const welcomeCardStyle: React.CSSProperties = {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '28px',
@@ -2080,7 +2041,7 @@ const tableStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
-  padding: '24px 32px',
+  padding: '22px 30px',
   borderBottom: '1px solid rgba(255,255,255,0.1)',
   fontWeight: 600,
   color: '#94a3b8',
@@ -2088,7 +2049,7 @@ const thStyle: React.CSSProperties = {
   position: 'sticky',
   top: 0,
   zIndex: 1,
-  fontSize: '14px',
+  fontSize: '15px',
   textTransform: 'uppercase',
   letterSpacing: '1.5px'
 }
@@ -2100,7 +2061,7 @@ const tableRowStyle: React.CSSProperties = {
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '28px 32px',
+  padding: '24px 30px',
   borderBottom: '1px solid rgba(255,255,255,0.05)',
   verticalAlign: 'middle',
   fontSize: '18px',
@@ -2110,9 +2071,9 @@ const tdStyle: React.CSSProperties = {
 const pathStepsBadgeStyle: React.CSSProperties = {
   background: 'rgba(99, 102, 241, 0.15)',
   color: '#818cf8',
-  padding: '12px 24px',
+  padding: '14px 22px',
   borderRadius: '24px',
-  fontSize: '16px',
+  fontSize: '17px',
   fontWeight: 600,
   border: '1px solid rgba(99, 102, 241, 0.3)'
 }
@@ -2242,7 +2203,7 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const largeModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   width: '100%',
   maxWidth: '1200px',
@@ -2457,7 +2418,7 @@ const modalFooterStyle: React.CSSProperties = {
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '24px',
   padding: '40px',
   width: '100%',
@@ -2467,7 +2428,7 @@ const smallModalContentStyle: React.CSSProperties = {
 }
 
 const deleteModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   padding: '44px',
   width: '100%',

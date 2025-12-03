@@ -110,13 +110,11 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   
-  // Panel view instead of modal
-  const [showEditPanel, setShowEditPanel] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [editingFormPage, setEditingFormPage] = useState<FormPage | null>(null)
   const [editFormName, setEditFormName] = useState('')
   const [editNavigationSteps, setEditNavigationSteps] = useState<NavigationStep[]>([])
   const [savingFormPage, setSavingFormPage] = useState(false)
-  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set())
   
   const [showDeleteStepConfirm, setShowDeleteStepConfirm] = useState(false)
   const [stepToDeleteIndex, setStepToDeleteIndex] = useState<number | null>(null)
@@ -129,22 +127,6 @@ export default function DashboardPage() {
   const [mappingFormIds, setMappingFormIds] = useState<Set<number>>(new Set())
   const [mappingStatus, setMappingStatus] = useState<Record<number, { status: string; sessionId?: number; error?: string }>>({})
   const mappingPollingRef = useRef<Record<number, NodeJS.Timeout>>({})
-  
-  // Discovery section collapse state (collapsed by default when forms exist)
-  const [isDiscoveryExpanded, setIsDiscoveryExpanded] = useState(false)
-  
-  // Toggle step expansion
-  const toggleStepExpansion = (index: number) => {
-    setExpandedSteps(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(index)) {
-        newSet.delete(index)
-      } else {
-        newSet.add(index)
-      }
-      return newSet
-    })
-  }
 
 
   useEffect(() => {
@@ -302,34 +284,34 @@ export default function DashboardPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          form_page_route_id: formPage.id,
           user_id: parseInt(userId),
-          network_id: formPage.network_id,
-          test_cases: [
-            { test_id: 1, test_name: 'Default Test', description: 'Auto-generated test case' }
-          ]
+          form_page_id: formPage.id,
+          headless: headless
         })
       })
       
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to start mapping')
+      if (response.ok) {
+        const data = await response.json()
+        setMappingStatus(prev => ({
+          ...prev,
+          [formPage.id]: { status: 'running', sessionId: data.session_id }
+        }))
+        
+        // Start polling for this form
+        startMappingPolling(formPage.id, data.session_id)
+      } else {
+        const errData = await response.json()
+        setMappingFormIds(prev => {
+          const next = new Set(prev)
+          next.delete(formPage.id)
+          return next
+        })
+        setMappingStatus(prev => ({
+          ...prev,
+          [formPage.id]: { status: 'failed', error: errData.detail }
+        }))
       }
-      
-      const data = await response.json()
-      
-      setMappingStatus(prev => ({
-        ...prev,
-        [formPage.id]: { status: 'mapping', sessionId: data.session_id }
-      }))
-      
-      // Start polling for status
-      startMappingStatusPolling(formPage.id, data.session_id)
-      
-      setMessage(`Started mapping: ${formPage.form_name}`)
-      
-    } catch (err: any) {
-      console.error('Failed to start mapping:', err)
+    } catch (err) {
       setMappingFormIds(prev => {
         const next = new Set(prev)
         next.delete(formPage.id)
@@ -337,79 +319,68 @@ export default function DashboardPage() {
       })
       setMappingStatus(prev => ({
         ...prev,
-        [formPage.id]: { status: 'failed', error: err.message }
+        [formPage.id]: { status: 'failed', error: 'Connection error' }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
     }
   }
   
-  const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
+  const startMappingPolling = (formPageId: number, sessionId: number) => {
     // Clear any existing polling for this form
     if (mappingPollingRef.current[formPageId]) {
       clearInterval(mappingPollingRef.current[formPageId])
     }
     
-    const poll = async () => {
+    mappingPollingRef.current[formPageId] = setInterval(async () => {
       try {
-        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+        const response = await fetch(
+          `/api/form-mapper/sessions/${sessionId}/status`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        )
         
         if (response.ok) {
           const data = await response.json()
           
-          setMappingStatus(prev => ({
-            ...prev,
-            [formPageId]: { 
-              status: data.status, 
-              sessionId,
-              error: data.error 
-            }
-          }))
-          
-          // Stop polling if completed or failed
-          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-            stopMappingStatusPolling(formPageId)
+          if (data.status === 'completed' || data.status === 'failed') {
+            // Stop polling
+            clearInterval(mappingPollingRef.current[formPageId])
+            delete mappingPollingRef.current[formPageId]
+            
+            // Update status
             setMappingFormIds(prev => {
               const next = new Set(prev)
               next.delete(formPageId)
               return next
             })
+            setMappingStatus(prev => ({
+              ...prev,
+              [formPageId]: { 
+                status: data.status, 
+                sessionId,
+                error: data.error_message 
+              }
+            }))
             
             if (data.status === 'completed') {
-              setMessage(`Mapping completed for form page ${formPageId}`)
-            } else if (data.status === 'failed') {
-              setError(`Mapping failed: ${data.error || 'Unknown error'}`)
+              setMessage(`Form "${data.form_name || 'Form'}" mapped successfully!`)
             }
           }
         }
       } catch (err) {
         console.error('Failed to poll mapping status:', err)
       }
-    }
-    
-    // Poll immediately, then every 3 seconds
-    poll()
-    mappingPollingRef.current[formPageId] = setInterval(poll, 3000)
-  }
-  
-  const stopMappingStatusPolling = (formPageId: number) => {
-    if (mappingPollingRef.current[formPageId]) {
-      clearInterval(mappingPollingRef.current[formPageId])
-      delete mappingPollingRef.current[formPageId]
-    }
+    }, 3000)
   }
   
   // Cleanup mapping polling on unmount
   useEffect(() => {
     return () => {
-      Object.keys(mappingPollingRef.current).forEach(key => {
-        clearInterval(mappingPollingRef.current[parseInt(key)])
+      Object.values(mappingPollingRef.current).forEach(interval => {
+        clearInterval(interval)
       })
     }
   }, [])
 
-  const qaNetworks = networks.filter(n => n.network_type?.toLowerCase() === 'qa')
+  const qaNetworks = networks.filter(n => n.network_type === 'qa')
 
   const getOverallStats = () => {
     const runningCount = discoveryQueue.filter(q => q.status === 'running').length
@@ -695,12 +666,11 @@ export default function DashboardPage() {
     return colors[type] || { bg: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: 'rgba(255,255,255,0.1)' }
   }
 
-  const openEditPanel = (formPage: FormPage) => {
+  const openEditModal = (formPage: FormPage) => {
     setEditingFormPage(formPage)
     setEditFormName(formPage.form_name)
     setEditNavigationSteps(formPage.navigation_steps || [])
-    setExpandedSteps(new Set()) // Collapse all steps initially
-    setShowEditPanel(true)
+    setShowEditModal(true)
   }
 
   const updateNavigationStep = (index: number, field: keyof NavigationStep, value: string) => {
@@ -741,7 +711,7 @@ export default function DashboardPage() {
     setSavingFormPage(true)
     try {
       const response = await fetch(
-        `/api/form-pages/routes/${editingFormPage.id}`,
+        `/api/form-pages/${editingFormPage.id}`,
         {
           method: 'PUT',
           headers: {
@@ -757,7 +727,7 @@ export default function DashboardPage() {
       
       if (response.ok) {
         setMessage('Form page updated successfully!')
-        setShowEditPanel(false)
+        setShowEditModal(false)
         // Reload form pages
         if (activeProjectId) {
           loadFormPages(activeProjectId, token)
@@ -784,7 +754,7 @@ export default function DashboardPage() {
     setDeletingFormPage(true)
     try {
       const response = await fetch(
-        `/api/form-pages/routes/${formPageToDelete.id}`,
+        `/api/form-pages/${formPageToDelete.id}`,
         {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -830,583 +800,121 @@ export default function DashboardPage() {
   const totalNetworks = discoveryQueue.length
   const completedNetworks = stats.completedCount + stats.failedCount + stats.cancelledCount
 
-  // ============ FULL PAGE EDIT VIEW ============
-  if (showEditPanel && editingFormPage) {
-    return (
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {/* CSS Animations */}
-        <style>{`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .step-card:hover {
-            border-color: rgba(99, 102, 241, 0.4) !important;
-          }
-          .expand-btn:hover {
-            background: rgba(99, 102, 241, 0.15) !important;
-          }
-        `}</style>
-
-        {error && (
-          <div style={errorBoxStyle}>
-            <span>❌</span> {error}
-            <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-        {message && (
-          <div style={successBoxStyle}>
-            <span>✅</span> {message}
-            <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-
-        {/* Back Button */}
-        <button
-          onClick={() => setShowEditPanel(false)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: '#94a3b8',
-            padding: '14px 24px',
-            borderRadius: '14px',
-            fontSize: '16px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            marginBottom: '28px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span style={{ fontSize: '20px' }}>←</span>
-          Back to Form Pages
-        </button>
-
-        {/* Edit Form Page Card */}
-        <div style={{
-          background: 'rgba(75, 85, 99, 0.5)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '28px',
-          overflow: 'hidden',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-          animation: 'fadeIn 0.3s ease'
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: '32px 40px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08))'
-          }}>
-            <h1 style={{ margin: 0, fontSize: '32px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
-              <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
-            </h1>
-            <p style={{ margin: '12px 0 0', color: '#94a3b8', fontSize: '18px' }}>
-              Editing: <strong style={{ color: '#fff' }}>{editingFormPage.form_name}</strong>
-            </p>
-          </div>
-
-          {/* Content - Two Column Layout */}
-          <div style={{ display: 'flex', gap: '0' }}>
-            {/* Left Column - Form Info */}
-            <div style={{ 
-              width: '420px', 
-              minWidth: '420px',
-              padding: '36px 40px',
-              borderRight: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(0,0,0,0.1)'
-            }}>
-              {/* Form Name */}
-              <div style={{ marginBottom: '32px' }}>
-                <label style={{ display: 'block', marginBottom: '14px', fontWeight: 600, color: '#e2e8f0', fontSize: '18px' }}>Form Name</label>
-                <input
-                  type="text"
-                  value={editFormName}
-                  onChange={(e) => setEditFormName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '18px 22px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: '14px',
-                    fontSize: '18px',
-                    boxSizing: 'border-box',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: '#fff',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              {/* Hierarchy Info */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '16px',
-                padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)',
-                marginBottom: '28px'
-              }}>
-                <h4 style={{ margin: '0 0 20px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Type:</span>
-                  <span style={{
-                    background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                    color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
-                    padding: '10px 20px',
-                    borderRadius: '10px',
-                    fontSize: '16px',
-                    fontWeight: 600
-                  }}>
-                    {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
-                  </span>
-                </div>
-                {editingFormPage.parent_form_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Parent:</span>
-                    <span style={{ fontSize: '17px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
-                  </div>
-                )}
-                {editingFormPage.children && editingFormPage.children.length > 0 && (
-                  <div style={{ marginTop: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b' }}>Children:</span>
-                    <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                      {editingFormPage.children.map((c, i) => (
-                        <span key={i} style={{
-                          background: 'rgba(245, 158, 11, 0.15)',
-                          color: '#fbbf24',
-                          padding: '8px 16px',
-                          borderRadius: '8px',
-                          fontSize: '15px'
-                        }}>{c.form_name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* URL Info */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '16px',
-                padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)'
-              }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
-                <div style={{ fontSize: '15px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
-                  {editingFormPage.url}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Steps */}
-            <div style={{ flex: 1, padding: '36px 40px', minWidth: 0 }}>
-              {/* AI-Discovered Path Banner */}
-              <div style={{
-                display: 'flex',
-                gap: '20px',
-                background: 'rgba(0, 187, 249, 0.1)',
-                border: '1px solid rgba(0, 187, 249, 0.2)',
-                padding: '26px 30px',
-                borderRadius: '18px',
-                marginBottom: '32px',
-                alignItems: 'flex-start'
-              }}>
-                <div style={{ fontSize: '36px' }}>💡</div>
-                <div>
-                  <strong style={{ fontSize: '20px', color: '#00BBF9' }}>AI-Discovered Path</strong>
-                  <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8', lineHeight: 1.5 }}>
-                    This navigation path was automatically discovered by AI. Click on a step to expand and edit it.
-                  </p>
-                </div>
-              </div>
-
-              {/* Path Steps Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 600 }}>
-                  Path Steps ({editNavigationSteps.length})
-                </h3>
-                <button onClick={addStepAtEnd} style={{
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  color: '#818cf8',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
-                  padding: '14px 22px',
-                  borderRadius: '12px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  ＋ Add Step
-                </button>
-              </div>
-
-              {/* Steps List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {editNavigationSteps.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '60px 30px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '18px', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                    <p style={{ fontSize: '18px', marginBottom: '24px' }}>No path steps defined.</p>
-                    <button onClick={addStepAtEnd} style={{
-                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: '#fff',
-                      border: 'none',
-                      padding: '16px 28px',
-                      borderRadius: '14px',
-                      fontSize: '17px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}>＋ Add First Step</button>
-                  </div>
-                ) : (
-                  editNavigationSteps.map((step, index) => (
-                    <div 
-                      key={index} 
-                      className="step-card"
-                      style={{
-                        background: expandedSteps.has(index) ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)',
-                        border: expandedSteps.has(index) ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: '16px',
-                        overflow: 'hidden',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      {/* Step Header - Always Visible */}
-                      <div 
-                        onClick={() => toggleStepExpansion(index)}
-                        className="expand-btn"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '18px',
-                          padding: '20px 24px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <div style={{
-                          width: '44px',
-                          height: '44px',
-                          borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                          color: '#fff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '18px',
-                          fontWeight: 700,
-                          flexShrink: 0
-                        }}>{index + 1}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
-                            {step.description || `Step ${index + 1}`}
-                          </div>
-                          <div style={{ fontSize: '15px', color: '#64748b' }}>
-                            {step.action || 'click'} • {step.selector ? (step.selector.length > 50 ? step.selector.substring(0, 50) + '...' : step.selector) : 'No selector'}
-                          </div>
-                        </div>
-                        <span style={{ 
-                          fontSize: '22px', 
-                          color: '#64748b',
-                          transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease'
-                        }}>▼</span>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {expandedSteps.has(index) && (
-                        <div style={{ padding: '0 24px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', padding: '16px 0' }}>
-                            <button 
-                              onClick={() => addStepAfter(index)} 
-                              style={{
-                                background: 'rgba(99, 102, 241, 0.15)',
-                                border: '1px solid rgba(99, 102, 241, 0.3)',
-                                color: '#818cf8',
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Insert After</button>
-                            <button 
-                              onClick={() => confirmDeleteStep(index)} 
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.15)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                color: '#f87171',
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Delete</button>
-                          </div>
-                          <div style={{ display: 'flex', gap: '18px', marginBottom: '18px' }}>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Action</label>
-                              <input
-                                type="text"
-                                value={step.action || ''}
-                                disabled
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.08)',
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  color: '#64748b',
-                                  cursor: 'not-allowed'
-                                }}
-                              />
-                            </div>
-                            <div style={{ flex: 2 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Description</label>
-                              <input
-                                type="text"
-                                value={step.description || ''}
-                                onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.12)',
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.05)',
-                                  color: '#fff',
-                                  outline: 'none'
-                                }}
-                                placeholder="Describe this action"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Selector (Locator)</label>
-                            <input
-                              type="text"
-                              value={step.selector || ''}
-                              onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '16px 20px',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                borderRadius: '12px',
-                                fontSize: '16px',
-                                boxSizing: 'border-box',
-                                background: 'rgba(255,255,255,0.05)',
-                                color: '#fff',
-                                outline: 'none'
-                              }}
-                              placeholder="CSS selector or XPath"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div style={{
-            padding: '28px 44px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(0,0,0,0.2)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '18px'
-          }}>
-            <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
-              Cancel
-            </button>
-            <button 
-              onClick={saveFormPage} 
-              style={primaryButtonStyle}
-              disabled={savingFormPage}
-            >
-              {savingFormPage ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </div>
-
-        {/* Delete Step Confirmation Modal */}
-        {showDeleteStepConfirm && (
-          <div style={modalOverlayStyle}>
-            <div style={smallModalContentStyle}>
-              <h3 style={{ marginTop: 0, color: '#ef4444', fontSize: '20px', fontWeight: 700 }}>
-                <span style={{ marginRight: '8px' }}>⚠️</span>Delete Step?
-              </h3>
-              <p style={{ fontSize: '15px', color: '#e2e8f0', margin: '16px 0' }}>
-                Are you sure you want to delete <strong style={{ color: '#fff' }}>Step {(stepToDeleteIndex || 0) + 1}</strong>?
-              </p>
-              <p style={{ fontSize: '14px', color: '#94a3b8', margin: '0 0 24px' }}>This action cannot be undone.</p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button onClick={() => { setShowDeleteStepConfirm(false); setStepToDeleteIndex(null) }} style={secondaryButtonStyle}>
-                  Cancel
-                </button>
-                <button onClick={deleteStep} style={dangerButtonStyle}>
-                  Delete Step
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ============ MAIN DISCOVERY PAGE ============
   return (
     <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
-        {/* CSS Animations */}
-        <style>{`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.05); }
-          }
-          @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-          }
-          .network-card:hover {
-            border-color: rgba(99, 102, 241, 0.5) !important;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15) !important;
-          }
-          .table-row:hover {
-            background: rgba(99, 102, 241, 0.08) !important;
-          }
-          .action-btn:hover {
-            transform: scale(1.1);
-            background: rgba(99, 102, 241, 0.2) !important;
-          }
-        `}</style>
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.05); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        .network-card:hover {
+          border-color: rgba(99, 102, 241, 0.5) !important;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15) !important;
+        }
+        .table-row:hover {
+          background: rgba(99, 102, 241, 0.08) !important;
+        }
+        .action-btn:hover {
+          transform: scale(1.1);
+          background: rgba(99, 102, 241, 0.2) !important;
+        }
+      `}</style>
 
-        {error && (
-          <div style={errorBoxStyle}>
-            <span>❌</span> {error}
-            <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-        {message && (
-          <div style={successBoxStyle}>
-            <span>✅</span> {message}
-            <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
+      {error && (
+        <div style={errorBoxStyle}>
+          <span>❌</span> {error}
+          <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
+        </div>
+      )}
+      {message && (
+        <div style={successBoxStyle}>
+          <span>✅</span> {message}
+          <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
+        </div>
+      )}
 
-        {/* Form Pages Discovery Section - Collapsible */}
-        <div style={cardStyle}>
-          {/* Clickable Header to expand/collapse */}
-          <div 
-            onClick={() => !isDiscovering && setIsDiscoveryExpanded(!isDiscoveryExpanded)}
-            style={{
-            ...discoveryHeaderStyle,
-            cursor: isDiscovering ? 'default' : 'pointer',
-            marginBottom: isDiscoveryExpanded ? '28px' : 0
-          }}
-        >
+      {/* Form Pages Discovery Section */}
+      <div style={cardStyle}>
+        {/* Header */}
+        <div style={discoveryHeaderStyle}>
           <div style={discoveryIconStyle}>
             <span>🔍</span>
           </div>
           <div style={{ flex: 1 }}>
             <h1 style={discoveryTitleStyle}>Form Pages Discovery</h1>
             <p style={discoverySubtitleStyle}>
-              {isDiscoveryExpanded 
-                ? 'Automatically discover all form pages in your web application using AI-powered crawling'
-                : `Click to ${formPages.length > 0 ? 'start a new discovery' : 'begin discovering form pages'}`}
+              Automatically discover all form pages in your web application using AI-powered crawling
             </p>
           </div>
-          {isDiscovering ? (
+          {isDiscovering && (
             <div style={discoveringBadgeStyle}>
               <div style={pulsingDotStyle} />
               <span>Discovery in Progress</span>
             </div>
-          ) : (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '14px 24px',
-              background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.15)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              borderRadius: '14px',
-              fontSize: '16px',
-              fontWeight: 600,
-              color: '#fff',
-              boxShadow: isDiscoveryExpanded ? 'none' : '0 4px 20px rgba(99, 102, 241, 0.3)',
-              border: isDiscoveryExpanded ? '1px solid rgba(239, 68, 68, 0.3)' : 'none'
-            }}>
-              <span style={{ fontSize: '18px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
-              {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
-            </div>
           )}
         </div>
 
-        {/* Collapsible Content */}
-        {(isDiscoveryExpanded || isDiscovering) && (
-          networks.length === 0 ? (
-            <div style={emptyStateStyle}>
-              <div style={{ fontSize: '64px', marginBottom: '24px' }}>🌐</div>
-              <h3 style={{ margin: '0 0 16px', fontSize: '26px', color: '#fff', fontWeight: 600 }}>No Networks Found</h3>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '18px' }}>
-                Open the <strong style={{ color: '#fff' }}>Test Sites</strong> tab from the sidebar to add your first test site.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Network Selection */}
-              <div style={sectionStyle}>
-                <div style={sectionHeaderStyle}>
-                  <div>
-                    <h3 style={sectionTitleStyle}>Select Test Sites</h3>
-                    <p style={sectionSubtitleStyle}>Select QA environment test sites to discover form pages</p>
-                  </div>
-                  <button 
-                    onClick={selectAllNetworks} 
-                    style={selectAllBtnStyle}
-                    disabled={isDiscovering}
-                  >
-                    {selectedNetworkIds.length === qaNetworks.length ? '✓ All Selected' : 'Select All'}
-                  </button>
+        {networks.length === 0 ? (
+          <div style={emptyStateStyle}>
+            <div style={{ fontSize: '56px', marginBottom: '20px' }}>🌐</div>
+            <h3 style={{ margin: '0 0 12px', fontSize: '22px', color: '#fff', fontWeight: 600 }}>No Networks Found</h3>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '16px' }}>
+              Open the <strong style={{ color: '#fff' }}>Test Sites</strong> tab from the sidebar to add your first test site.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Network Selection */}
+            <div style={sectionStyle}>
+              <div style={sectionHeaderStyle}>
+                <div>
+                  <h3 style={sectionTitleStyle}>Select Test Sites</h3>
+                  <p style={sectionSubtitleStyle}>Select QA environment test sites to discover form pages</p>
                 </div>
+                <button 
+                  onClick={selectAllNetworks} 
+                  style={selectAllBtnStyle}
+                  disabled={isDiscovering}
+                >
+                  {selectedNetworkIds.length === qaNetworks.length ? '✓ All Selected' : 'Select All'}
+                </button>
+              </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {qaNetworks.map(network => {
-                    const colors = getNetworkTypeColors(network.network_type)
-                    const isSelected = selectedNetworkIds.includes(network.id)
-                    const queueItem = discoveryQueue.find(q => q.networkId === network.id)
-                    
-                    return (
-                      <div 
-                        key={network.id}
-                        onClick={() => !isDiscovering && toggleNetworkSelection(network.id)}
-                        className="network-card"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '18px',
-                          padding: '20px 26px',
-                          border: isSelected ? '2px solid rgba(99, 102, 241, 0.5)' : '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '16px',
-                          background: isSelected 
-                            ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))'
-                            : 'rgba(255,255,255,0.02)',
-                          cursor: isDiscovering ? 'not-allowed' : 'pointer',
-                          opacity: isDiscovering ? 0.7 : 1,
-                          transition: 'all 0.25s ease',
-                          boxShadow: isSelected ? '0 4px 20px rgba(99, 102, 241, 0.1)' : 'none'
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {qaNetworks.map(network => {
+                  const colors = getNetworkTypeColors(network.network_type)
+                  const isSelected = selectedNetworkIds.includes(network.id)
+                  const queueItem = discoveryQueue.find(q => q.networkId === network.id)
+                  
+                  return (
+                    <div 
+                      key={network.id}
+                      onClick={() => !isDiscovering && toggleNetworkSelection(network.id)}
+                      className="network-card"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        padding: '18px 22px',
+                        border: isSelected ? '2px solid rgba(99, 102, 241, 0.5)' : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '14px',
+                        background: isSelected 
+                          ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))'
+                          : 'rgba(255,255,255,0.02)',
+                        cursor: isDiscovering ? 'not-allowed' : 'pointer',
+                        opacity: isDiscovering ? 0.7 : 1,
+                        transition: 'all 0.25s ease',
+                        boxShadow: isSelected ? '0 4px 20px rgba(99, 102, 241, 0.1)' : 'none'
                       }}
                     >
                       <div style={{
@@ -1491,7 +999,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Action - Centered */}
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0 8px' }}>
               {isDiscovering ? (
                 <button
                   onClick={stopDiscovery}
@@ -1514,18 +1022,17 @@ export default function DashboardPage() {
               )}
             </div>
           </>
-          )
         )}
       </div>
 
       {/* Discovery Status */}
       {discoveryQueue.length > 0 && (
-        <div style={{ ...cardStyle, marginTop: '32px' }}>
-          <h2 style={{ marginTop: 0, fontSize: '26px', color: '#fff', fontWeight: 700, marginBottom: '28px', letterSpacing: '-0.5px' }}>
-            <span style={{ marginRight: '14px' }}>📊</span> Discovery Progress
+        <div style={{ ...cardStyle, marginTop: '28px' }}>
+          <h2 style={{ marginTop: 0, fontSize: '20px', color: '#fff', fontWeight: 700, marginBottom: '24px' }}>
+            <span style={{ marginRight: '10px' }}>📊</span> Discovery Progress
           </h2>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
             <div style={statBoxStyle}>
               <div style={statLabelStyle}>Test Sites</div>
               <div style={statValueStyle}>{completedNetworks} / {totalNetworks}</div>
@@ -1536,7 +1043,7 @@ export default function DashboardPage() {
             </div>
             <div style={statBoxStyle}>
               <div style={statLabelStyle}>Current</div>
-              <div style={{ ...statValueStyle, fontSize: '18px', color: stats.runningCount > 0 ? '#f59e0b' : '#64748b' }}>
+              <div style={{ ...statValueStyle, fontSize: '15px', color: stats.runningCount > 0 ? '#f59e0b' : '#64748b' }}>
                 {stats.runningCount > 0 
                   ? discoveryQueue.find(q => q.status === 'running')?.networkName || '-'
                   : 'None'}
@@ -1546,7 +1053,7 @@ export default function DashboardPage() {
               <div style={statLabelStyle}>Status</div>
               <div style={{ 
                 ...statValueStyle, 
-                fontSize: '17px',
+                fontSize: '14px',
                 color: isDiscovering ? '#f59e0b' : 
                        stats.cancelledCount > 0 ? '#f59e0b' :
                        stats.failedCount > 0 ? '#ef4444' : '#10b981'
@@ -1642,28 +1149,26 @@ export default function DashboardPage() {
       )}
 
       {/* Form Pages Table */}
-      <div style={{ ...cardStyle, marginTop: '32px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      <div style={{ ...cardStyle, marginTop: '28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '28px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
-              <span style={{ marginRight: '14px' }}>📋</span>Discovered Form Pages
-            </h2>
-            <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8' }}>{formPages.length} forms found in this project</p>
+            <h2 style={{ margin: 0, fontSize: '20px', color: '#fff', fontWeight: 700 }}>Discovered Form Pages</h2>
+            <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#94a3b8' }}>{formPages.length} forms found in this project</p>
           </div>
           {formPages.length > 10 && (
-            <span style={{ fontSize: '15px', color: '#64748b', background: 'rgba(255,255,255,0.05)', padding: '12px 20px', borderRadius: '24px' }}>
+            <span style={{ fontSize: '13px', color: '#64748b', background: 'rgba(255,255,255,0.05)', padding: '8px 16px', borderRadius: '20px' }}>
               Showing {formPages.length} forms
             </span>
           )}
         </div>
         
         {loadingFormPages ? (
-          <p style={{ color: '#94a3b8', marginTop: '24px', fontSize: '17px' }}>Loading form pages...</p>
+          <p style={{ color: '#94a3b8', marginTop: '20px', fontSize: '15px' }}>Loading form pages...</p>
         ) : formPages.length === 0 ? (
           <div style={emptyStateStyle}>
-            <div style={{ fontSize: '64px', marginBottom: '24px' }}>📋</div>
-            <p style={{ margin: 0, fontSize: '20px', color: '#fff', fontWeight: 500 }}>No form pages discovered yet</p>
-            <p style={{ margin: '14px 0 0', fontSize: '17px', color: '#94a3b8' }}>Expand the discovery section above and start a discovery to find form pages</p>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
+            <p style={{ margin: 0, fontSize: '16px', color: '#fff', fontWeight: 500 }}>No form pages discovered yet</p>
+            <p style={{ margin: '10px 0 0', fontSize: '14px', color: '#94a3b8' }}>Select networks above and start a discovery to find form pages</p>
           </div>
         ) : (
           <div style={tableContainerStyle}>
@@ -1721,12 +1226,12 @@ export default function DashboardPage() {
                     key={form.id} 
                     className="table-row"
                     style={tableRowStyle}
-                    onDoubleClick={() => openEditPanel(form)}
+                    onDoubleClick={() => openEditModal(form)}
                   >
                     <td style={tdStyle}>
-                      <strong style={{ fontSize: '18px', color: '#fff' }}>{form.form_name}</strong>
+                      <strong style={{ fontSize: '15px', color: '#fff' }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: '#64748b', marginTop: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
@@ -1740,9 +1245,9 @@ export default function DashboardPage() {
                       <span style={{
                         background: form.is_root ? 'rgba(99, 102, 241, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                         color: form.is_root ? '#818cf8' : '#fbbf24',
-                        padding: '10px 18px',
+                        padding: '8px 14px',
                         borderRadius: '20px',
-                        fontSize: '15px',
+                        fontSize: '13px',
                         fontWeight: 600,
                         border: form.is_root ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
                       }}>
@@ -1750,10 +1255,10 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td style={tdStyle}>
-                      <div style={{ fontSize: '16px', color: '#e2e8f0' }}>
+                      <div style={{ fontSize: '14px', color: '#e2e8f0' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
@@ -1762,11 +1267,11 @@ export default function DashboardPage() {
                         {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(245, 158, 11, 0.15)',
                             color: '#f59e0b',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(245, 158, 11, 0.3)'
                           }}>
@@ -1774,11 +1279,11 @@ export default function DashboardPage() {
                           </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(16, 185, 129, 0.15)',
                             color: '#10b981',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(16, 185, 129, 0.3)'
                           }}>
@@ -1804,7 +1309,7 @@ export default function DashboardPage() {
                           </button>
                         )}
                         <button 
-                          onClick={() => openEditPanel(form)} 
+                          onClick={() => openEditModal(form)} 
                           className="action-btn"
                           style={actionButtonStyle}
                           title="Edit form page"
@@ -1828,6 +1333,204 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Form Page Modal */}
+      {showEditModal && editingFormPage && (
+        <div style={modalOverlayStyle}>
+          <div style={largeModalContentStyle}>
+            <div style={modalHeaderStyle}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 700 }}>
+                  <span style={{ marginRight: '10px' }}>✏️</span>Edit Form Page
+                </h2>
+                <p style={{ margin: '8px 0 0', color: '#94a3b8', fontSize: '14px' }}>
+                  Editing: <strong style={{ color: '#fff' }}>{editingFormPage.form_name}</strong>
+                </p>
+              </div>
+              <button onClick={() => setShowEditModal(false)} style={modalCloseButtonStyle}>×</button>
+            </div>
+
+            <div style={prominentNoteStyle}>
+              <div style={{ fontSize: '28px' }}>💡</div>
+              <div>
+                <strong style={{ fontSize: '16px', color: '#00BBF9' }}>AI-Discovered Path</strong>
+                <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#94a3b8' }}>
+                  This navigation path was automatically discovered by AI. You can modify the steps below if the path needs adjustment.
+                </p>
+              </div>
+            </div>
+
+            <div style={modalBodyStyle}>
+              <div style={modalLeftColumnStyle}>
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={modalLabelStyle}>Form Name</label>
+                  <input
+                    type="text"
+                    value={editFormName}
+                    onChange={(e) => setEditFormName(e.target.value)}
+                    style={modalInputStyle}
+                  />
+                </div>
+
+                <div style={infoSectionStyle}>
+                  <h4 style={{ margin: '0 0 16px', fontSize: '14px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>Hierarchy</h4>
+                  <div style={infoRowStyle}>
+                    <span style={infoLabelStyle}>Type:</span>
+                    <span style={{
+                      background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                      color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600
+                    }}>
+                      {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
+                    </span>
+                  </div>
+                  {editingFormPage.parent_form_name && (
+                    <div style={infoRowStyle}>
+                      <span style={infoLabelStyle}>Parent:</span>
+                      <span style={{ fontSize: '14px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
+                    </div>
+                  )}
+                  {editingFormPage.children && editingFormPage.children.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <span style={infoLabelStyle}>Children:</span>
+                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {editingFormPage.children.map((c, i) => (
+                          <span key={i} style={childBadgeStyle}>{c.form_name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={infoSectionStyle}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>URL</h4>
+                  <div style={{ fontSize: '13px', color: '#64748b', wordBreak: 'break-all' }}>
+                    {editingFormPage.url}
+                  </div>
+                </div>
+              </div>
+
+              <div style={modalRightColumnStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', color: '#fff', fontWeight: 600 }}>Path Steps ({editNavigationSteps.length})</h3>
+                  <button onClick={addStepAtEnd} style={addStepButtonStyle}>
+                    ＋ Add Step
+                  </button>
+                </div>
+
+                <div style={pathStepsScrollContainerStyle}>
+                  {editNavigationSteps.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                      <p style={{ fontSize: '15px', marginBottom: '16px' }}>No path steps defined.</p>
+                      <button onClick={addStepAtEnd} style={addStepButtonStyle}>＋ Add First Step</button>
+                    </div>
+                  ) : (
+                    editNavigationSteps.map((step, index) => (
+                      <div key={index} style={pathStepCardStyle}>
+                        <div style={stepHeaderStyle}>
+                          <div style={stepNumberBadgeStyle}>{index + 1}</div>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontWeight: 600, fontSize: '14px', color: '#fff' }}>Step {index + 1}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                              onClick={() => addStepAfter(index)} 
+                              style={stepActionButtonStyle}
+                              title="Add step after this"
+                            >
+                              ➕
+                            </button>
+                            <button 
+                              onClick={() => confirmDeleteStep(index)} 
+                              style={{ ...stepActionButtonStyle, color: '#ef4444' }}
+                              title="Delete this step"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={stepFieldsStyle}>
+                          <div style={stepFieldRowStyle}>
+                            <div style={{ flex: 1 }}>
+                              <label style={stepFieldLabelStyle}>Action</label>
+                              <input
+                                type="text"
+                                value={step.action || ''}
+                                disabled
+                                style={{ ...stepFieldInputStyle, background: 'rgba(255,255,255,0.02)', color: '#64748b', cursor: 'not-allowed' }}
+                              />
+                            </div>
+                            <div style={{ flex: 2 }}>
+                              <label style={stepFieldLabelStyle}>Description</label>
+                              <input
+                                type="text"
+                                value={step.description || ''}
+                                onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
+                                style={stepFieldInputStyle}
+                                placeholder="Describe this action"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={stepFieldLabelStyle}>Selector (Locator)</label>
+                            <input
+                              type="text"
+                              value={step.selector || ''}
+                              onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
+                              style={stepFieldInputStyle}
+                              placeholder="CSS selector or XPath"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={modalFooterStyle}>
+              <button onClick={() => setShowEditModal(false)} style={secondaryButtonStyle}>
+                Cancel
+              </button>
+              <button 
+                onClick={saveFormPage} 
+                style={primaryButtonStyle}
+                disabled={savingFormPage}
+              >
+                {savingFormPage ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Step Confirmation */}
+      {showDeleteStepConfirm && (
+        <div style={modalOverlayStyle}>
+          <div style={smallModalContentStyle}>
+            <h3 style={{ marginTop: 0, color: '#ef4444', fontSize: '20px', fontWeight: 700 }}>
+              <span style={{ marginRight: '8px' }}>⚠️</span>Delete Step?
+            </h3>
+            <p style={{ fontSize: '15px', color: '#e2e8f0', margin: '16px 0' }}>
+              Are you sure you want to delete <strong style={{ color: '#fff' }}>Step {(stepToDeleteIndex || 0) + 1}</strong>?
+            </p>
+            <p style={{ fontSize: '14px', color: '#94a3b8', margin: '0 0 24px' }}>This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowDeleteStepConfirm(false); setStepToDeleteIndex(null) }} style={secondaryButtonStyle}>
+                Cancel
+              </button>
+              <button onClick={deleteStep} style={dangerButtonStyle}>
+                Delete Step
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Form Page Modal */}
       {showDeleteModal && formPageToDelete && (
@@ -1877,40 +1580,40 @@ export default function DashboardPage() {
 // ==================== STYLES ====================
 
 const welcomeCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(30, 41, 59, 0.5)',
   backdropFilter: 'blur(20px)',
-  borderRadius: '28px',
-  padding: '80px',
+  borderRadius: '24px',
+  padding: '60px',
   textAlign: 'center',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  border: '1px solid rgba(255,255,255,0.05)',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(30, 41, 59, 0.5)',
   backdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '28px',
-  padding: '36px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  border: '1px solid rgba(255,255,255,0.05)',
+  borderRadius: '24px',
+  padding: '32px',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
 }
 
 const discoveryHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '24px',
-  padding: '26px 32px',
+  gap: '18px',
+  padding: '20px 24px',
   background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))',
   border: '1px solid rgba(99, 102, 241, 0.2)',
-  borderRadius: '20px',
-  marginBottom: '0'
+  borderRadius: '16px',
+  marginBottom: '28px'
 }
 
 const discoveryIconStyle: React.CSSProperties = {
-  fontSize: '36px',
+  fontSize: '28px',
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-  borderRadius: '18px',
-  padding: '18px',
+  borderRadius: '14px',
+  padding: '14px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1919,90 +1622,87 @@ const discoveryIconStyle: React.CSSProperties = {
 
 const discoveryTitleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: '32px',
+  fontSize: '22px',
   fontWeight: 700,
-  color: '#fff',
-  letterSpacing: '-0.5px'
+  color: '#fff'
 }
 
 const discoverySubtitleStyle: React.CSSProperties = {
-  margin: '10px 0 0',
-  fontSize: '18px',
-  color: '#94a3b8',
-  lineHeight: 1.5
+  margin: '6px 0 0',
+  fontSize: '14px',
+  color: '#94a3b8'
 }
 
 const discoveringBadgeStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '16px',
+  gap: '12px',
   background: 'rgba(16, 185, 129, 0.15)',
   border: '1px solid rgba(16, 185, 129, 0.3)',
-  padding: '16px 28px',
+  padding: '12px 20px',
   borderRadius: '30px',
-  fontSize: '17px',
+  fontSize: '14px',
   fontWeight: 600,
   color: '#10b981'
 }
 
 const pulsingDotStyle: React.CSSProperties = {
-  width: '14px',
-  height: '14px',
+  width: '10px',
+  height: '10px',
   borderRadius: '50%',
   background: '#10b981',
-  boxShadow: '0 0 14px rgba(16, 185, 129, 0.6)',
+  boxShadow: '0 0 12px rgba(16, 185, 129, 0.6)',
   animation: 'pulse 1.5s infinite'
 }
 
 const emptyStateStyle: React.CSSProperties = {
   textAlign: 'center',
-  padding: '100px 60px',
+  padding: '60px 40px',
   background: 'rgba(255,255,255,0.02)',
-  borderRadius: '24px',
+  borderRadius: '20px',
   border: '2px dashed rgba(255,255,255,0.1)'
 }
 
 const sectionStyle: React.CSSProperties = {
-  marginBottom: '12px'
+  marginBottom: '8px'
 }
 
 const sectionHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: '28px'
+  marginBottom: '20px'
 }
 
 const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: '26px',
+  fontSize: '18px',
   fontWeight: 700,
-  color: '#fff',
-  letterSpacing: '-0.5px'
+  color: '#fff'
 }
 
 const sectionSubtitleStyle: React.CSSProperties = {
-  margin: '10px 0 0',
-  fontSize: '18px',
+  margin: '6px 0 0',
+  fontSize: '14px',
   color: '#94a3b8'
 }
 
 const selectAllBtnStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#e2e8f0',
-  border: '1px solid rgba(255,255,255,0.12)',
-  padding: '16px 28px',
-  borderRadius: '14px',
-  fontSize: '17px',
+  border: '1px solid rgba(255,255,255,0.1)',
+  padding: '12px 22px',
+  borderRadius: '12px',
+  fontSize: '14px',
   fontWeight: 600,
   cursor: 'pointer',
   transition: 'all 0.2s ease'
 }
 
 const networkCheckboxStyle: React.CSSProperties = {
-  width: '28px',
-  height: '28px',
-  borderRadius: '10px',
+  width: '24px',
+  height: '24px',
+  borderRadius: '8px',
   border: '2px solid rgba(255,255,255,0.2)',
   display: 'flex',
   alignItems: 'center',
@@ -2014,35 +1714,35 @@ const networkCheckboxStyle: React.CSSProperties = {
 const selectedCountStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '14px',
-  marginTop: '24px',
-  fontSize: '17px'
+  gap: '12px',
+  marginTop: '20px',
+  fontSize: '15px'
 }
 
 const selectedCountBadgeStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
-  width: '36px',
-  height: '36px',
+  width: '32px',
+  height: '32px',
   borderRadius: '50%',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontWeight: 700,
-  fontSize: '16px',
+  fontSize: '14px',
   boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
 }
 
 const startDiscoveryBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '14px',
+  gap: '12px',
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
   border: 'none',
-  padding: '18px 48px',
-  borderRadius: '16px',
-  fontSize: '18px',
+  padding: '16px 40px',
+  borderRadius: '14px',
+  fontSize: '16px',
   fontWeight: 700,
   cursor: 'pointer',
   boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
@@ -2052,13 +1752,13 @@ const startDiscoveryBtnStyle: React.CSSProperties = {
 const stopDiscoveryBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '14px',
+  gap: '12px',
   background: 'linear-gradient(135deg, #ef4444, #dc2626)',
   color: '#fff',
   border: 'none',
-  padding: '18px 48px',
-  borderRadius: '16px',
-  fontSize: '18px',
+  padding: '16px 40px',
+  borderRadius: '14px',
+  fontSize: '16px',
   fontWeight: 700,
   cursor: 'pointer',
   boxShadow: '0 4px 20px rgba(239, 68, 68, 0.4)',
@@ -2066,11 +1766,11 @@ const stopDiscoveryBtnStyle: React.CSSProperties = {
 }
 
 const tableContainerStyle: React.CSSProperties = {
-  maxHeight: '700px',
+  maxHeight: '600px',
   overflowY: 'auto',
   background: 'rgba(255,255,255,0.02)',
-  borderRadius: '20px',
-  border: '1px solid rgba(255,255,255,0.08)'
+  borderRadius: '16px',
+  border: '1px solid rgba(255,255,255,0.05)'
 }
 
 const tableStyle: React.CSSProperties = {
@@ -2080,7 +1780,7 @@ const tableStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
-  padding: '24px 32px',
+  padding: '16px 20px',
   borderBottom: '1px solid rgba(255,255,255,0.1)',
   fontWeight: 600,
   color: '#94a3b8',
@@ -2088,9 +1788,9 @@ const thStyle: React.CSSProperties = {
   position: 'sticky',
   top: 0,
   zIndex: 1,
-  fontSize: '14px',
+  fontSize: '12px',
   textTransform: 'uppercase',
-  letterSpacing: '1.5px'
+  letterSpacing: '1px'
 }
 
 const tableRowStyle: React.CSSProperties = {
@@ -2100,19 +1800,19 @@ const tableRowStyle: React.CSSProperties = {
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '28px 32px',
+  padding: '18px 20px',
   borderBottom: '1px solid rgba(255,255,255,0.05)',
   verticalAlign: 'middle',
-  fontSize: '18px',
+  fontSize: '14px',
   color: '#e2e8f0'
 }
 
 const pathStepsBadgeStyle: React.CSSProperties = {
   background: 'rgba(99, 102, 241, 0.15)',
   color: '#818cf8',
-  padding: '12px 24px',
-  borderRadius: '24px',
-  fontSize: '16px',
+  padding: '8px 14px',
+  borderRadius: '20px',
+  fontSize: '13px',
   fontWeight: 600,
   border: '1px solid rgba(99, 102, 241, 0.3)'
 }
@@ -2120,32 +1820,32 @@ const pathStepsBadgeStyle: React.CSSProperties = {
 const actionButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  padding: '16px 18px',
+  borderRadius: '10px',
+  padding: '10px 12px',
   cursor: 'pointer',
-  fontSize: '20px',
+  fontSize: '14px',
   transition: 'all 0.2s ease'
 }
 
 const statBoxStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.03)',
-  padding: '30px',
-  borderRadius: '20px',
+  padding: '20px',
+  borderRadius: '16px',
   textAlign: 'center',
-  border: '1px solid rgba(255,255,255,0.08)'
+  border: '1px solid rgba(255,255,255,0.05)'
 }
 
 const statLabelStyle: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '11px',
   color: '#64748b',
-  marginBottom: '12px',
+  marginBottom: '8px',
   textTransform: 'uppercase',
-  letterSpacing: '1.5px',
+  letterSpacing: '1px',
   fontWeight: 600
 }
 
 const statValueStyle: React.CSSProperties = {
-  fontSize: '36px',
+  fontSize: '24px',
   fontWeight: 700,
   color: '#fff'
 }
@@ -2153,36 +1853,36 @@ const statValueStyle: React.CSSProperties = {
 const errorBoxStyle: React.CSSProperties = {
   background: 'rgba(239, 68, 68, 0.15)',
   color: '#fca5a5',
-  padding: '20px 28px',
-  borderRadius: '18px',
-  marginBottom: '28px',
+  padding: '16px 20px',
+  borderRadius: '14px',
+  marginBottom: '24px',
   display: 'flex',
   alignItems: 'center',
-  gap: '16px',
-  fontSize: '17px',
+  gap: '12px',
+  fontSize: '14px',
   border: '1px solid rgba(239, 68, 68, 0.3)'
 }
 
 const successBoxStyle: React.CSSProperties = {
   background: 'rgba(16, 185, 129, 0.15)',
   color: '#6ee7b7',
-  padding: '18px 24px',
-  borderRadius: '16px',
-  marginBottom: '28px',
+  padding: '16px 20px',
+  borderRadius: '14px',
+  marginBottom: '24px',
   display: 'flex',
   alignItems: 'center',
-  gap: '14px',
-  fontSize: '16px',
+  gap: '12px',
+  fontSize: '14px',
   border: '1px solid rgba(16, 185, 129, 0.3)'
 }
 
 const closeButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.1)',
   border: 'none',
-  fontSize: '20px',
+  fontSize: '18px',
   cursor: 'pointer',
-  padding: '6px 12px',
-  borderRadius: '8px',
+  padding: '4px 10px',
+  borderRadius: '6px',
   marginLeft: 'auto',
   color: 'inherit',
   transition: 'all 0.2s ease'
@@ -2191,10 +1891,10 @@ const closeButtonStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: 'white',
-  padding: '16px 32px',
+  padding: '14px 28px',
   border: 'none',
-  borderRadius: '14px',
-  fontSize: '17px',
+  borderRadius: '12px',
+  fontSize: '15px',
   fontWeight: 600,
   cursor: 'pointer',
   boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
@@ -2204,10 +1904,10 @@ const primaryButtonStyle: React.CSSProperties = {
 const secondaryButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#e2e8f0',
-  padding: '16px 32px',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: '14px',
-  fontSize: '17px',
+  padding: '14px 28px',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '12px',
+  fontSize: '15px',
   fontWeight: 600,
   cursor: 'pointer',
   transition: 'all 0.2s ease'
@@ -2216,10 +1916,10 @@ const secondaryButtonStyle: React.CSSProperties = {
 const dangerButtonStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #ef4444, #dc2626)',
   color: 'white',
-  padding: '16px 32px',
+  padding: '14px 28px',
   border: 'none',
-  borderRadius: '14px',
-  fontSize: '17px',
+  borderRadius: '12px',
+  fontSize: '15px',
   fontWeight: 600,
   cursor: 'pointer',
   boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
@@ -2232,32 +1932,32 @@ const modalOverlayStyle: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: 'rgba(0, 0, 0, 0.6)',
+  background: 'rgba(0, 0, 0, 0.8)',
   backdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 1000,
-  padding: '24px'
+  padding: '20px'
 }
 
 const largeModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
-  borderRadius: '28px',
+  background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98))',
+  borderRadius: '24px',
   width: '100%',
-  maxWidth: '1200px',
+  maxWidth: '1100px',
   maxHeight: '90vh',
   display: 'flex',
   flexDirection: 'column',
-  boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
-  border: '1px solid rgba(255,255,255,0.12)'
+  boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
+  border: '1px solid rgba(255,255,255,0.1)'
 }
 
 const modalHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'flex-start',
-  padding: '28px 36px',
+  padding: '24px 32px',
   borderBottom: '1px solid rgba(255,255,255,0.05)',
   background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))'
 }
@@ -2265,10 +1965,10 @@ const modalHeaderStyle: React.CSSProperties = {
 const modalCloseButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.1)',
   border: 'none',
-  fontSize: '28px',
+  fontSize: '24px',
   cursor: 'pointer',
-  padding: '12px 18px',
-  borderRadius: '12px',
+  padding: '10px 16px',
+  borderRadius: '10px',
   color: '#94a3b8',
   lineHeight: 1,
   transition: 'all 0.2s ease'
@@ -2276,11 +1976,11 @@ const modalCloseButtonStyle: React.CSSProperties = {
 
 const prominentNoteStyle: React.CSSProperties = {
   display: 'flex',
-  gap: '20px',
+  gap: '18px',
   background: 'rgba(0, 187, 249, 0.1)',
   border: '1px solid rgba(0, 187, 249, 0.2)',
   color: '#94a3b8',
-  padding: '24px 28px',
+  padding: '20px 24px',
   margin: '0',
   alignItems: 'flex-start'
 }
@@ -2292,8 +1992,8 @@ const modalBodyStyle: React.CSSProperties = {
 }
 
 const modalLeftColumnStyle: React.CSSProperties = {
-  width: '360px',
-  padding: '28px',
+  width: '320px',
+  padding: '24px',
   borderRight: '1px solid rgba(255,255,255,0.05)',
   overflowY: 'auto',
   background: 'rgba(255,255,255,0.02)'
@@ -2301,24 +2001,24 @@ const modalLeftColumnStyle: React.CSSProperties = {
 
 const modalRightColumnStyle: React.CSSProperties = {
   flex: 1,
-  padding: '28px',
+  padding: '24px',
   overflowY: 'auto'
 }
 
 const modalLabelStyle: React.CSSProperties = {
   display: 'block',
-  marginBottom: '12px',
+  marginBottom: '10px',
   fontWeight: 600,
   color: '#e2e8f0',
-  fontSize: '16px'
+  fontSize: '14px'
 }
 
 const modalInputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '16px 20px',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: '12px',
-  fontSize: '17px',
+  padding: '14px 16px',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '10px',
+  fontSize: '15px',
   boxSizing: 'border-box',
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
@@ -2326,34 +2026,34 @@ const modalInputStyle: React.CSSProperties = {
 }
 
 const infoSectionStyle: React.CSSProperties = {
-  padding: '22px',
+  padding: '18px',
   background: 'rgba(255,255,255,0.03)',
-  borderRadius: '16px',
-  marginBottom: '20px',
-  border: '1px solid rgba(255,255,255,0.08)'
+  borderRadius: '14px',
+  marginBottom: '16px',
+  border: '1px solid rgba(255,255,255,0.05)'
 }
 
 const infoRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '14px',
-  marginBottom: '14px',
-  fontSize: '16px'
+  gap: '12px',
+  marginBottom: '12px',
+  fontSize: '14px'
 }
 
 const infoLabelStyle: React.CSSProperties = {
   color: '#64748b',
-  minWidth: '70px',
-  fontSize: '15px'
+  minWidth: '60px',
+  fontSize: '13px'
 }
 
 const childBadgeStyle: React.CSSProperties = {
   display: 'inline-block',
   background: 'rgba(255,255,255,0.05)',
   color: '#94a3b8',
-  padding: '8px 14px',
-  borderRadius: '10px',
-  fontSize: '15px',
+  padding: '6px 12px',
+  borderRadius: '8px',
+  fontSize: '13px',
   border: '1px solid rgba(255,255,255,0.1)'
 }
 
@@ -2361,47 +2061,47 @@ const addStepButtonStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
   border: 'none',
-  padding: '12px 22px',
-  borderRadius: '12px',
-  fontSize: '16px',
+  padding: '10px 18px',
+  borderRadius: '10px',
+  fontSize: '14px',
   fontWeight: 600,
   cursor: 'pointer',
   boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
 }
 
 const pathStepsScrollContainerStyle: React.CSSProperties = {
-  maxHeight: 'calc(90vh - 400px)',
+  maxHeight: 'calc(90vh - 380px)',
   overflowY: 'auto',
-  paddingRight: '12px'
+  paddingRight: '10px'
 }
 
 const pathStepCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.03)',
   border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '16px',
-  marginBottom: '16px',
+  borderRadius: '14px',
+  marginBottom: '14px',
   overflow: 'hidden'
 }
 
 const stepHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '16px',
-  padding: '16px 20px',
+  gap: '14px',
+  padding: '14px 18px',
   background: 'rgba(255,255,255,0.03)',
   borderBottom: '1px solid rgba(255,255,255,0.05)'
 }
 
 const stepNumberBadgeStyle: React.CSSProperties = {
-  width: '36px',
-  height: '36px',
+  width: '32px',
+  height: '32px',
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
   borderRadius: '50%',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '16px',
+  fontSize: '14px',
   fontWeight: 700,
   flexShrink: 0,
   boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
@@ -2410,37 +2110,37 @@ const stepNumberBadgeStyle: React.CSSProperties = {
 const stepActionButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   border: '1px solid rgba(255,255,255,0.1)',
-  padding: '10px 12px',
+  padding: '8px 10px',
   cursor: 'pointer',
-  fontSize: '16px',
-  borderRadius: '10px',
+  fontSize: '14px',
+  borderRadius: '8px',
   transition: 'all 0.2s ease'
 }
 
 const stepFieldsStyle: React.CSSProperties = {
-  padding: '20px'
+  padding: '18px'
 }
 
 const stepFieldRowStyle: React.CSSProperties = {
   display: 'flex',
-  gap: '18px',
-  marginBottom: '16px'
+  gap: '16px',
+  marginBottom: '14px'
 }
 
 const stepFieldLabelStyle: React.CSSProperties = {
   display: 'block',
-  marginBottom: '10px',
+  marginBottom: '8px',
   fontWeight: 500,
   color: '#94a3b8',
-  fontSize: '15px'
+  fontSize: '13px'
 }
 
 const stepFieldInputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '14px 16px',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: '12px',
-  fontSize: '16px',
+  padding: '12px 14px',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '10px',
+  fontSize: '14px',
   boxSizing: 'border-box',
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
@@ -2450,36 +2150,36 @@ const stepFieldInputStyle: React.CSSProperties = {
 const modalFooterStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'flex-end',
-  gap: '14px',
-  padding: '24px 36px',
+  gap: '12px',
+  padding: '20px 32px',
   borderTop: '1px solid rgba(255,255,255,0.05)',
   background: 'rgba(255,255,255,0.02)'
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
-  borderRadius: '24px',
-  padding: '40px',
+  background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98))',
+  borderRadius: '20px',
+  padding: '32px',
   width: '100%',
-  maxWidth: '500px',
-  boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
-  border: '1px solid rgba(255,255,255,0.12)'
+  maxWidth: '450px',
+  boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
+  border: '1px solid rgba(255,255,255,0.1)'
 }
 
 const deleteModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
-  borderRadius: '28px',
-  padding: '44px',
+  background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98))',
+  borderRadius: '24px',
+  padding: '36px',
   width: '100%',
-  maxWidth: '560px',
-  boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
-  border: '1px solid rgba(255,255,255,0.12)'
+  maxWidth: '520px',
+  boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
+  border: '1px solid rgba(255,255,255,0.1)'
 }
 
 const deleteWarningBoxStyle: React.CSSProperties = {
   background: 'rgba(0, 187, 249, 0.1)',
   border: '1px solid rgba(0, 187, 249, 0.2)',
-  padding: '24px',
-  borderRadius: '16px',
-  marginTop: '24px'
+  padding: '20px',
+  borderRadius: '14px',
+  marginTop: '20px'
 }

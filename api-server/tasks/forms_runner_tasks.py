@@ -233,6 +233,11 @@ def start_runner_phase(
             "skipped": True
         }))
         
+        # Trigger mapping phase if navigation completed
+        if phase == "navigate":
+            trigger_mapping_phase.delay(session_id)
+            logger.info(f"[FormsRunner] Queued mapping phase trigger for session {session_id}")
+        
         return {
             "success": True,
             "phase_complete": True,
@@ -408,13 +413,13 @@ def _handle_step_failure(redis_client, session_id: str, state: Dict, result: Dic
 def _complete_runner_phase(redis_client, session_id: str, state: Dict) -> Dict:
     """Complete runner phase and persist updated stages if needed"""
     phase = state["phase"]
-    
+
     logger.info(f"[FormsRunner] {phase} phase complete for session {session_id}")
-    
+
     _update_runner_state(redis_client, session_id, {
         "status": "completed"
     })
-    
+
     # Persist updated stages to DB if modified
     if state.get("stages_updated") == "true":
         persist_runner_stages.delay(
@@ -424,7 +429,7 @@ def _complete_runner_phase(redis_client, session_id: str, state: Dict) -> Dict:
             network_id=state["network_id"],
             form_route_id=state["form_route_id"]
         )
-    
+
     # Signal phase complete (orchestrator will pick this up)
     result_key = f"runner_phase_complete:{session_id}"
     redis_client.setex(result_key, 300, json.dumps({
@@ -432,7 +437,12 @@ def _complete_runner_phase(redis_client, session_id: str, state: Dict) -> Dict:
         "success": True,
         "stages_updated": state.get("stages_updated") == "true"
     }))
-    
+
+    # Trigger mapping phase if navigation completed
+    if phase == "navigate":
+        trigger_mapping_phase.delay(session_id)
+        logger.info(f"[FormsRunner] Queued mapping phase trigger for session {session_id}")
+
     return {
         "success": True,
         "phase_complete": True,
@@ -764,3 +774,33 @@ def cancel_runner(session_id: str) -> Dict:
     logger.info(f"[FormsRunner] Cancelled session {session_id}")
     
     return {"success": True, "status": "cancelled"}
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def trigger_mapping_phase(self, session_id: str) -> Dict:
+    """
+    Trigger mapping phase after navigation completes.
+    Called automatically by runner when navigate phase finishes.
+    """
+    logger.info(f"[FormsRunner] Triggering mapping phase for session {session_id}")
+    
+    from models.database import SessionLocal
+    from services.form_mapper_orchestrator import FormMapperOrchestrator
+    
+    db = SessionLocal()
+    try:
+        orchestrator = FormMapperOrchestrator(db)
+        result = orchestrator.start_mapping_phase(session_id)
+        
+        if result.get("success"):
+            logger.info(f"[FormsRunner] Mapping phase started for session {session_id}")
+        else:
+            logger.error(f"[FormsRunner] Failed to start mapping: {result.get('error')}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"[FormsRunner] Error triggering mapping phase: {e}", exc_info=True)
+        raise self.retry(exc=e)
+    finally:
+        db.close()

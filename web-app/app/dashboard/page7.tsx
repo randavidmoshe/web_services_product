@@ -833,7 +833,7 @@ export default function DashboardPage() {
   // ============ FULL PAGE EDIT VIEW ============
   if (showEditPanel && editingFormPage) {
     return (
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         {/* CSS Animations */}
         <style>{`
           @keyframes fadeIn {
@@ -886,7 +886,7 @@ export default function DashboardPage() {
 
         {/* Edit Form Page Card */}
         <div style={{
-          background: 'rgba(75, 85, 99, 0.5)',
+          background: 'rgba(51, 65, 85, 0.5)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '28px',
@@ -912,25 +912,25 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', gap: '0' }}>
             {/* Left Column - Form Info */}
             <div style={{ 
-              width: '420px', 
-              minWidth: '420px',
-              padding: '36px 40px',
+              width: '380px', 
+              minWidth: '380px',
+              padding: '32px 36px',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               background: 'rgba(0,0,0,0.1)'
             }}>
               {/* Form Name */}
-              <div style={{ marginBottom: '32px' }}>
-                <label style={{ display: 'block', marginBottom: '14px', fontWeight: 600, color: '#e2e8f0', fontSize: '18px' }}>Form Name</label>
+              <div style={{ marginBottom: '28px' }}>
+                <label style={{ display: 'block', marginBottom: '12px', fontWeight: 600, color: '#e2e8f0', fontSize: '17px' }}>Form Name</label>
                 <input
                   type="text"
                   value={editFormName}
                   onChange={(e) => setEditFormName(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '18px 22px',
+                    padding: '16px 20px',
                     border: '1px solid rgba(255,255,255,0.15)',
                     borderRadius: '14px',
-                    fontSize: '18px',
+                    fontSize: '17px',
                     boxSizing: 'border-box',
                     background: 'rgba(255,255,255,0.05)',
                     color: '#fff',
@@ -943,41 +943,41 @@ export default function DashboardPage() {
               <div style={{
                 background: 'rgba(255,255,255,0.03)',
                 borderRadius: '16px',
-                padding: '26px',
+                padding: '24px',
                 border: '1px solid rgba(255,255,255,0.08)',
-                marginBottom: '28px'
+                marginBottom: '24px'
               }}>
-                <h4 style={{ margin: '0 0 20px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Type:</span>
+                <h4 style={{ margin: '0 0 18px', fontSize: '14px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '15px', color: '#64748b', minWidth: '70px' }}>Type:</span>
                   <span style={{
                     background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                     color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
-                    padding: '10px 20px',
+                    padding: '8px 18px',
                     borderRadius: '10px',
-                    fontSize: '16px',
+                    fontSize: '15px',
                     fontWeight: 600
                   }}>
                     {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
                   </span>
                 </div>
                 {editingFormPage.parent_form_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Parent:</span>
-                    <span style={{ fontSize: '17px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <span style={{ fontSize: '15px', color: '#64748b', minWidth: '70px' }}>Parent:</span>
+                    <span style={{ fontSize: '16px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
                   </div>
                 )}
                 {editingFormPage.children && editingFormPage.children.length > 0 && (
-                  <div style={{ marginTop: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b' }}>Children:</span>
-                    <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ marginTop: '14px' }}>
+                    <span style={{ fontSize: '15px', color: '#64748b' }}>Children:</span>
+                    <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {editingFormPage.children.map((c, i) => (
                         <span key={i} style={{
                           background: 'rgba(245, 158, 11, 0.15)',
                           color: '#fbbf24',
-                          padding: '8px 16px',
+                          padding: '6px 14px',
                           borderRadius: '8px',
-                          fontSize: '15px'
+                          fontSize: '14px'
                         }}>{c.form_name}</span>
                       ))}
                     </div>
@@ -989,50 +989,50 @@ export default function DashboardPage() {
               <div style={{
                 background: 'rgba(255,255,255,0.03)',
                 borderRadius: '16px',
-                padding: '26px',
+                padding: '24px',
                 border: '1px solid rgba(255,255,255,0.08)'
               }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
-                <div style={{ fontSize: '15px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
+                <h4 style={{ margin: '0 0 14px', fontSize: '14px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
+                <div style={{ fontSize: '14px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
                   {editingFormPage.url}
                 </div>
               </div>
             </div>
 
             {/* Right Column - Steps */}
-            <div style={{ flex: 1, padding: '36px 40px', minWidth: 0 }}>
+            <div style={{ flex: 1, padding: '32px 36px', minWidth: 0 }}>
               {/* AI-Discovered Path Banner */}
               <div style={{
                 display: 'flex',
-                gap: '20px',
+                gap: '18px',
                 background: 'rgba(0, 187, 249, 0.1)',
                 border: '1px solid rgba(0, 187, 249, 0.2)',
-                padding: '26px 30px',
+                padding: '22px 26px',
                 borderRadius: '18px',
-                marginBottom: '32px',
+                marginBottom: '28px',
                 alignItems: 'flex-start'
               }}>
-                <div style={{ fontSize: '36px' }}>💡</div>
+                <div style={{ fontSize: '32px' }}>💡</div>
                 <div>
-                  <strong style={{ fontSize: '20px', color: '#00BBF9' }}>AI-Discovered Path</strong>
-                  <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  <strong style={{ fontSize: '18px', color: '#00BBF9' }}>AI-Discovered Path</strong>
+                  <p style={{ margin: '10px 0 0', fontSize: '16px', color: '#94a3b8', lineHeight: 1.5 }}>
                     This navigation path was automatically discovered by AI. Click on a step to expand and edit it.
                   </p>
                 </div>
               </div>
 
               {/* Path Steps Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 600 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '20px', color: '#fff', fontWeight: 600 }}>
                   Path Steps ({editNavigationSteps.length})
                 </h3>
                 <button onClick={addStepAtEnd} style={{
                   background: 'rgba(99, 102, 241, 0.15)',
                   color: '#818cf8',
                   border: '1px solid rgba(99, 102, 241, 0.3)',
-                  padding: '14px 22px',
+                  padding: '12px 20px',
                   borderRadius: '12px',
-                  fontSize: '16px',
+                  fontSize: '15px',
                   fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
@@ -1079,35 +1079,35 @@ export default function DashboardPage() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '18px',
-                          padding: '20px 24px',
+                          gap: '16px',
+                          padding: '18px 22px',
                           cursor: 'pointer',
                           transition: 'all 0.2s ease'
                         }}
                       >
                         <div style={{
-                          width: '44px',
-                          height: '44px',
+                          width: '40px',
+                          height: '40px',
                           borderRadius: '50%',
                           background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                           color: '#fff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '18px',
+                          fontSize: '16px',
                           fontWeight: 700,
                           flexShrink: 0
                         }}>{index + 1}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '17px', fontWeight: 600, color: '#fff', marginBottom: '6px' }}>
                             {step.description || `Step ${index + 1}`}
                           </div>
-                          <div style={{ fontSize: '15px', color: '#64748b' }}>
+                          <div style={{ fontSize: '14px', color: '#64748b' }}>
                             {step.action || 'click'} • {step.selector ? (step.selector.length > 50 ? step.selector.substring(0, 50) + '...' : step.selector) : 'No selector'}
                           </div>
                         </div>
                         <span style={{ 
-                          fontSize: '22px', 
+                          fontSize: '20px', 
                           color: '#64748b',
                           transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.2s ease'
@@ -1116,17 +1116,17 @@ export default function DashboardPage() {
 
                       {/* Expanded Content */}
                       {expandedSteps.has(index) && (
-                        <div style={{ padding: '0 24px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', padding: '16px 0' }}>
+                        <div style={{ padding: '0 22px 22px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '14px 0' }}>
                             <button 
                               onClick={() => addStepAfter(index)} 
                               style={{
                                 background: 'rgba(99, 102, 241, 0.15)',
                                 border: '1px solid rgba(99, 102, 241, 0.3)',
                                 color: '#818cf8',
-                                padding: '12px 20px',
+                                padding: '10px 18px',
                                 borderRadius: '10px',
-                                fontSize: '15px',
+                                fontSize: '14px',
                                 fontWeight: 600,
                                 cursor: 'pointer'
                               }}
@@ -1137,27 +1137,27 @@ export default function DashboardPage() {
                                 background: 'rgba(239, 68, 68, 0.15)',
                                 border: '1px solid rgba(239, 68, 68, 0.3)',
                                 color: '#f87171',
-                                padding: '12px 20px',
+                                padding: '10px 18px',
                                 borderRadius: '10px',
-                                fontSize: '15px',
+                                fontSize: '14px',
                                 fontWeight: 600,
                                 cursor: 'pointer'
                               }}
                             >Delete</button>
                           </div>
-                          <div style={{ display: 'flex', gap: '18px', marginBottom: '18px' }}>
+                          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
                             <div style={{ flex: 1 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Action</label>
+                              <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', color: '#94a3b8' }}>Action</label>
                               <input
                                 type="text"
                                 value={step.action || ''}
                                 disabled
                                 style={{
                                   width: '100%',
-                                  padding: '16px 20px',
+                                  padding: '14px 18px',
                                   border: '1px solid rgba(255,255,255,0.08)',
                                   borderRadius: '12px',
-                                  fontSize: '16px',
+                                  fontSize: '15px',
                                   boxSizing: 'border-box',
                                   background: 'rgba(255,255,255,0.02)',
                                   color: '#64748b',
@@ -1166,17 +1166,17 @@ export default function DashboardPage() {
                               />
                             </div>
                             <div style={{ flex: 2 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Description</label>
+                              <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', color: '#94a3b8' }}>Description</label>
                               <input
                                 type="text"
                                 value={step.description || ''}
                                 onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
                                 style={{
                                   width: '100%',
-                                  padding: '16px 20px',
+                                  padding: '14px 18px',
                                   border: '1px solid rgba(255,255,255,0.12)',
                                   borderRadius: '12px',
-                                  fontSize: '16px',
+                                  fontSize: '15px',
                                   boxSizing: 'border-box',
                                   background: 'rgba(255,255,255,0.05)',
                                   color: '#fff',
@@ -1187,17 +1187,17 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div>
-                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Selector (Locator)</label>
+                            <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', color: '#94a3b8' }}>Selector (Locator)</label>
                             <input
                               type="text"
                               value={step.selector || ''}
                               onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
                               style={{
                                 width: '100%',
-                                padding: '16px 20px',
+                                padding: '14px 18px',
                                 border: '1px solid rgba(255,255,255,0.12)',
                                 borderRadius: '12px',
-                                fontSize: '16px',
+                                fontSize: '15px',
                                 boxSizing: 'border-box',
                                 background: 'rgba(255,255,255,0.05)',
                                 color: '#fff',
@@ -1217,12 +1217,12 @@ export default function DashboardPage() {
 
           {/* Footer */}
           <div style={{
-            padding: '28px 44px',
+            padding: '24px 40px',
             borderTop: '1px solid rgba(255,255,255,0.08)',
             background: 'rgba(0,0,0,0.2)',
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: '18px'
+            gap: '16px'
           }}>
             <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
               Cancel
@@ -1724,9 +1724,9 @@ export default function DashboardPage() {
                     onDoubleClick={() => openEditPanel(form)}
                   >
                     <td style={tdStyle}>
-                      <strong style={{ fontSize: '18px', color: '#fff' }}>{form.form_name}</strong>
+                      <strong style={{ fontSize: '15px', color: '#fff' }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: '#64748b', marginTop: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
@@ -1740,9 +1740,9 @@ export default function DashboardPage() {
                       <span style={{
                         background: form.is_root ? 'rgba(99, 102, 241, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                         color: form.is_root ? '#818cf8' : '#fbbf24',
-                        padding: '10px 18px',
+                        padding: '8px 14px',
                         borderRadius: '20px',
-                        fontSize: '15px',
+                        fontSize: '13px',
                         fontWeight: 600,
                         border: form.is_root ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
                       }}>
@@ -1750,10 +1750,10 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td style={tdStyle}>
-                      <div style={{ fontSize: '16px', color: '#e2e8f0' }}>
+                      <div style={{ fontSize: '14px', color: '#e2e8f0' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
@@ -1762,11 +1762,11 @@ export default function DashboardPage() {
                         {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(245, 158, 11, 0.15)',
                             color: '#f59e0b',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(245, 158, 11, 0.3)'
                           }}>
@@ -1774,11 +1774,11 @@ export default function DashboardPage() {
                           </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
-                            padding: '10px 16px',
+                            padding: '8px 14px',
                             background: 'rgba(16, 185, 129, 0.15)',
                             color: '#10b981',
-                            borderRadius: '10px',
-                            fontSize: '15px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
                             fontWeight: 600,
                             border: '1px solid rgba(16, 185, 129, 0.3)'
                           }}>
@@ -1877,7 +1877,7 @@ export default function DashboardPage() {
 // ==================== STYLES ====================
 
 const welcomeCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '80px',
@@ -1887,7 +1887,7 @@ const welcomeCardStyle: React.CSSProperties = {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '28px',
@@ -2080,7 +2080,7 @@ const tableStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
-  padding: '24px 32px',
+  padding: '22px 30px',
   borderBottom: '1px solid rgba(255,255,255,0.1)',
   fontWeight: 600,
   color: '#94a3b8',
@@ -2088,7 +2088,7 @@ const thStyle: React.CSSProperties = {
   position: 'sticky',
   top: 0,
   zIndex: 1,
-  fontSize: '14px',
+  fontSize: '15px',
   textTransform: 'uppercase',
   letterSpacing: '1.5px'
 }
@@ -2100,7 +2100,7 @@ const tableRowStyle: React.CSSProperties = {
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '28px 32px',
+  padding: '24px 30px',
   borderBottom: '1px solid rgba(255,255,255,0.05)',
   verticalAlign: 'middle',
   fontSize: '18px',
@@ -2110,9 +2110,9 @@ const tdStyle: React.CSSProperties = {
 const pathStepsBadgeStyle: React.CSSProperties = {
   background: 'rgba(99, 102, 241, 0.15)',
   color: '#818cf8',
-  padding: '12px 24px',
+  padding: '14px 22px',
   borderRadius: '24px',
-  fontSize: '16px',
+  fontSize: '17px',
   fontWeight: 600,
   border: '1px solid rgba(99, 102, 241, 0.3)'
 }
@@ -2242,7 +2242,7 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const largeModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   width: '100%',
   maxWidth: '1200px',
@@ -2457,7 +2457,7 @@ const modalFooterStyle: React.CSSProperties = {
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '24px',
   padding: '40px',
   width: '100%',
@@ -2467,7 +2467,7 @@ const smallModalContentStyle: React.CSSProperties = {
 }
 
 const deleteModalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '28px',
   padding: '44px',
   width: '100%',

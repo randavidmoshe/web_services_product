@@ -546,7 +546,7 @@ export default function DashboardLayout({
   if (!token) return (
     <div style={{ 
       minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+      background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center'
@@ -556,7 +556,7 @@ export default function DashboardLayout({
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%)' }}>
       {/* CSS Animations */}
       <style>{`
         @keyframes fadeIn {
@@ -1286,7 +1286,7 @@ const topBarStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '16px 36px',
-  background: 'rgba(55, 65, 81, 0.95)',
+  background: 'rgba(30, 41, 59, 0.95)',
   backdropFilter: 'blur(20px)',
   borderBottom: '1px solid rgba(255,255,255,0.08)',
   position: 'sticky',
@@ -1313,7 +1313,7 @@ const dropdownMenuStyle: React.CSSProperties = {
   position: 'absolute',
   top: 'calc(100% + 10px)',
   left: 0,
-  background: 'rgba(55, 65, 81, 0.98)',
+  background: 'rgba(30, 41, 59, 0.98)',
   backdropFilter: 'blur(20px)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: '18px',
@@ -1423,7 +1423,7 @@ const toastCloseStyle: React.CSSProperties = {
 
 const sidebarStyle: React.CSSProperties = {
   width: '320px',
-  background: 'rgba(55, 65, 81, 0.7)',
+  background: 'rgba(30, 41, 59, 0.7)',
   backdropFilter: 'blur(20px)',
   borderRight: '1px solid rgba(255,255,255,0.08)',
   flexShrink: 0
@@ -1465,7 +1465,7 @@ const sidebarIconStyle: React.CSSProperties = {
 }
 
 const placeholderCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.4)',
+  background: 'rgba(51, 65, 85, 0.4)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '100px 80px',
@@ -1488,7 +1488,7 @@ const placeholderIconStyle: React.CSSProperties = {
 }
 
 const contentCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.5)',
+  background: 'rgba(51, 65, 85, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '24px',
   padding: '32px',
@@ -1581,7 +1581,7 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const modalContentStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  background: 'linear-gradient(135deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98))',
   borderRadius: '24px',
   width: '100%',
   maxWidth: '500px',

@@ -219,8 +219,17 @@ class FormMapperTaskHandler:
         """
         step = payload.get("step", {})
         
-        # Auto-initialize browser if not running
+        # Auto-initialize browser if not running or session invalid
+        try:
+            if self.selenium.driver:
+                # Test if session is valid
+                _ = self.selenium.driver.current_url
+        except Exception as e:
+            logger.warning(f"[FormMapper] Browser session invalid, reinitializing: {e}")
+            self.selenium.driver = None
+        
         if not self.selenium.driver:
+            print(f"[FormMapper] Auto-initializing browser for runner")
             logger.info(f"[FormMapper] Auto-initializing browser for runner")
             self.selenium.initialize_browser(browser_type="chrome", headless=False)
             # Navigate to base URL if provided
@@ -462,6 +471,9 @@ class FormMapperTaskHandler:
             "press_key": self._action_press_key,
             "accept_alert": self._action_accept_alert,
             "dismiss_alert": self._action_dismiss_alert,
+            "navigate": self._action_navigate,
+            "wait_dom_ready": self._action_wait_dom_ready,
+            "verify_clickables": self._action_verify_clickables,
         }
         
         handler = action_handlers.get(action)
@@ -775,7 +787,9 @@ class FormMapperTaskHandler:
     
     def _parse_selector(self, selector: str) -> tuple:
         """Parse selector string to (By, locator) tuple."""
-        if selector.startswith("//") or selector.startswith("(//"):
+        if selector.startswith("xpath="):
+            return (By.XPATH, selector[6:])
+        elif selector.startswith("//") or selector.startswith("(//"):
             return (By.XPATH, selector)
         else:
             return (By.CSS_SELECTOR, selector)
@@ -915,3 +929,45 @@ class FormMapperTaskHandler:
 #     # Report result to server
 #     report_task_result(result)
 # ============================================================================
+
+    def _action_navigate(self, selector: str, value: str, step: Dict) -> bool:
+        """Navigate to URL."""
+        url = step.get("url") or value
+        if not url:
+            logger.warning("[FormMapper] Navigate action requires url")
+            return False
+        try:
+            self.selenium.navigate_to_url(url)
+            return True
+        except Exception as e:
+            logger.error(f"[FormMapper] Navigate failed: {e}")
+            return False
+
+    def _action_wait_dom_ready(self, selector: str, value: str, step: Dict) -> bool:
+        """Wait for DOM to stabilize after page load."""
+        import time
+        try:
+            time.sleep(2)  # Initial wait
+            # Wait for page to be ready
+            self.selenium.driver.execute_script("return document.readyState") == "complete"
+            time.sleep(1)
+            return True
+        except Exception as e:
+            logger.error(f"[FormMapper] Wait DOM ready failed: {e}")
+            return False
+
+    def _action_verify_clickables(self, selector: str, value: str, step: Dict) -> bool:
+        """Verify login succeeded by checking for clickable elements."""
+        try:
+            from selenium.webdriver.common.by import By
+            clickables = self.selenium.driver.find_elements(By.CSS_SELECTOR, "a, button, [onclick]")
+            visible_clickables = [el for el in clickables if el.is_displayed()]
+            if len(visible_clickables) >= 7:
+                logger.info(f"[FormMapper] Found {len(visible_clickables)} clickable elements - login verified")
+                return True
+            else:
+                logger.warning(f"[FormMapper] Only {len(visible_clickables)} clickables - login may have failed")
+                return False
+        except Exception as e:
+            logger.error(f"[FormMapper] Verify clickables failed: {e}")
+            return False
