@@ -29,6 +29,8 @@ interface FormPage {
   parent_form_name?: string
   children?: FormPage[]
   created_at: string
+  mapping_status?: 'not_mapped' | 'mapping' | 'mapped' | 'failed'
+  mapping_session_id?: number
 }
 
 interface SessionStatus {
@@ -120,6 +122,12 @@ export default function DashboardPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [formPageToDelete, setFormPageToDelete] = useState<FormPage | null>(null)
   const [deletingFormPage, setDeletingFormPage] = useState(false)
+  
+  // Form Mapping state
+  const [mappingFormIds, setMappingFormIds] = useState<Set<number>>(new Set())
+  const [mappingStatus, setMappingStatus] = useState<Record<number, { status: string; sessionId?: number; error?: string }>>({})
+  const mappingPollingRef = useRef<Record<number, NodeJS.Timeout>>({})
+
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
@@ -253,6 +261,135 @@ export default function DashboardPage() {
       setLoadingFormPages(false)
     }
   }
+
+  // ============================================
+  // FORM MAPPING FUNCTIONS
+  // ============================================
+  
+  const startFormMapping = async (formPage: FormPage) => {
+    if (!token || !userId) return
+    
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPage.id))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPage.id]: { status: 'starting' }
+    }))
+    
+    try {
+      const response = await fetch('/api/form-mapper/start', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: formPage.id,
+          user_id: parseInt(userId),
+          network_id: formPage.network_id,
+          test_cases: [
+            { test_id: 1, test_name: 'Default Test', description: 'Auto-generated test case' }
+          ]
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to start mapping')
+      }
+      
+      const data = await response.json()
+      
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPage.id]: { status: 'mapping', sessionId: data.session_id }
+      }))
+      
+      // Start polling for status
+      startMappingStatusPolling(formPage.id, data.session_id)
+      
+      setMessage(`Started mapping: ${formPage.form_name}`)
+      
+    } catch (err: any) {
+      console.error('Failed to start mapping:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPage.id)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPage.id]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to start mapping: ${err.message}`)
+    }
+  }
+  
+  const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
+    // Clear any existing polling for this form
+    if (mappingPollingRef.current[formPageId]) {
+      clearInterval(mappingPollingRef.current[formPageId])
+    }
+    
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          
+          setMappingStatus(prev => ({
+            ...prev,
+            [formPageId]: { 
+              status: data.status, 
+              sessionId,
+              error: data.error 
+            }
+          }))
+          
+          // Stop polling if completed or failed
+          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+            stopMappingStatusPolling(formPageId)
+            setMappingFormIds(prev => {
+              const next = new Set(prev)
+              next.delete(formPageId)
+              return next
+            })
+            
+            if (data.status === 'completed') {
+              setMessage(`Mapping completed for form page ${formPageId}`)
+            } else if (data.status === 'failed') {
+              setError(`Mapping failed: ${data.error || 'Unknown error'}`)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to poll mapping status:', err)
+      }
+    }
+    
+    // Poll immediately, then every 3 seconds
+    poll()
+    mappingPollingRef.current[formPageId] = setInterval(poll, 3000)
+  }
+  
+  const stopMappingStatusPolling = (formPageId: number) => {
+    if (mappingPollingRef.current[formPageId]) {
+      clearInterval(mappingPollingRef.current[formPageId])
+      delete mappingPollingRef.current[formPageId]
+    }
+  }
+  
+  // Cleanup mapping polling on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(mappingPollingRef.current).forEach(key => {
+        clearInterval(mappingPollingRef.current[parseInt(key)])
+      })
+    }
+  }, [])
 
   // Get only QA networks for discovery
   const qaNetworks = networks.filter(n => n.network_type?.toLowerCase() === 'qa')
@@ -1111,7 +1248,47 @@ export default function DashboardPage() {
                       </div>
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                        {/* Map Button */}
+                        {mappingFormIds.has(form.id) ? (
+                          <span style={{
+                            padding: '6px 12px',
+                            background: '#fff3e0',
+                            color: '#e65100',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            fontWeight: 500
+                          }}>
+                            ⏳ Mapping...
+                          </span>
+                        ) : mappingStatus[form.id]?.status === 'completed' ? (
+                          <span style={{
+                            padding: '6px 12px',
+                            background: '#e8f5e9',
+                            color: '#2e7d32',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            fontWeight: 500
+                          }}>
+                            ✅ Mapped
+                          </span>
+                        ) : mappingStatus[form.id]?.status === 'failed' ? (
+                          <button 
+                            onClick={() => startFormMapping(form)} 
+                            style={{ ...actionButtonStyle, background: '#ffebee', borderColor: '#ef9a9a' }}
+                            title={`Retry mapping - ${mappingStatus[form.id]?.error || 'Failed'}`}
+                          >
+                            🔄
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => startFormMapping(form)} 
+                            style={{ ...actionButtonStyle, background: '#e3f2fd', borderColor: '#90caf9' }}
+                            title="Map this form page"
+                          >
+                            🗺️
+                          </button>
+                        )}
                         <button 
                           onClick={() => openEditModal(form)} 
                           style={actionButtonStyle}

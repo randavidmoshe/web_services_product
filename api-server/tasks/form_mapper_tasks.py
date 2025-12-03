@@ -1,581 +1,390 @@
-# ============================================================================
-# Form Mapper - Celery Tasks
-# ============================================================================
-# All AI-heavy operations are handled by Celery workers.
-# Results are stored in Redis for FastAPI orchestrator to pick up.
-# ============================================================================
+# form_mapper_tasks.py
+# Celery tasks for Form Mapper AI operations
+# SCALABLE: Integrated with AI Budget Service for token tracking and limits
 
+import os
 import json
 import logging
-import os
-import redis
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+from celery_app import celery
 from celery import shared_task
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Redis client for storing results
-redis_client = redis.Redis(
-    host=os.environ.get('REDIS_HOST', 'redis'),
-    port=int(os.environ.get('REDIS_PORT', 6379)),
-    db=int(os.environ.get('REDIS_DB', 0)),
-    decode_responses=True
-)
 
-# Constants
-RESULT_TTL = 3600  # 1 hour
-CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
+def _get_redis_client():
+    """Get Redis client with connection pooling"""
+    import redis
+    # Use connection pool for efficiency at scale
+    pool = redis.ConnectionPool(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        db=0,
+        max_connections=50
+    )
+    return redis.Redis(connection_pool=pool)
 
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
+def _get_db_session():
+    """Get database session"""
+    from models.database import SessionLocal
+    return SessionLocal()
 
-def get_session_data(session_id: str) -> Optional[Dict]:
-    """Get session data from Redis"""
-    key = f"mapper_session:{session_id}"
-    data = redis_client.hgetall(key)
-    if not data:
-        return None
+
+def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
+    """
+    Check budget and get API key.
+    Uses customer's API key if provided, otherwise falls back to system key.
+    Raises BudgetExceededError if budget exceeded.
+    """
+    from services.ai_budget_service import get_budget_service, BudgetExceededError
+    from models.database import CompanyProductSubscription
     
-    # Parse JSON fields
-    json_fields = [
-        'config', 'test_cases', 'steps', 'executed_steps', 'test_context',
-        'recovery_failure_history', 'critical_fields_checklist',
-        'current_path_junctions', 'previous_paths', 'reported_ui_issues'
-    ]
+    redis_client = _get_redis_client()
+    budget_service = get_budget_service(redis_client)
     
-    for field in json_fields:
-        if field in data and data[field]:
-            try:
-                data[field] = json.loads(data[field])
-            except json.JSONDecodeError:
-                data[field] = {} if 'checklist' in field else []
+    # Check budget (raises BudgetExceededError if exceeded)
+    has_budget, remaining, total = budget_service.check_budget(db, company_id, product_id)
     
-    return data
+    if not has_budget:
+        raise BudgetExceededError(company_id, total, total - remaining)
+    
+    # Get API key (customer's or system)
+    subscription = db.query(CompanyProductSubscription).filter(
+        CompanyProductSubscription.company_id == company_id,
+        CompanyProductSubscription.product_id == product_id
+    ).first()
+    
+    if subscription and subscription.customer_claude_api_key:
+        return subscription.customer_claude_api_key
+    
+    return os.getenv("ANTHROPIC_API_KEY")
 
 
-def store_celery_result(session_id: str, task_type: str, result: Dict):
-    """Store Celery task result in Redis for orchestrator to pick up"""
-    key = f"mapper_celery_result:{session_id}:{task_type}"
-    result['completed_at'] = datetime.utcnow().isoformat()
-    redis_client.setex(key, RESULT_TTL, json.dumps(result))
-    logger.info(f"[Celery] Stored result: {key}")
+def _record_usage(db, company_id: int, product_id: int, user_id: int, 
+                  operation_type, input_tokens: int, output_tokens: int,
+                  session_id: str = None):
+    """Record AI usage after successful call"""
+    from services.ai_budget_service import get_budget_service
+    
+    redis_client = _get_redis_client()
+    budget_service = get_budget_service(redis_client)
+    
+    return budget_service.record_usage(
+        db=db,
+        company_id=company_id,
+        product_id=product_id,
+        user_id=user_id,
+        operation_type=operation_type,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        session_id=session_id
+    )
 
 
-def increment_ai_usage(session_id: str, tokens_used: int, cost_estimate: float):
-    """Increment AI usage counters in Redis"""
-    key = f"mapper_session:{session_id}"
-    redis_client.hincrby(key, 'ai_calls_count', 1)
-    redis_client.hincrby(key, 'ai_tokens_used', tokens_used)
-    redis_client.hincrbyfloat(key, 'ai_cost_estimate', cost_estimate)
+def _get_session_context(redis_client, session_id: str) -> Dict:
+    """Get session context from Redis"""
+    session_key = f"mapper_session:{session_id}"
+    session_data = redis_client.hgetall(session_key)
+    
+    if not session_data:
+        return {}
+    
+    # Decode bytes if needed
+    decoded = {}
+    for k, v in session_data.items():
+        key_str = k.decode() if isinstance(k, bytes) else k
+        val_str = v.decode() if isinstance(v, bytes) else v
+        decoded[key_str] = val_str
+    
+    return {
+        "company_id": int(decoded.get("company_id", 0)),
+        "user_id": int(decoded.get("user_id", 0)),
+        "product_id": int(decoded.get("product_id", 1)),
+        "network_id": int(decoded.get("network_id", 0)),
+        "form_route_id": int(decoded.get("form_route_id", 0))
+    }
 
 
-def get_anthropic_api_key() -> str:
-    """Get Anthropic API key from environment"""
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not found in environment")
-    return api_key
-
-
-# ============================================================================
-# TASK: generate_steps_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def generate_steps_task(
+@shared_task(bind=True, max_retries=3, default_retry_delay=10, 
+             autoretry_for=(Exception,), retry_backoff=True)
+def analyze_form_page(
     self,
     session_id: str,
     dom_html: str,
-    screenshot_base64: Optional[str] = None
-) -> Dict:
-    """
-    Generate initial test steps using Claude AI.
-    
-    Args:
-        session_id: Mapping session ID
-        dom_html: Current DOM HTML
-        screenshot_base64: Optional screenshot for visual context
-    
-    Returns:
-        Dict with 'success', 'steps', 'no_more_paths', etc.
-    """
-    try:
-        logger.info(f"[generate_steps_task] Starting for session {session_id}")
-        
-        # Get session data from Redis
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found in Redis")
-        
-        test_cases = session.get('test_cases', [])
-        test_context = session.get('test_context', {})
-        critical_fields = session.get('critical_fields_checklist')
-        field_requirements = session.get('field_requirements_for_recovery')
-        previous_paths = session.get('previous_paths')
-        current_path_junctions = session.get('current_path_junctions')
-        
-        # Import AI helper (lazy import to avoid circular deps)
-        from services.form_mapper_ai_helpers import AIFormMapperHelper
-        
-        api_key = get_anthropic_api_key()
-        ai_helper = AIFormMapperHelper(api_key=api_key)
-        
-        # Call AI to generate steps
-        result = ai_helper.generate_test_steps(
-            dom_html=dom_html,
-            test_cases=test_cases,
-            test_context=test_context,
-            screenshot_base64=screenshot_base64,
-            critical_fields_checklist=critical_fields,
-            field_requirements=field_requirements,
-            previous_paths=previous_paths,
-            current_path_junctions=current_path_junctions
-        )
-        
-        steps = result.get('steps', [])
-        no_more_paths = result.get('no_more_paths', False)
-        
-        # Track AI usage (rough estimate based on content size)
-        tokens_used = len(dom_html) // 4 + len(json.dumps(steps)) // 4
-        cost_estimate = tokens_used * 0.000003  # Rough estimate
-        increment_ai_usage(session_id, tokens_used, cost_estimate)
-        
-        # Store result for orchestrator
-        celery_result = {
-            'success': True,
-            'steps': steps,
-            'no_more_paths': no_more_paths,
-            'steps_count': len(steps),
-            'ai_tokens_used': tokens_used
-        }
-        store_celery_result(session_id, 'generate_steps', celery_result)
-        
-        logger.info(f"[generate_steps_task] Generated {len(steps)} steps for session {session_id}")
-        return celery_result
-        
-    except Exception as e:
-        logger.error(f"[generate_steps_task] Error: {e}", exc_info=True)
-        
-        celery_result = {
-            'success': False,
-            'error': str(e),
-            'steps': []
-        }
-        store_celery_result(session_id, 'generate_steps', celery_result)
-        
-        # Retry on transient errors
-        if "overloaded" in str(e).lower() or "rate" in str(e).lower():
-            raise self.retry(exc=e)
-        
-        return celery_result
-
-
-# ============================================================================
-# TASK: regenerate_steps_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def regenerate_steps_task(
-    self,
-    session_id: str,
-    dom_html: str,
-    executed_steps: List[Dict],
-    screenshot_base64: Optional[str] = None
-) -> Dict:
-    """
-    Regenerate remaining test steps after DOM change.
-    
-    Args:
-        session_id: Mapping session ID
-        dom_html: Current DOM HTML
-        executed_steps: Steps already executed
-        screenshot_base64: Optional screenshot
-    
-    Returns:
-        Dict with 'success', 'steps', 'no_more_paths', etc.
-    """
-    try:
-        logger.info(f"[regenerate_steps_task] Starting for session {session_id}")
-        
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        test_cases = session.get('test_cases', [])
-        test_context = session.get('test_context', {})
-        critical_fields = session.get('critical_fields_checklist')
-        field_requirements = session.get('field_requirements_for_recovery')
-        previous_paths = session.get('previous_paths')
-        current_path_junctions = session.get('current_path_junctions')
-        
-        from services.form_mapper_ai_helpers import AIFormMapperHelper
-        
-        api_key = get_anthropic_api_key()
-        ai_helper = AIFormMapperHelper(api_key=api_key)
-        
-        result = ai_helper.regenerate_steps(
-            dom_html=dom_html,
-            executed_steps=executed_steps,
-            test_cases=test_cases,
-            test_context=test_context,
-            screenshot_base64=screenshot_base64,
-            critical_fields_checklist=critical_fields,
-            field_requirements=field_requirements,
-            previous_paths=previous_paths,
-            current_path_junctions=current_path_junctions
-        )
-        
-        steps = result.get('steps', [])
-        no_more_paths = result.get('no_more_paths', False)
-        
-        tokens_used = len(dom_html) // 4 + len(json.dumps(steps)) // 4
-        increment_ai_usage(session_id, tokens_used, tokens_used * 0.000003)
-        
-        celery_result = {
-            'success': True,
-            'steps': steps,
-            'no_more_paths': no_more_paths,
-            'steps_count': len(steps)
-        }
-        store_celery_result(session_id, 'regenerate_steps', celery_result)
-        
-        logger.info(f"[regenerate_steps_task] Regenerated {len(steps)} steps for session {session_id}")
-        return celery_result
-        
-    except Exception as e:
-        logger.error(f"[regenerate_steps_task] Error: {e}", exc_info=True)
-        
-        celery_result = {
-            'success': False,
-            'error': str(e),
-            'steps': []
-        }
-        store_celery_result(session_id, 'regenerate_steps', celery_result)
-        
-        if "overloaded" in str(e).lower():
-            raise self.retry(exc=e)
-        
-        return celery_result
-
-
-# ============================================================================
-# TASK: alert_recovery_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def alert_recovery_task(
-    self,
-    session_id: str,
-    alert_info: Dict,
-    dom_html: str,
-    executed_steps: List[Dict],
-    step_where_alert_appeared: int,
-    screenshot_base64: Optional[str] = None,
-    gathered_error_info: Optional[Dict] = None
-) -> Dict:
-    """
-    Generate recovery steps after alert/validation error.
-    
-    Args:
-        session_id: Mapping session ID
-        alert_info: Alert details (type, text)
-        dom_html: Current DOM HTML
-        executed_steps: Steps executed before alert
-        step_where_alert_appeared: Step number that triggered alert
-        screenshot_base64: Optional screenshot
-        gathered_error_info: Optional validation errors from DOM
-    
-    Returns:
-        Dict with 'success', 'scenario', 'steps', 'problematic_fields', etc.
-    """
-    try:
-        logger.info(f"[alert_recovery_task] Starting for session {session_id}")
-        
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        test_cases = session.get('test_cases', [])
-        test_context = session.get('test_context', {})
-        
-        from services.form_mapper_ai_helpers import AIAlertRecoveryHelper
-        
-        api_key = get_anthropic_api_key()
-        ai_recovery = AIAlertRecoveryHelper(api_key=api_key)
-        
-        result = ai_recovery.regenerate_steps_after_alert(
-            alert_info=alert_info,
-            executed_steps=executed_steps,
-            dom_html=dom_html,
-            screenshot_base64=screenshot_base64,
-            test_cases=test_cases,
-            test_context=test_context,
-            step_where_alert_appeared=step_where_alert_appeared,
-            include_accept_step=False,
-            gathered_error_info=gathered_error_info
-        )
-        
-        if not result:
-            raise ValueError("AI returned empty result")
-        
-        scenario = result.get('scenario', 'B')
-        steps = result.get('steps', [])
-        issue_type = result.get('issue_type', 'ai_issue')
-        problematic_fields = result.get('problematic_fields', [])
-        field_requirements = result.get('field_requirements', '')
-        
-        tokens_used = len(dom_html) // 4 + len(json.dumps(steps)) // 4
-        increment_ai_usage(session_id, tokens_used, tokens_used * 0.000003)
-        
-        celery_result = {
-            'success': True,
-            'scenario': scenario,
-            'issue_type': issue_type,
-            'steps': steps,
-            'problematic_fields': problematic_fields,
-            'field_requirements': field_requirements,
-            'explanation': result.get('explanation', ''),
-            'problematic_field_claimed': result.get('problematic_field_claimed', ''),
-            'our_action': result.get('our_action', '')
-        }
-        store_celery_result(session_id, 'alert_recovery', celery_result)
-        
-        logger.info(f"[alert_recovery_task] Scenario {scenario} for session {session_id}")
-        return celery_result
-        
-    except Exception as e:
-        logger.error(f"[alert_recovery_task] Error: {e}", exc_info=True)
-        
-        celery_result = {
-            'success': False,
-            'error': str(e)
-        }
-        store_celery_result(session_id, 'alert_recovery', celery_result)
-        
-        if "overloaded" in str(e).lower():
-            raise self.retry(exc=e)
-        
-        return celery_result
-
-
-# ============================================================================
-# TASK: failure_recovery_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def failure_recovery_task(
-    self,
-    session_id: str,
-    failed_step: Dict,
-    dom_html: str,
-    executed_steps: List[Dict],
     screenshot_base64: str,
-    attempt_number: int,
-    recovery_failure_history: List[Dict]
+    test_cases: list,
+    previous_paths: list,
+    current_path: int,
+    enable_junction_discovery: bool = True,
+    max_junction_paths: int = 5,
+    use_detect_fields_change: bool = True,
+    enable_ui_verification: bool = True
 ) -> Dict:
     """
-    Generate recovery steps after step execution failure.
+    Celery task: Analyze form page with AI.
     
-    Args:
-        session_id: Mapping session ID
-        failed_step: The step that failed
-        dom_html: Current DOM HTML
-        executed_steps: Steps executed before failure
-        screenshot_base64: Screenshot showing current state
-        attempt_number: Which recovery attempt this is
-        recovery_failure_history: History of failed recovery attempts
-    
-    Returns:
-        Dict with 'success', 'steps', etc.
+    - Checks budget before AI call
+    - Records token usage after call
+    - Stores result in Redis for orchestrator
     """
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] Analyzing form page for session {session_id}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
     try:
-        logger.info(f"[failure_recovery_task] Starting for session {session_id}, attempt {attempt_number}")
+        # Get session context
+        ctx = _get_session_context(redis_client, session_id)
+        if not ctx.get("company_id"):
+            return {"success": False, "error": "Session not found"}
         
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        # Check budget and get API key
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
-        test_cases = session.get('test_cases', [])
-        test_context = session.get('test_context', {})
+        if not api_key:
+            return {"success": False, "error": "No API key available"}
         
-        from services.form_mapper_ai_helpers import AIFormMapperHelper
+        # Import and use AI helper
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
         
-        api_key = get_anthropic_api_key()
-        ai_helper = AIFormMapperHelper(api_key=api_key)
+        ai_helper = helpers["main"]
+        result = ai_helper.generate_next_steps(
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64,
+            test_context={"test_cases": test_cases},
+            previous_paths=previous_paths,
+            current_path_junctions=[],
+            current_step_number=1
+        )
         
-        recovery_steps = ai_helper.analyze_failure_and_recover(
+        # Record usage (estimate tokens)
+        input_tokens = len(dom_html) // 4 + len(screenshot_base64) // 100
+        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_ANALYZE,
+            input_tokens, output_tokens, session_id
+        )
+        
+        # Store result in Redis for orchestrator
+        result_key = f"mapper_ai_result:{session_id}"
+        redis_client.setex(result_key, 3600, json.dumps(result))
+        
+        logger.info(f"[FormMapperTask] Analysis complete: {len(result.get('steps', []))} steps")
+        return result
+        
+    except BudgetExceededError as e:
+        logger.warning(f"[FormMapperTask] Budget exceeded for company {e.company_id}")
+        return {
+            "success": False, 
+            "error": "AI budget exceeded",
+            "budget_exceeded": True,
+            "budget": e.budget,
+            "used": e.used
+        }
+        
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Analysis failed: {e}")
+        raise  # Let Celery retry handle it
+        
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10,
+             autoretry_for=(Exception,), retry_backoff=True)
+def handle_alert_recovery(
+    self,
+    session_id: str,
+    alert_text: str,
+    dom_html: str,
+    screenshot_base64: str,
+    all_steps: list,
+    current_step_index: int
+) -> Dict:
+    """
+    Celery task: Handle alert/error recovery with AI.
+    """
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] Alert recovery for session {session_id}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if not ctx.get("company_id"):
+            return {"success": False, "error": "Session not found"}
+        
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        
+        if not api_key:
+            return {"success": False, "error": "No API key available"}
+        
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+        
+        ai_recovery = helpers["alert_recovery"]
+        failed_step = all_steps[current_step_index] if current_step_index < len(all_steps) else {}
+        
+        result = ai_recovery.analyze_and_recover(
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64,
+            alert_text=alert_text,
             failed_step=failed_step,
-            executed_steps=executed_steps,
-            fresh_dom=dom_html,
-            screenshot_base64=screenshot_base64,
-            test_cases=test_cases,
-            test_context=test_context,
-            attempt_number=attempt_number,
-            recovery_failure_history=recovery_failure_history
+            all_steps=all_steps
         )
         
-        tokens_used = len(dom_html) // 4 + len(json.dumps(recovery_steps or [])) // 4
-        increment_ai_usage(session_id, tokens_used, tokens_used * 0.000003)
+        # Record usage
+        input_tokens = len(dom_html) // 4 + len(screenshot_base64) // 100
+        output_tokens = len(json.dumps(result)) // 4 if result else 0
         
-        celery_result = {
-            'success': True,
-            'steps': recovery_steps or [],
-            'steps_count': len(recovery_steps) if recovery_steps else 0
-        }
-        store_celery_result(session_id, 'failure_recovery', celery_result)
-        
-        logger.info(f"[failure_recovery_task] Generated {len(recovery_steps or [])} recovery steps")
-        return celery_result
-        
-    except Exception as e:
-        logger.error(f"[failure_recovery_task] Error: {e}", exc_info=True)
-        
-        celery_result = {
-            'success': False,
-            'error': str(e),
-            'steps': []
-        }
-        store_celery_result(session_id, 'failure_recovery', celery_result)
-        
-        if "overloaded" in str(e).lower():
-            raise self.retry(exc=e)
-        
-        return celery_result
-
-
-# ============================================================================
-# TASK: ui_verify_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=2, default_retry_delay=15)
-def ui_verify_task(
-    self,
-    session_id: str,
-    screenshot_base64: str
-) -> Dict:
-    """
-    Verify UI for visual defects.
-    
-    Args:
-        session_id: Mapping session ID
-        screenshot_base64: Screenshot to analyze
-    
-    Returns:
-        Dict with 'success', 'ui_issue', etc.
-    """
-    try:
-        logger.info(f"[ui_verify_task] Starting for session {session_id}")
-        
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        reported_issues = session.get('reported_ui_issues', [])
-        
-        from services.form_mapper_ai_helpers import AIUIVisualVerifier
-        
-        api_key = get_anthropic_api_key()
-        ui_verifier = AIUIVisualVerifier(api_key=api_key)
-        
-        ui_issue = ui_verifier.verify_visual_ui(
-            screenshot_base64=screenshot_base64,
-            previously_reported_issues=reported_issues
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_ALERT_RECOVERY,
+            input_tokens, output_tokens, session_id
         )
         
-        # Estimate tokens for vision call
-        tokens_used = 2000  # Rough estimate for image analysis
-        increment_ai_usage(session_id, tokens_used, tokens_used * 0.000003)
+        # Store result
+        result_key = f"mapper_recovery_result:{session_id}"
+        redis_client.setex(result_key, 3600, json.dumps(result))
         
-        celery_result = {
-            'success': True,
-            'ui_issue': ui_issue or '',
-            'has_issue': bool(ui_issue)
-        }
-        store_celery_result(session_id, 'ui_verify', celery_result)
+        return result
         
-        if ui_issue:
-            logger.info(f"[ui_verify_task] UI issue found: {ui_issue[:100]}...")
-        else:
-            logger.info(f"[ui_verify_task] No UI issues found")
-        
-        return celery_result
+    except BudgetExceededError as e:
+        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         
     except Exception as e:
-        logger.error(f"[ui_verify_task] Error: {e}", exc_info=True)
+        logger.error(f"[FormMapperTask] Alert recovery failed: {e}")
+        raise
         
-        celery_result = {
-            'success': False,
-            'error': str(e),
-            'ui_issue': ''
-        }
-        store_celery_result(session_id, 'ui_verify', celery_result)
-        
-        if "overloaded" in str(e).lower():
-            raise self.retry(exc=e)
-        
-        return celery_result
+    finally:
+        db.close()
 
 
-# ============================================================================
-# TASK: assign_test_cases_task
-# ============================================================================
-
-@shared_task(bind=True, max_retries=2, default_retry_delay=15)
-def assign_test_cases_task(
+@shared_task(bind=True, max_retries=2, default_retry_delay=5)
+def verify_ui_visual(
     self,
     session_id: str,
-    steps: List[Dict]
+    screenshot_base64: str,
+    expected_state: dict
 ) -> Dict:
     """
-    Assign test_case field to completed stages (final step).
-    
-    Args:
-        session_id: Mapping session ID
-        steps: All executed steps
-    
-    Returns:
-        Dict with 'success', 'steps' (with test_case assigned), etc.
+    Celery task: Visual UI verification with AI.
     """
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] UI verification for session {session_id}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
     try:
-        logger.info(f"[assign_test_cases_task] Starting for session {session_id}")
+        ctx = _get_session_context(redis_client, session_id)
+        if not ctx.get("company_id"):
+            return {"success": False, "error": "Session not found"}
         
-        session = get_session_data(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
-        test_cases = session.get('test_cases', [])
+        if not api_key:
+            return {"success": False, "error": "No API key available"}
         
-        from services.form_mapper_ai_helpers import AIFormPageEndPrompter
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
         
-        api_key = get_anthropic_api_key()
-        end_prompter = AIFormPageEndPrompter(api_key=api_key)
+        ai_verifier = helpers["ui_verifier"]
+        result = ai_verifier.verify_ui(
+            screenshot_base64=screenshot_base64,
+            expected_state=expected_state
+        )
         
-        updated_steps = end_prompter.assign_test_cases(steps, test_cases)
+        # Record usage (mostly image tokens)
+        input_tokens = len(screenshot_base64) // 100 + 500
+        output_tokens = len(json.dumps(result)) // 4 if result else 0
         
-        tokens_used = len(json.dumps(steps)) // 4 + len(json.dumps(updated_steps)) // 4
-        increment_ai_usage(session_id, tokens_used, tokens_used * 0.000003)
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_UI_VERIFY,
+            input_tokens, output_tokens, session_id
+        )
         
-        celery_result = {
-            'success': True,
-            'steps': updated_steps,
-            'steps_count': len(updated_steps)
-        }
-        store_celery_result(session_id, 'assign_test_cases', celery_result)
+        return result
         
-        logger.info(f"[assign_test_cases_task] Assigned test cases to {len(updated_steps)} steps")
-        return celery_result
+    except BudgetExceededError as e:
+        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         
     except Exception as e:
-        logger.error(f"[assign_test_cases_task] Error: {e}", exc_info=True)
+        logger.error(f"[FormMapperTask] UI verification failed: {e}")
+        raise
         
-        celery_result = {
-            'success': False,
-            'error': str(e),
-            'steps': steps  # Return original steps on failure
-        }
-        store_celery_result(session_id, 'assign_test_cases', celery_result)
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=2)
+def assign_test_cases(
+    self,
+    session_id: str,
+    all_steps: list,
+    test_cases: list
+) -> Dict:
+    """
+    Celery task: Assign test cases to steps at end of mapping.
+    """
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] Assigning test cases for session {session_id}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if not ctx.get("company_id"):
+            return {"success": False, "error": "Session not found"}
         
-        return celery_result
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        
+        if not api_key:
+            return {"success": False, "error": "No API key available"}
+        
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+        
+        ai_end = helpers["end_prompter"]
+        result = ai_end.assign_test_cases(
+            steps=all_steps,
+            test_cases=test_cases
+        )
+        
+        # Record usage
+        input_tokens = len(json.dumps(all_steps)) // 4 + len(json.dumps(test_cases)) // 4
+        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_END_ASSIGN,
+            input_tokens, output_tokens, session_id
+        )
+        
+        # Store final result
+        result_key = f"mapper_final_result:{session_id}"
+        redis_client.setex(result_key, 86400, json.dumps(result))  # 24h TTL
+        
+        return result
+        
+    except BudgetExceededError as e:
+        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Test case assignment failed: {e}")
+        return {"success": False, "error": str(e)}
+        
+    finally:
+        db.close()

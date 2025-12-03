@@ -485,13 +485,6 @@ class FormPagesLocatorService:
         
         return self.ai_helper.is_submission_button(button_text, screenshot_base64)
     
-    def get_navigation_clickables(self, screenshot_base64: str) -> List[str]:
-        """Ask AI to identify navigation clickables from screenshot"""
-        if not self.ai_helper:
-            return []
-        
-        return self.ai_helper.get_navigation_clickables(screenshot_base64)
-    
     # ========== COST TRACKING ==========
     
     def get_ai_cost_summary(self) -> Dict[str, Any]:

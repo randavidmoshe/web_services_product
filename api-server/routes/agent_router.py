@@ -14,7 +14,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import redis
 import json
 import os
@@ -310,15 +310,21 @@ async def agent_heartbeat(
     agent.last_heartbeat = datetime.utcnow()
     db.commit()
     
-    # Check if there's a cancelled session for this agent's user
+    # Check for recently cancelled session (last 5 minutes)
+    # Simple approach: no session ID tracking needed
     cancel_requested = False
+    cancel_threshold = datetime.utcnow() - timedelta(minutes=5)
     cancelled_session = db.query(CrawlSession).filter(
         CrawlSession.user_id == agent.user_id,
-        CrawlSession.status == 'cancelled'
+        CrawlSession.status == 'cancelled',
+        CrawlSession.completed_at >= cancel_threshold
     ).first()
     
     if cancelled_session:
         cancel_requested = True
+        # Mark as acknowledged so we don't keep sending cancel
+        cancelled_session.status = 'cancelled_ack'
+        db.commit()
     
     return {"success": True, "cancel_requested": cancel_requested}
 
@@ -355,6 +361,15 @@ async def poll_task(
         
         task_msg = json.loads(task_data)
         task_id = task_msg.get('task_id')
+
+        # Return directly for forms_runner tasks (Redis-only for scale)
+        if task_msg.get('task_type') and task_msg.get('task_type').startswith('forms_runner_'):
+            return {
+                'task_id': task_id,
+                'task_type': task_msg.get('task_type'),
+                'payload': task_msg.get('payload', {}),
+                'session_id': task_msg.get('session_id')
+            }
         
         # Get full task details from database
         agent_service = AgentService(db)

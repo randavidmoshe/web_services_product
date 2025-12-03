@@ -33,7 +33,7 @@ from traffic_capture import TrafficCapture
 from web_ui.server import start_server
 from crawler import FormPagesCrawler, FormPagesAPIClient
 from crawler.form_pages_utils import detect_page_error, PageErrorCode, get_error_message
-from form_mapper_handler import FormMapperTaskHandler  # <-- ADD THIS
+from form_mapper_handler import FormMapperTaskHandler
 
 # Suppress SSL warnings for self-signed certificates in development
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -54,11 +54,12 @@ class FormDiscovererAgent:
         self.selenium_agent = AgentSelenium()  # Uses default Desktop path
         self.is_running = False
         self.current_task_id = None
+        self.current_crawl_session_id = None  # Track current crawl session for cancel
         self.heartbeat_thread = None
         self.tray_icon = None
         self.cancel_requested = False  # Set by heartbeat when server requests cancellation
         
-        # Initialize Form Mapper handler  # <-- ADD THIS BLOCK
+        # Initialize Form Mapper handler
         self.form_mapper_handler = FormMapperTaskHandler(self.selenium_agent)
         self.logger.info("✓ Form Mapper handler initialized")
         
@@ -271,7 +272,8 @@ class FormDiscovererAgent:
                 payload = {
                     "agent_id": self.config.agent_id,
                     "status": "idle" if not self.current_task_id else "busy",
-                    "current_task_id": self.current_task_id
+                    "current_task_id": self.current_task_id,
+                    "current_crawl_session_id": self.current_crawl_session_id
                 }
                 
                 response = requests.post(url, json=payload, headers=self._get_headers(), timeout=10, verify=self.ssl_verify)
@@ -390,7 +392,7 @@ class FormDiscovererAgent:
             # Update status to running
             self._update_task_status(task_id, 'running')
             
-            # ===== FORM MAPPER TASKS ===== # <-- ADD THIS BLOCK
+            # ===== FORM MAPPER TASKS =====
             if task_type.startswith('form_mapper_'):
                 self.logger.info(f"🗺️ Form Mapper task: {task_type}")
                 result = self.form_mapper_handler.handle_task(task)
@@ -406,6 +408,20 @@ class FormDiscovererAgent:
                     self.logger.error(f"❌ Form Mapper task failed: {result.get('error')}")
                 return
             # ===== END FORM MAPPER TASKS =====
+            
+            # ===== FORMS RUNNER TASKS =====
+            if task_type.startswith('forms_runner_'):
+                self.logger.info(f"🏃 Forms Runner task: {task_type}")
+                result = self.form_mapper_handler.handle_task(task)
+                self._report_form_mapper_result(result)
+                if result.get('success'):
+                    self._update_task_status(task_id, 'completed', result=result)
+                    self.logger.info(f"✅ Forms Runner task completed: {task_type}")
+                else:
+                    self._update_task_status(task_id, 'failed', error=result.get('error'))
+                    self.logger.error(f"❌ Forms Runner task failed: {result.get('error')}")
+                return
+            # ===== END FORMS RUNNER TASKS =====
             
             # Execute based on type
             if task_type == 'discover_form_pages':
@@ -435,7 +451,21 @@ class FormDiscovererAgent:
         finally:
             self.current_task_id = None
     
-    def _report_form_mapper_result(self, result: Dict):  # <-- ADD THIS METHOD
+    def _update_task_status(self, task_id: str, status: str, result: dict = None, error: str = None):
+        """Send task status update to server."""
+        try:
+            url = f"{self.config.api_url}/api/agent/task-status"
+            payload = {
+                "task_id": task_id,
+                "status": status,
+                "message": error,
+                "result": result
+            }
+            requests.post(url, json=payload, headers=self._get_headers(), timeout=30, verify=self.ssl_verify)
+        except Exception as e:
+            self.logger.warning(f"Failed to update task status: {e}")
+    
+    def _report_form_mapper_result(self, result: Dict):
         """Report Form Mapper task result back to server."""
         try:
             url = f"{self.config.api_url}/api/form-mapper/agent/task-result"
@@ -471,20 +501,6 @@ class FormDiscovererAgent:
         except Exception as e:
             self.logger.error(f"❌ Error reporting Form Mapper result: {e}")
     
-    def _update_task_status(self, task_id: str, status: str, result: dict = None, error: str = None):
-        """Send task status update to server."""
-        try:
-            url = f"{self.config.api_url}/api/agent/task-status"
-            payload = {
-                "task_id": task_id,
-                "status": status,
-                "message": error,
-                "result": result
-            }
-            requests.post(url, json=payload, headers=self._get_headers(), timeout=30, verify=self.ssl_verify)
-        except Exception as e:
-            self.logger.warning(f"Failed to update task status: {e}")
-    
     def _handle_execute_steps(self, params: Dict) -> Dict:
         """Execute Selenium steps."""
         steps = params.get('steps', [])
@@ -508,100 +524,131 @@ class FormDiscovererAgent:
         return self._handle_execute_steps({'steps': test_steps})
 
     def _handle_discover_form_pages(self, params: Dict) -> Dict:
-        """Handle discover_form_pages task - discovers forms on a website."""
-        project_id = params.get('project_id')
-        project_name = params.get('project_name', 'Unknown Project')
-        base_url = params.get('base_url')
-        login_url = params.get('login_url')
+        """Handle form page discovery task."""
+        self.logger.info("🔍 Starting form page discovery...")
+
+        crawl_session_id = params.get('crawl_session_id')
+        self.current_crawl_session_id = crawl_session_id  # Track for cancel detection
+        network_url = params.get('network_url')
+        login_url = params.get('login_url', network_url)
         login_username = params.get('login_username')
         login_password = params.get('login_password')
-        login_steps = params.get('login_steps', [])
-        max_depth = params.get('max_depth', 5)
-        slow_mode = params.get('slow_mode', False)
-        crawl_session_id = params.get('crawl_session_id')
-
-        self.logger.info(f"Starting form discovery for: {project_name}")
-        self.selenium_agent.results_logger.info(f"="*50)
-        self.selenium_agent.results_logger.info(f"STARTING DISCOVERY: {project_name}")
-        self.selenium_agent.results_logger.info(f"URL: {base_url}")
-        self.selenium_agent.results_logger.info(f"="*50)
+        project_name = params.get('project_name', 'default')
+        max_depth = params.get('max_depth', 20)
+        max_form_pages = params.get('max_form_pages')
+        slow_mode = params.get('slow_mode', True)
+        
+        # Re-read browser settings from .env file (allows changes without restart)
+        from dotenv import load_dotenv
+        load_dotenv(override=True)  # Reload .env to pick up changes
+        headless = os.getenv('DEFAULT_HEADLESS', 'false').lower() == 'true'
+        browser = os.getenv('BROWSER', 'chrome')
+        self.logger.info(f"[Browser Config] browser={browser}, headless={headless} (fresh from .env)")
 
         api_client = FormPagesAPIClient(
-            config=self.config,
-            project_id=project_id,
+            api_url=self.config.api_url,
+            agent_token=self.config.agent_token,
+            company_id=params.get('company_id'),
+            product_id=params.get('product_id'),
+            project_id=params.get('project_id'),
+            network_id=params.get('network_id'),
             crawl_session_id=crawl_session_id,
+            user_id=params.get('user_id', 0),
             ssl_verify=self.ssl_verify,
-            jwt_token=self.jwt_token,
-            api_key=self.api_key
+            api_key=self.api_key,
+            jwt_token=self.jwt_token  # Pass JWT to client
         )
+        api_client.max_form_pages = max_form_pages
+
+        api_client.update_crawl_session(status='running')
 
         try:
-            # Initialize browser
-            self.selenium_agent.initialize_browser()
-            driver = self.selenium_agent.driver
+            # Always close existing browser and create fresh session
+            if self.selenium_agent.driver:
+                self.logger.info("Closing existing browser session...")
+                try:
+                    self.selenium_agent.close_browser()
+                except Exception as e:
+                    self.logger.warning(f"Error closing old browser: {e}")
             
-            # Navigate to base URL first
-            driver.get(base_url)
+            # Create fresh browser
+            self.selenium_agent.initialize_browser(
+                browser_type=browser,
+                headless=headless
+            )
+
+            driver = self.selenium_agent.driver
+            driver.get(login_url)
             time.sleep(2)
             
-            # Check for page error
+            # Check for page error after initial load
             page_error = detect_page_error(driver)
             if page_error:
                 error_msg = get_error_message(page_error)
-                self.logger.error(f"Page error on initial load: {error_msg}")
+                self.logger.error(f"Initial page error: {error_msg}")
+                self.selenium_agent.results_logger.error(f"❌ PAGE ERROR: {error_msg}")
                 api_client.update_crawl_session(
                     status='failed',
                     error_code=page_error,
-                    error_message=f"Failed to load initial page: {error_msg}"
+                    error_message=f"Cannot access site: {error_msg}"
                 )
                 return {"success": False, "error": error_msg, "error_code": page_error}
-            
-            # Handle login if required
+
+            # Login with retry logic
             login_successful = False
-            if login_url and login_steps:
-                self.logger.info(f"Logging in at: {login_url}")
-                driver.get(login_url)
-                time.sleep(2)
+            if login_username and login_password:
+                self.logger.info(f"Logging in as: {login_username}")
+                
+                from selenium.webdriver.common.by import By
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
                 
                 max_login_attempts = 3
                 for attempt in range(1, max_login_attempts + 1):
+                    self.logger.info(f"Login attempt {attempt}/{max_login_attempts}")
+                    
                     try:
-                        self.logger.info(f"Login attempt {attempt}/{max_login_attempts}")
-                        step_failed = False
+                        # Get fresh page state for each attempt
+                        page_html = driver.execute_script("return document.documentElement.outerHTML")
+                        screenshot_b64 = driver.get_screenshot_as_base64()
+
+                        login_steps = api_client.generate_login_steps(
+                            page_html=page_html,
+                            screenshot_base64=screenshot_b64,
+                            username=login_username,
+                            password=login_password
+                        )
                         
+                        if not login_steps:
+                            # AI returned no steps - not a login page (or already logged in)
+                            # Assume we're on the dashboard and continue to crawl
+                            self.logger.info("No login steps returned - assuming already on dashboard, continuing...")
+                            login_successful = True
+                            break
+
+                        # Execute login steps with error handling per step
+                        step_failed = False
                         for step in login_steps:
-                            action = step.get('action', 'fill')
-                            selector = step.get('selector', '')
+                            action = step.get('action')
+                            selector = step.get('selector')
                             value = step.get('value', '')
-                            
-                            # Replace placeholders
-                            if value == '{{username}}':
-                                value = login_username
-                            elif value == '{{password}}':
-                                value = login_password
-                            
+
                             try:
                                 if action == 'fill':
-                                    from selenium.webdriver.common.by import By
-                                    from selenium.webdriver.support.ui import WebDriverWait
-                                    from selenium.webdriver.support import expected_conditions as EC
-                                    
+                                    # Wait for element to be present
                                     element = WebDriverWait(driver, 10).until(
                                         EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                                     )
                                     element.clear()
                                     element.send_keys(value)
+                                    time.sleep(0.3)
                                 elif action == 'click':
-                                    from selenium.webdriver.common.by import By
-                                    from selenium.webdriver.support.ui import WebDriverWait
-                                    from selenium.webdriver.support import expected_conditions as EC
-                                    
+                                    # Wait for element to be clickable
                                     element = WebDriverWait(driver, 10).until(
                                         EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
                                     )
                                     element.click()
-                                elif action == 'wait':
-                                    time.sleep(float(value) if value else 1)
+                                    time.sleep(0.5)
                                 elif action in ('wait_dom_ready', 'verify_clickables'):
                                     time.sleep(1)
                             except Exception as step_error:
@@ -728,6 +775,7 @@ class FormDiscovererAgent:
             return {"success": False, "error": str(e), "error_code": error_code}
         
         finally:
+            self.current_crawl_session_id = None  # Clear session tracking
             if self.selenium_agent.driver:
                 self.logger.info("Closing browser after discovery...")
                 try:

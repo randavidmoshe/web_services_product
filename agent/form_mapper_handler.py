@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class FormMapperTaskHandler:
     """
-    Handles Form Mapper tasks on the desktop agent.
+    Handles Form Mapper and Forms Runner tasks on the desktop agent.
     
     Task Types:
     - form_mapper_init: Initialize browser and navigate to form
@@ -33,6 +33,7 @@ class FormMapperTaskHandler:
     - form_mapper_screenshot: Capture screenshot
     - form_mapper_navigate: Navigate to URL
     - form_mapper_close: Close browser
+    - forms_runner_exec_step: Execute login/navigation step (with error context)
     """
     
     def __init__(self, agent_selenium):
@@ -68,6 +69,7 @@ class FormMapperTaskHandler:
             "form_mapper_screenshot": self._handle_screenshot,
             "form_mapper_navigate": self._handle_navigate,
             "form_mapper_close": self._handle_close,
+            "forms_runner_exec_step": self._handle_runner_exec_step,  # Forms Runner
         }
         
         handler = handlers.get(task_type)
@@ -121,7 +123,7 @@ class FormMapperTaskHandler:
         
         # Initialize browser if not already done
         if not self.selenium.driver:
-            self.selenium.initialize_browser(browser=browser, headless=headless)
+            self.selenium.initialize_browser(browser_type=browser, headless=headless)
         
         # Login if needed
         if login_url and username:
@@ -206,6 +208,52 @@ class FormMapperTaskHandler:
                 "success": False,
                 "error": f"DOM extraction failed: {e}"
             }
+    
+    def _handle_runner_exec_step(self, session_id: int, payload: Dict) -> Dict:
+        """
+        Execute a Forms Runner step (login/navigation).
+        Same as exec_step but captures DOM + screenshot on failure for AI recovery.
+        
+        Payload:
+            step: Step dict with action, selector, value, etc.
+        """
+        step = payload.get("step", {})
+        
+        # Auto-initialize browser if not running
+        if not self.selenium.driver:
+            logger.info(f"[FormMapper] Auto-initializing browser for runner")
+            self.selenium.initialize_browser(browser_type="chrome", headless=False)
+            # Navigate to base URL if provided
+            base_url = payload.get("base_url")
+            if base_url:
+                self.selenium.driver.get(base_url)
+
+        if not step:
+            return {"success": False, "error": "No step provided"}
+        
+        # Execute the step using existing logic
+        result = self._handle_exec_step(session_id, {"step": step})
+        
+        # On failure, capture context for AI recovery
+        if not result.get("success"):
+            try:
+                # Capture DOM
+                dom_html = self.selenium.extract_dom() or ""
+                
+                # Capture screenshot
+                screenshot_b64 = ""
+                try:
+                    screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
+                except:
+                    pass
+                
+                result["dom_html"] = dom_html
+                result["screenshot_base64"] = screenshot_b64
+                
+            except Exception as e:
+                logger.warning(f"[FormMapper] Failed to capture error context: {e}")
+        
+        return result
     
     def _handle_exec_step(self, session_id: int, payload: Dict) -> Dict:
         """
@@ -862,7 +910,7 @@ class FormMapperTaskHandler:
 # form_mapper_handler = FormMapperTaskHandler(agent_selenium)
 #
 # # In your task processing loop:
-# if task_type.startswith("form_mapper_"):
+# if task_type.startswith("form_mapper_") or task_type.startswith("forms_runner_"):
 #     result = form_mapper_handler.handle_task(task)
 #     # Report result to server
 #     report_task_result(result)

@@ -1100,10 +1100,10 @@ class FormPagesCrawler:
             return False
 
         # Check whitelist first - skip AI if we're confident
-        #for keyword in submission_keywords:
-        #    if keyword in text_lower:
-        #        print(f"    [Whitelist] Button '{button_text}' → Matched '{keyword}' → ✅ YES (no AI needed)")
-        #        return True
+        for keyword in submission_keywords:
+            if keyword in text_lower:
+                print(f"    [Whitelist] Button '{button_text}' → Matched '{keyword}' → ✅ YES (no AI needed)")
+                return True
 
         # Not in whitelist - ask server AI for uncertain cases
         print(f"    [AI] Button '{button_text}' → Not in whitelist, asking server AI...")
@@ -1542,25 +1542,6 @@ class FormPagesCrawler:
         """Find ALL clickable elements"""
         clickables = []
         seen = set()
-        
-        # ═══════════════════════════════════════════════════════════════════════
-        # AI VISION: Ask AI what clickables are relevant navigation targets
-        # ═══════════════════════════════════════════════════════════════════════
-        ai_clickables = []
-        try:
-            print("    [AI Vision] 📸 Taking screenshot for navigation analysis...")
-            screenshot = self.driver.get_screenshot_as_base64()
-            ai_clickables = self.server.get_navigation_clickables(screenshot)
-            if ai_clickables:
-                print(f"    [AI Vision] ✅ !!!!!!!!!!!!!!!!!!!!!!  Identified {len(ai_clickables)} navigation targets:")
-                for name in ai_clickables[:10]:  # Show first 10
-                    print(f"        • {name}")
-                if len(ai_clickables) > 10:
-                    print(f"        ... and {len(ai_clickables) - 10} more")
-            else:
-                print("    [AI Vision] ⚠️ No clickables identified - will use all found elements")
-        except Exception as e:
-            print(f"    [AI Vision] ⚠️ Error: {e} - falling back to all clickables")
 
         # ✅ Step 1: Pre-identify ALL table containers
         print("    [Performance] Pre-scanning for table containers...")
@@ -1722,18 +1703,6 @@ class FormPagesCrawler:
                                     print(
                                         f"    [DEBUG] 🔍 Found 'soumya vande': tag={el.tag_name}, visible={el.is_displayed()}, selector={better_selector}")
 
-                                # ═══════════════════════════════════════════════════════════════
-                                # AI VISION FILTER: Only include if AI identified as navigation
-                                # ═══════════════════════════════════════════════════════════════
-                                if ai_clickables:
-                                    text_lower = text.lower().strip()
-                                    is_ai_target = any(
-                                        text_lower == ai_name.lower().strip()
-                                        for ai_name in ai_clickables
-                                    )
-                                    if not is_ai_target:
-                                        continue
-
                                 clickables.append({
                                     'element': el,
                                     'text': text,
@@ -1885,18 +1854,6 @@ class FormPagesCrawler:
                     except:
                         pos_y = 0
                         pos_x = 0
-
-                    # ═══════════════════════════════════════════════════════════════
-                    # AI VISION FILTER: Only include if AI identified as navigation
-                    # ═══════════════════════════════════════════════════════════════
-                    if ai_clickables:
-                        text_lower = text.lower().strip()
-                        is_ai_target = any(
-                            text_lower == ai_name.lower().strip()
-                            for ai_name in ai_clickables
-                        )
-                        if not is_ai_target:
-                            continue
 
                     clickables.append({
                         'element': el,

@@ -99,6 +99,8 @@ class Network(Base):
     # Login credentials for test user (used by crawler)
     login_username = Column(String, nullable=True)
     login_password = Column(String, nullable=True)  # Should be encrypted in production
+    login_stages = Column(JSON, default=list)  # Login steps for Form Mapper
+    logout_stages = Column(JSON, default=list)  # Logout steps for Form Mapper
     form_pages_use_screenshot_for_button_check = Column(Boolean, default=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -210,3 +212,6 @@ class Screenshot(Base):
 
 
 # Note: Agent model is defined in models/agent_models.py to avoid duplication
+
+# Import related models to resolve relationships
+from models.form_mapper_models import FormMapperSession, FormMapResult

@@ -677,38 +677,6 @@ async def is_submission_button(
     return {"is_submission": is_submission}
 
 
-@router.post("/ai/navigation-clickables")
-async def get_navigation_clickables(
-    data: Dict[str, Any] = Body(...),
-    db: Session = Depends(get_db)
-):
-    """Ask AI to identify navigation clickables from screenshot"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
-    
-    service = FormPagesLocatorService(db)
-    company_id = data.get("company_id")
-    product_id = data.get("product_id")
-    user_id = data.get("user_id")
-    crawl_session_id = data.get("crawl_session_id")
-    
-    if company_id and product_id:
-        try:
-            service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
-            raise HTTPException(
-                status_code=402,
-                detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
-            )
-    
-    clickables = service.get_navigation_clickables(data.get("screenshot_base64"))
-    
-    # Track AI cost
-    if company_id and product_id and user_id:
-        service.save_api_usage(company_id, product_id, user_id, crawl_session_id or 0, "navigation_clickables")
-    
-    return {"clickables": clickables}
-
-
 # ========== COST TRACKING ==========
 
 @router.post("/sessions/{session_id}/save-usage")

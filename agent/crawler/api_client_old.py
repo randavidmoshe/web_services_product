@@ -298,17 +298,6 @@ class FormPagesAPIClient:
         
         return result.get("is_submission", False)
     
-    def get_navigation_clickables(self, screenshot_base64: str) -> List[str]:
-        """Ask AI to identify navigation clickables from screenshot"""
-        result = self._post("/api/form-pages/ai/navigation-clickables", {
-            "screenshot_base64": screenshot_base64,
-            "company_id": self.company_id,
-            "product_id": self.product_id,
-            "user_id": self.user_id,
-            "crawl_session_id": self.crawl_session_id
-        })
-        return result.get("clickables", [])
-    
     # ========== FORM ROUTE OPERATIONS ==========
     
     def check_form_exists(self, project_name: str, form_url: str) -> bool:

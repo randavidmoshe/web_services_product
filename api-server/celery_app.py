@@ -11,7 +11,7 @@ celery = Celery(
     "form_discoverer",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['tasks.crawl_tasks']
+    include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks']
 )
 
 # Celery configuration

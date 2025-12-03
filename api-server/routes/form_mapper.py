@@ -42,14 +42,14 @@ class StartMappingRequest(BaseModel):
 
 class StartMappingResponse(BaseModel):
     """Response after starting mapping"""
-    session_id: int
+    session_id: str
     status: str
     message: str
 
 
 class SessionStatusResponse(BaseModel):
     """Session status response"""
-    session_id: int
+    session_id: str
     status: str
     current_step_index: int
     total_steps: int
@@ -62,7 +62,7 @@ class SessionStatusResponse(BaseModel):
 
 class SessionResultResponse(BaseModel):
     """Final result response"""
-    session_id: int
+    session_id: str
     result_id: int
     form_page_route_id: int
     path_number: int
@@ -79,7 +79,7 @@ class SessionResultResponse(BaseModel):
 
 class AgentTaskResultRequest(BaseModel):
     """Agent reports task result"""
-    session_id: int
+    session_id: str
     task_type: str
     success: bool
     payload: dict  # Task-specific result data
@@ -134,7 +134,23 @@ async def start_form_mapping(
     orchestrator = FormMapperOrchestrator(db)
     
     try:
+        # First create database record to get integer ID
+        db_session = FormMapperSession(
+            form_page_route_id=request.form_page_route_id,
+            user_id=user_id,
+            network_id=network_id,
+            company_id=company_id,
+            agent_id=agent_id,
+            status="initializing",
+            config=request.config or {}
+        )
+        db.add(db_session)
+        db.commit()
+        db.refresh(db_session)
+        
+        # Now create Redis session with the database ID
         session = orchestrator.create_session(
+            session_id=str(db_session.id),  # Use DB integer ID as string
             form_page_route_id=request.form_page_route_id,
             user_id=user_id,
             network_id=network_id,
@@ -144,7 +160,7 @@ async def start_form_mapping(
         
         # Start the mapping process
         success = orchestrator.start_mapping(
-            session_id=session.id,
+            session_id=str(db_session.id),
             agent_id=agent_id,
             form_page_route=form_page_route,
             test_cases=request.test_cases
@@ -153,10 +169,10 @@ async def start_form_mapping(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to start mapping")
         
-        logger.info(f"[API] Started mapping session {session.id} for user {user_id}")
+        logger.info(f"[API] Started mapping session {db_session.id} for user {user_id}")
         
         return StartMappingResponse(
-            session_id=session.id,
+            session_id=str(db_session.id),
             status="initializing",
             message="Mapping started. Agent will begin processing."
         )
@@ -168,7 +184,7 @@ async def start_form_mapping(
 
 @router.get("/sessions/{session_id}/status", response_model=SessionStatusResponse)
 async def get_session_status(
-    session_id: int,
+    session_id: str,
     check_celery: bool = Query(True, description="Check for pending Celery results"),
     db: Session = Depends(get_db)
 ):
@@ -221,7 +237,7 @@ async def get_session_status(
 
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(
-    session_id: int,
+    session_id: str,
     db: Session = Depends(get_db)
 ):
     """Cancel a mapping session."""
@@ -247,7 +263,7 @@ async def cancel_session(
 
 @router.get("/sessions/{session_id}/result", response_model=SessionResultResponse)
 async def get_session_result(
-    session_id: int,
+    session_id: str,
     db: Session = Depends(get_db)
 ):
     """Get the final result of a completed mapping session."""
@@ -444,7 +460,7 @@ async def download_result(
 
 @router.get("/sessions/{session_id}/logs")
 async def get_session_logs(
-    session_id: int,
+    session_id: str,
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db)
