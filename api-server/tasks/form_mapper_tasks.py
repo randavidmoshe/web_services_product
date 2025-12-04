@@ -138,7 +138,7 @@ def analyze_form_page(
     try:
         # Get session context
         ctx = _get_session_context(redis_client, session_id)
-        if not ctx.get("company_id"):
+        if ctx.get("company_id") is None:
             return {"success": False, "error": "Session not found"}
         
         # Check budget and get API key
@@ -219,7 +219,7 @@ def handle_alert_recovery(
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if not ctx.get("company_id"):
+        if ctx.get("company_id") is None:
             return {"success": False, "error": "Session not found"}
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
@@ -287,7 +287,7 @@ def verify_ui_visual(
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if not ctx.get("company_id"):
+        if ctx.get("company_id") is None:
             return {"success": False, "error": "Session not found"}
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
@@ -346,7 +346,7 @@ def assign_test_cases(
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if not ctx.get("company_id"):
+        if ctx.get("company_id") is None:
             return {"success": False, "error": "Session not found"}
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])

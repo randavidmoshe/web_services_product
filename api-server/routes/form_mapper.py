@@ -428,6 +428,13 @@ async def agent_task_result(
     try:
         response = orchestrator.process_agent_result(session_id, result)
         
+        # Trigger Celery task if orchestrator requests it
+        if response.get("trigger_celery") and response.get("celery_task"):
+            from tasks.form_mapper_tasks import analyze_form_page
+            celery_args = response.get("celery_args", {})
+            analyze_form_page.delay(**celery_args)
+            logger.info(f"[API] Triggered Celery task: {response.get('celery_task')}")
+        
         return AgentTaskResultResponse(
             status=response.get("status", "ok"),
             next_action=response.get("next_action"),

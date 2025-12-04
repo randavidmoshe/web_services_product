@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from routes import auth, agent, projects, screenshots
 from routes import agent_router
 from routes import installer_router
+from routes import two_fa  # 2FA router
+from routes import users  # Users management router
 from models.database import engine, Base, SessionLocal, SuperAdmin
 from services.s3_storage import create_s3_bucket_if_not_exists
 from routes import form_pages
@@ -120,6 +122,8 @@ app.include_router(installer_router.router)
 app.include_router(form_pages.router, prefix="/api/form-pages", tags=["form-pages"])
 app.include_router(form_mapper.router)
 app.include_router(company_config.router)  # <-- ADD THIS
+app.include_router(two_fa.router, prefix="/api", tags=["2fa"])  # 2FA router
+app.include_router(users.router)  # Users management router
 
 @app.get("/")
 async def root():

@@ -26,23 +26,56 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Check super admin
     admin = db.query(SuperAdmin).filter(SuperAdmin.email == email).first()
     if admin and pwd_context.verify(password, admin.password_hash):
+        # Check if 2FA is enabled
+        if getattr(admin, 'totp_enabled', False):
+            return {
+                "requires_2fa": True,
+                "user_id": admin.id,
+                "type": "super_admin"
+            }
+        
+        admin.last_login_at = datetime.utcnow()
+        db.commit()
+        
         return {
+            "requires_2fa": False,
             "token": create_token({"user_id": admin.id, "type": "super_admin"}),
             "type": "super_admin",
             "user_id": admin.id,
-            "company_id": None  # Super admins don't belong to a company
+            "company_id": None
         }
     
     # Check regular user
     user = db.query(User).filter(User.email == email).first()
     if user and pwd_context.verify(password, user.password_hash):
+        user_type = user.role if user.role else "user"
+        
+        # Check if 2FA is enabled
+        if getattr(user, 'totp_enabled', False):
+            return {
+                "requires_2fa": True,
+                "user_id": user.id,
+                "type": user_type,
+                "company_id": user.company_id
+            }
+        
+        # Check if 2FA setup is required (for admins or enforced companies)
+        requires_2fa_setup = False
+        
+        if user_type == "admin" and not getattr(user, 'totp_enabled', False):
+            requires_2fa_setup = True
+        
+        if not requires_2fa_setup and user.company_id:
+            company = db.query(Company).filter(Company.id == user.company_id).first()
+            if company and getattr(company, 'require_2fa', False) and not getattr(user, 'totp_enabled', False):
+                requires_2fa_setup = True
+        
         user.last_login_at = datetime.utcnow()
         db.commit()
         
-        # Use actual user role from database (admin, user, etc.)
-        user_type = user.role if user.role else "user"
-        
         return {
+            "requires_2fa": False,
+            "requires_2fa_setup": requires_2fa_setup,
             "token": create_token({"user_id": user.id, "type": user_type}),
             "type": user_type,
             "user_id": user.id,
@@ -74,14 +107,11 @@ async def agent_login(
     email = request.email
     password = request.password
     
-    # Check regular user (agents use regular user accounts)
     user = db.query(User).filter(User.email == email).first()
     
     if user and pwd_context.verify(password, user.password_hash):
-        # Generate agent token
         agent_token = f"agent_{secrets.token_urlsafe(32)}"
         
-        # Update last login
         user.last_login_at = datetime.utcnow()
         db.commit()
         
@@ -103,32 +133,22 @@ class SignupRequest(BaseModel):
     email: str
     password: str
     full_name: str
-    product_type: str = "form_testing"  # form_testing, shopping_testing, marketing_testing
-    plan: str = "trial"  # trial, trial_byok, starter, professional
-    claude_api_key: Optional[str] = None  # Only for trial_byok
+    product_type: str = "form_testing"
+    plan: str = "trial"
+    claude_api_key: Optional[str] = None
 
 
 @router.post("/signup")
 async def signup(request: SignupRequest, db: Session = Depends(get_db)):
-    """
-    Create new company, admin user, and subscription.
-    Plans:
-    - trial: Free 14 days, $50 AI budget (hidden from user)
-    - trial_byok: Free 14 days, user's own API key (unlimited)
-    - starter: $300/mo, $300 AI budget
-    - professional: $500/mo, $500 AI budget
-    """
-    # Check if email already exists
+    """Create new company, admin user, and subscription."""
     existing_user = db.query(User).filter(User.email == request.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Get product
     product = db.query(Product).filter(Product.type == request.product_type).first()
     if not product:
         raise HTTPException(status_code=400, detail="Invalid product type")
     
-    # Plan configuration
     plan_config = {
         "trial": {"cost": 0, "budget": 50, "is_trial": True, "days": 14},
         "trial_byok": {"cost": 0, "budget": 0, "is_trial": True, "days": 14},
@@ -141,31 +161,29 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
     
     config = plan_config[request.plan]
     
-    # BYOK requires API key
     if request.plan == "trial_byok" and not request.claude_api_key:
         raise HTTPException(status_code=400, detail="API key required for BYOK plan")
     
     try:
-        # 1. Create company
         company = Company(
             name=request.company_name,
             billing_email=request.email
         )
         db.add(company)
-        db.flush()  # Get company.id
+        db.flush()
         
-        # 2. Create admin user
         user = User(
             company_id=company.id,
             email=request.email,
             password_hash=pwd_context.hash(request.password),
             name=request.full_name,
-            role="admin"
+            role="admin",
+            totp_enabled=False,
+            totp_secret=None
         )
         db.add(user)
-        db.flush()  # Get user.id
+        db.flush()
         
-        # 3. Create subscription
         subscription = CompanyProductSubscription(
             company_id=company.id,
             product_id=product.id,
@@ -178,7 +196,6 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         )
         db.add(subscription)
         
-        # 4. Create default project
         project = Project(
             company_id=company.id,
             product_id=product.id,
@@ -194,7 +211,10 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
             "success": True,
             "message": "Account created successfully",
             "company_id": company.id,
-            "user_id": user.id
+            "user_id": user.id,
+            "token": create_token({"user_id": user.id, "type": "admin"}),
+            "type": "admin",
+            "requires_2fa_setup": True
         }
         
     except Exception as e:

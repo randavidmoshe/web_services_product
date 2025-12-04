@@ -36,6 +36,9 @@ class SuperAdmin(Base):
     name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime)
+    # 2FA fields
+    totp_secret = Column(String, nullable=True)
+    totp_enabled = Column(Boolean, default=False)
 
 class Company(Base):
     __tablename__ = "companies"
@@ -44,6 +47,8 @@ class Company(Base):
     billing_email = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # 2FA enforcement setting
+    require_2fa = Column(Boolean, default=False)
 
 class CompanyProductSubscription(Base):
     __tablename__ = "company_product_subscriptions"
@@ -75,6 +80,9 @@ class User(Base):
     created_by_admin_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime)
+    # 2FA fields
+    totp_secret = Column(String, nullable=True)
+    totp_enabled = Column(Boolean, default=False)
 
 class Project(Base):
     __tablename__ = "projects"

@@ -94,6 +94,504 @@ export default function DashboardLayout({
   const [aiBudget, setAiBudget] = useState<number | null>(null)
   const [isByok, setIsByok] = useState<boolean>(false)
 
+  // Theme configuration
+  const [showConfigDropdown, setShowConfigDropdown] = useState(false)
+  const [showThemeModal, setShowThemeModal] = useState(false)
+  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
+  // Theme definitions - Regular + Ultra Bright
+  const themes: Record<string, {
+    name: string
+    emoji: string
+    category: 'elegant' | 'neon'
+    colors: {
+      bgGradient: string
+      headerBg: string
+      sidebarBg: string
+      cardBg: string
+      cardBorder: string
+      cardGlow: string
+      accentPrimary: string
+      accentSecondary: string
+      accentGlow: string
+      iconGlow: string
+      buttonGlow: string
+      textPrimary: string
+      textSecondary: string
+      textGlow: string
+      statusOnline: string
+      statusGlow: string
+      borderGlow: string
+    }
+  }> = {
+    // === ELEGANT THEMES ===
+    'platinum-steel': {
+      name: 'Platinum Steel',
+      emoji: '🔩',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
+        headerBg: 'rgba(75, 85, 99, 0.9)',
+        sidebarBg: 'rgba(75, 85, 99, 0.6)',
+        cardBg: 'rgba(75, 85, 99, 0.5)',
+        cardBorder: 'rgba(156, 163, 175, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#6366f1',
+        accentSecondary: '#8b5cf6',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f3f4f6',
+        textSecondary: '#9ca3af',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'ocean-depths': {
+      name: 'Ocean Depths',
+      emoji: '🌊',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
+        headerBg: 'rgba(15, 76, 92, 0.9)',
+        sidebarBg: 'rgba(15, 76, 92, 0.6)',
+        cardBg: 'rgba(15, 76, 92, 0.5)',
+        cardBorder: 'rgba(34, 211, 238, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#06b6d4',
+        accentSecondary: '#22d3ee',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfeff',
+        textSecondary: '#67e8f9',
+        textGlow: 'none',
+        statusOnline: '#22d3ee',
+        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'aurora-borealis': {
+      name: 'Aurora Borealis',
+      emoji: '🌌',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
+        headerBg: 'rgba(49, 46, 129, 0.9)',
+        sidebarBg: 'rgba(49, 46, 129, 0.6)',
+        cardBg: 'rgba(49, 46, 129, 0.5)',
+        cardBorder: 'rgba(167, 139, 250, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#8b5cf6',
+        accentSecondary: '#a78bfa',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f5f3ff',
+        textSecondary: '#c4b5fd',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'sunset-ember': {
+      name: 'Sunset Ember',
+      emoji: '🔥',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
+        headerBg: 'rgba(124, 45, 18, 0.9)',
+        sidebarBg: 'rgba(124, 45, 18, 0.6)',
+        cardBg: 'rgba(124, 45, 18, 0.5)',
+        cardBorder: 'rgba(251, 146, 60, 0.4)',
+        cardGlow: 'none',
+        accentPrimary: '#f97316',
+        accentSecondary: '#fb923c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff7ed',
+        textSecondary: '#fdba74',
+        textGlow: 'none',
+        statusOnline: '#fbbf24',
+        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'emerald-forest': {
+      name: 'Emerald Forest',
+      emoji: '🌲',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
+        headerBg: 'rgba(6, 78, 59, 0.9)',
+        sidebarBg: 'rgba(6, 78, 59, 0.6)',
+        cardBg: 'rgba(6, 78, 59, 0.5)',
+        cardBorder: 'rgba(52, 211, 153, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#10b981',
+        accentSecondary: '#34d399',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfdf5',
+        textSecondary: '#6ee7b7',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'crimson-night': {
+      name: 'Crimson Night',
+      emoji: '🍷',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
+        headerBg: 'rgba(69, 10, 10, 0.9)',
+        sidebarBg: 'rgba(69, 10, 10, 0.6)',
+        cardBg: 'rgba(69, 10, 10, 0.5)',
+        cardBorder: 'rgba(251, 113, 133, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#f43f5e',
+        accentSecondary: '#fb7185',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff1f2',
+        textSecondary: '#fda4af',
+        textGlow: 'none',
+        statusOnline: '#fb7185',
+        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    // === BRIGHT GRAY & WHITE THEMES ===
+    'bright-silver': {
+      name: 'Bright Silver',
+      emoji: '🥈',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
+        headerBg: 'rgba(107, 114, 128, 0.95)',
+        sidebarBg: 'rgba(107, 114, 128, 0.7)',
+        cardBg: 'rgba(107, 114, 128, 0.6)',
+        cardBorder: 'rgba(209, 213, 219, 0.5)',
+        cardGlow: 'none',
+        accentPrimary: '#1e3a5f',
+        accentSecondary: '#2d5a87',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ffffff',
+        textSecondary: '#e5e7eb',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'chrome-glow': {
+      name: 'Chrome Glow',
+      emoji: '⚙️',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
+        headerBg: 'rgba(156, 163, 175, 0.95)',
+        sidebarBg: 'rgba(156, 163, 175, 0.7)',
+        cardBg: 'rgba(156, 163, 175, 0.6)',
+        cardBorder: 'rgba(229, 231, 235, 0.6)',
+        cardGlow: 'none',
+        accentPrimary: '#0f4c5c',
+        accentSecondary: '#1a6b7c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#111827',
+        textSecondary: '#374151',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'pearl-white': {
+      name: 'Pearl White',
+      emoji: '🤍',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #f9fafb 0%, #e5e7eb 50%, #d1d5db 100%)',
+        headerBg: 'rgba(249, 250, 251, 0.98)',
+        sidebarBg: 'rgba(243, 244, 246, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.9)',
+        cardBorder: 'rgba(209, 213, 219, 0.8)',
+        cardGlow: 'none',
+        accentPrimary: '#374151',
+        accentSecondary: '#4b5563',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#111827',
+        textSecondary: '#4b5563',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'snow-crystal': {
+      name: 'Snow Crystal',
+      emoji: '❄️',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #ffffff 0%, #f0f9ff 50%, #e0f2fe 100%)',
+        headerBg: 'rgba(255, 255, 255, 0.98)',
+        sidebarBg: 'rgba(240, 249, 255, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.95)',
+        cardBorder: 'rgba(186, 230, 253, 0.8)',
+        cardGlow: 'none',
+        accentPrimary: '#1e40af',
+        accentSecondary: '#2563eb',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#0c4a6e',
+        textSecondary: '#0369a1',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    // === ULTRA BRIGHT NEON THEMES ===
+    'cyber-pink': {
+      name: 'Cyber Pink',
+      emoji: '💖',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
+        headerBg: 'rgba(40, 15, 40, 0.95)',
+        sidebarBg: 'rgba(40, 15, 40, 0.8)',
+        cardBg: 'rgba(50, 20, 50, 0.6)',
+        cardBorder: 'rgba(255, 0, 128, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
+        accentPrimary: '#ff0080',
+        accentSecondary: '#ff00ff',
+        accentGlow: 'rgba(255, 0, 128, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff99cc',
+        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
+      }
+    },
+    'radioactive': {
+      name: 'Radioactive',
+      emoji: '☢️',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
+        headerBg: 'rgba(20, 40, 10, 0.95)',
+        sidebarBg: 'rgba(20, 40, 10, 0.8)',
+        cardBg: 'rgba(25, 50, 15, 0.6)',
+        cardBorder: 'rgba(136, 255, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
+        accentPrimary: '#00ff00',
+        accentSecondary: '#88ff00',
+        accentGlow: 'rgba(0, 255, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#bbff66',
+        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
+        statusOnline: '#ffff00',
+        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
+      }
+    },
+    'electric-blue': {
+      name: 'Electric Blue',
+      emoji: '⚡',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
+        headerBg: 'rgba(0, 20, 50, 0.95)',
+        sidebarBg: 'rgba(0, 20, 50, 0.8)',
+        cardBg: 'rgba(0, 30, 60, 0.6)',
+        cardBorder: 'rgba(0, 204, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
+        accentPrimary: '#0066ff',
+        accentSecondary: '#00ccff',
+        accentGlow: 'rgba(0, 102, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ddff',
+        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
+      }
+    },
+    'golden-sunrise': {
+      name: 'Golden Sunrise',
+      emoji: '🌅',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
+        headerBg: 'rgba(40, 30, 10, 0.95)',
+        sidebarBg: 'rgba(40, 30, 10, 0.8)',
+        cardBg: 'rgba(50, 35, 15, 0.6)',
+        cardBorder: 'rgba(255, 204, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
+        accentPrimary: '#ff8800',
+        accentSecondary: '#ffcc00',
+        accentGlow: 'rgba(255, 136, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffdd44',
+        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
+        statusOnline: '#ffff66',
+        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
+      }
+    },
+    'plasma-purple': {
+      name: 'Plasma Purple',
+      emoji: '🔮',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
+        headerBg: 'rgba(30, 10, 50, 0.95)',
+        sidebarBg: 'rgba(30, 10, 50, 0.8)',
+        cardBg: 'rgba(40, 15, 60, 0.6)',
+        cardBorder: 'rgba(204, 102, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
+        accentPrimary: '#9900ff',
+        accentSecondary: '#cc66ff',
+        accentGlow: 'rgba(153, 0, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#dd99ff',
+        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
+        statusOnline: '#ff99ff',
+        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
+      }
+    },
+    'fire-storm': {
+      name: 'Fire Storm',
+      emoji: '🔥',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
+        headerBg: 'rgba(40, 10, 10, 0.95)',
+        sidebarBg: 'rgba(40, 10, 10, 0.8)',
+        cardBg: 'rgba(50, 15, 15, 0.6)',
+        cardBorder: 'rgba(255, 102, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
+        accentPrimary: '#ff0000',
+        accentSecondary: '#ff6600',
+        accentGlow: 'rgba(255, 0, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff9944',
+        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
+        statusOnline: '#ffcc00',
+        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
+      }
+    },
+    'arctic-aurora': {
+      name: 'Arctic Aurora',
+      emoji: '❄️',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
+        headerBg: 'rgba(0, 40, 40, 0.95)',
+        sidebarBg: 'rgba(0, 40, 40, 0.8)',
+        cardBg: 'rgba(0, 50, 50, 0.6)',
+        cardBorder: 'rgba(0, 255, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
+        accentPrimary: '#00ffcc',
+        accentSecondary: '#00ffff',
+        accentGlow: 'rgba(0, 255, 204, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ffff',
+        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
+        statusOnline: '#66ffff',
+        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
+      }
+    },
+    'midnight-rose': {
+      name: 'Midnight Rose',
+      emoji: '🌹',
+      category: 'neon',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
+        headerBg: 'rgba(40, 10, 25, 0.95)',
+        sidebarBg: 'rgba(40, 10, 25, 0.8)',
+        cardBg: 'rgba(50, 15, 35, 0.6)',
+        cardBorder: 'rgba(255, 102, 153, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
+        accentPrimary: '#ff3377',
+        accentSecondary: '#ff66aa',
+        accentGlow: 'rgba(255, 51, 119, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffaacc',
+        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
+        statusOnline: '#ff99cc',
+        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
+      }
+    }
+  }
+
+  // Get current theme colors
+  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
+
+  // Load theme from localStorage on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('quathera-theme')
+    if (savedTheme && themes[savedTheme]) {
+      setCurrentTheme(savedTheme)
+    }
+  }, [])
+
+  // Save theme to localStorage when changed
+  const changeTheme = (themeId: string) => {
+    setCurrentTheme(themeId)
+    localStorage.setItem('quathera-theme', themeId)
+    setShowThemeModal(false)
+    setShowConfigDropdown(false)
+  }
+
+  // Close config dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.config-dropdown')) {
+        setShowConfigDropdown(false)
+      }
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
+
   // Load networks when Networks tab is selected
   useEffect(() => {
     if (activeTab === 'networks' && activeProject && token) {
@@ -556,7 +1054,7 @@ export default function DashboardLayout({
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)' }}>
+    <div style={{ minHeight: '100vh', background: getTheme().colors.bgGradient }}>
       {/* CSS Animations */}
       <style>{`
         @keyframes fadeIn {
@@ -588,27 +1086,38 @@ export default function DashboardLayout({
       `}</style>
       
       {/* Top Bar - Sleek Dark Glass Design */}
-      <div style={topBarStyle}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '16px 36px',
+        background: getTheme().colors.headerBg,
+        backdropFilter: 'blur(20px)',
+        borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        boxShadow: `${getTheme().colors.borderGlow}, 0 4px 30px rgba(0,0,0,0.3)`
+      }}>
         {/* Left side - Logo only */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: '52px',
             height: '52px',
-            background: 'linear-gradient(135deg, #00F5D4 0%, #00BBF9 50%, #9B5DE5 100%)',
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary} 0%, ${getTheme().colors.accentSecondary} 100%)`,
             borderRadius: '14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(0, 187, 249, 0.35)'
+            boxShadow: getTheme().colors.buttonGlow
           }}>
             <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>Q</span>
           </div>
           <span style={{ 
             fontSize: '32px', 
             fontWeight: 700, 
-            background: 'linear-gradient(135deg, #fff 0%, #cbd5e1 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
+            color: getTheme().colors.textPrimary,
+            textShadow: getTheme().colors.textGlow,
             letterSpacing: '-0.5px'
           }}>
             Quathera
@@ -621,7 +1130,20 @@ export default function DashboardLayout({
           <div className="project-dropdown" style={{ position: 'relative' }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowProjectDropdown(!showProjectDropdown) }}
-              style={projectButtonStyle}
+              style={{
+                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`,
+                border: `2px solid ${getTheme().colors.accentPrimary}80`,
+                borderRadius: '14px',
+                padding: '12px 20px',
+                color: getTheme().colors.textPrimary,
+                fontSize: '17px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: `0 0 25px ${getTheme().colors.accentGlow}`
+              }}
             >
               <span style={{ 
                 background: 'linear-gradient(135deg, #00F5D4, #00BBF9)',
@@ -732,6 +1254,57 @@ export default function DashboardLayout({
             </span>
           </div>
           
+          {/* Configuration Dropdown */}
+          <div className="config-dropdown" style={{ position: 'relative' }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowConfigDropdown(!showConfigDropdown) }}
+              className="top-btn"
+              style={topBarButtonStyle}
+            >
+              <span>⚙️</span> Configuration <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
+            </button>
+            
+            {showConfigDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 10px)',
+                right: 0,
+                background: getTheme().colors.headerBg,
+                backdropFilter: 'blur(20px)',
+                border: `2px solid ${getTheme().colors.cardBorder}`,
+                borderRadius: '16px',
+                boxShadow: `${getTheme().colors.borderGlow}, 0 20px 60px rgba(0,0,0,0.5)`,
+                minWidth: '220px',
+                zIndex: 1000,
+                overflow: 'hidden',
+                animation: 'fadeIn 0.2s ease'
+              }}>
+                <div style={{ padding: '14px 18px', fontSize: '11px', fontWeight: 700, color: getTheme().colors.textSecondary, letterSpacing: '1.5px', borderBottom: `1px solid ${getTheme().colors.cardBorder}` }}>
+                  CONFIGURATION
+                </div>
+                <div
+                  onClick={() => setShowThemeModal(true)}
+                  className="dropdown-item"
+                  style={{
+                    padding: '16px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    color: getTheme().colors.textPrimary,
+                    transition: 'all 0.2s ease',
+                    fontSize: '16px',
+                    fontWeight: 500
+                  }}
+                >
+                  <span style={{ fontSize: '20px' }}>🎨</span>
+                  <span>Themes</span>
+                  <span style={{ marginLeft: 'auto', opacity: 0.5 }}>→</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* Download Agent */}
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
@@ -764,8 +1337,22 @@ export default function DashboardLayout({
       {/* Main Layout */}
       <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
         {/* Sidebar - Modern Glass Design */}
-        <div style={sidebarStyle}>
-          <div style={sidebarHeaderStyle}>
+        <div style={{
+          width: '320px',
+          background: getTheme().colors.sidebarBg,
+          backdropFilter: 'blur(20px)',
+          borderRight: `2px solid ${getTheme().colors.cardBorder}`,
+          flexShrink: 0,
+          boxShadow: 'inset -10px 0 30px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            padding: '36px 28px 24px',
+            fontSize: '14px',
+            fontWeight: 600,
+            color: getTheme().colors.textSecondary,
+            letterSpacing: '2.5px',
+            textTransform: 'uppercase'
+          }}>
             <span>MENU</span>
           </div>
           
@@ -783,29 +1370,30 @@ export default function DashboardLayout({
                 style={{
                   ...sidebarItemStyle,
                   background: activeTab === item.id 
-                    ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)'
+                    ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
                     : 'rgba(255, 255, 255, 0.03)',
-                  borderColor: activeTab === item.id ? 'rgba(99, 102, 241, 0.5)' : 'transparent',
+                  borderColor: activeTab === item.id ? `${getTheme().colors.accentPrimary}80` : 'transparent',
                   animation: `slideIn 0.3s ease ${index * 0.05}s both`
                 }}
               >
                 <div style={{
                   ...sidebarIconStyle,
                   background: activeTab === item.id 
-                    ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
+                    ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
                     : 'rgba(255, 255, 255, 0.1)',
-                  boxShadow: activeTab === item.id ? '0 4px 15px rgba(99, 102, 241, 0.3)' : 'none'
+                  boxShadow: activeTab === item.id ? getTheme().colors.iconGlow : 'none'
                 }}>
                   <span>{item.icon}</span>
                 </div>
                 <span style={{ 
-                  color: activeTab === item.id ? '#fff' : '#94a3b8',
-                  fontWeight: activeTab === item.id ? 600 : 500
+                  color: activeTab === item.id ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
+                  fontWeight: activeTab === item.id ? 600 : 500,
+                  textShadow: activeTab === item.id ? getTheme().colors.textGlow : 'none'
                 }}>{item.label}</span>
               </div>
             ))}
             
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '20px 8px' }} />
+            <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
             
             <div 
               onClick={() => setActiveTab('networks')}
@@ -813,24 +1401,53 @@ export default function DashboardLayout({
               style={{
                 ...sidebarItemStyle,
                 background: activeTab === 'networks' 
-                  ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)'
+                  ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
                   : 'rgba(255, 255, 255, 0.03)',
-                borderColor: activeTab === 'networks' ? 'rgba(99, 102, 241, 0.5)' : 'transparent'
+                borderColor: activeTab === 'networks' ? `${getTheme().colors.accentPrimary}80` : 'transparent'
               }}
             >
               <div style={{
                 ...sidebarIconStyle,
                 background: activeTab === 'networks' 
-                  ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
-                  : 'rgba(255, 255, 255, 0.1)'
+                  ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
+                  : 'rgba(255, 255, 255, 0.1)',
+                boxShadow: activeTab === 'networks' ? getTheme().colors.iconGlow : 'none'
               }}>
                 <span>🌐</span>
               </div>
               <span style={{ 
-                color: activeTab === 'networks' ? '#fff' : '#94a3b8',
-                fontWeight: activeTab === 'networks' ? 600 : 500
+                color: activeTab === 'networks' ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
+                fontWeight: activeTab === 'networks' ? 600 : 500,
+                textShadow: activeTab === 'networks' ? getTheme().colors.textGlow : 'none'
               }}>Test Sites</span>
             </div>
+            
+            {/* Users Management - Admin only */}
+            {(userRole === 'admin' || userRole === 'super_admin') && (
+              <>
+                <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
+                <div 
+                  onClick={() => router.push('/users')}
+                  className="sidebar-item"
+                  style={{
+                    ...sidebarItemStyle,
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    borderColor: 'transparent'
+                  }}
+                >
+                  <div style={{
+                    ...sidebarIconStyle,
+                    background: 'rgba(255, 255, 255, 0.1)'
+                  }}>
+                    <span>👥</span>
+                  </div>
+                  <span style={{ 
+                    color: getTheme().colors.textSecondary,
+                    fontWeight: 500
+                  }}>Team Members</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -839,26 +1456,56 @@ export default function DashboardLayout({
           {activeTab === 'form-discovery' && children}
           
           {activeTab === 'test-scenarios' && (
-            <div style={placeholderCardStyle}>
-              <div style={placeholderIconStyle}>📝</div>
-              <h2 style={{ margin: '0 0 16px', color: '#fff', fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px' }}>Test Scenarios</h2>
-              <p style={{ color: '#94a3b8', margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Define and manage your test scenarios here.</p>
+            <div style={{
+              ...placeholderCardStyle,
+              background: getTheme().colors.cardBg,
+              border: `2px solid ${getTheme().colors.cardBorder}`,
+              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
+            }}>
+              <div style={{
+                ...placeholderIconStyle,
+                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
+                border: `2px solid ${getTheme().colors.accentPrimary}80`,
+                boxShadow: getTheme().colors.iconGlow
+              }}>📝</div>
+              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Test Scenarios</h2>
+              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Define and manage your test scenarios here.</p>
             </div>
           )}
           
           {activeTab === 'run-tests' && (
-            <div style={placeholderCardStyle}>
-              <div style={placeholderIconStyle}>▶️</div>
-              <h2 style={{ margin: '0 0 16px', color: '#fff', fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px' }}>Run Tests</h2>
-              <p style={{ color: '#94a3b8', margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Execute your test scenarios and view results.</p>
+            <div style={{
+              ...placeholderCardStyle,
+              background: getTheme().colors.cardBg,
+              border: `2px solid ${getTheme().colors.cardBorder}`,
+              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
+            }}>
+              <div style={{
+                ...placeholderIconStyle,
+                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
+                border: `2px solid ${getTheme().colors.accentPrimary}80`,
+                boxShadow: getTheme().colors.iconGlow
+              }}>▶️</div>
+              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Run Tests</h2>
+              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Execute your test scenarios and view results.</p>
             </div>
           )}
           
           {activeTab === 'form-mapping' && (
-            <div style={placeholderCardStyle}>
-              <div style={placeholderIconStyle}>🗺️</div>
-              <h2 style={{ margin: '0 0 16px', color: '#fff', fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px' }}>Form Page Mapping</h2>
-              <p style={{ color: '#94a3b8', margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Visualize relationships between form pages.</p>
+            <div style={{
+              ...placeholderCardStyle,
+              background: getTheme().colors.cardBg,
+              border: `2px solid ${getTheme().colors.cardBorder}`,
+              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
+            }}>
+              <div style={{
+                ...placeholderIconStyle,
+                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
+                border: `2px solid ${getTheme().colors.accentPrimary}80`,
+                boxShadow: getTheme().colors.iconGlow
+              }}>🗺️</div>
+              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Form Page Mapping</h2>
+              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Visualize relationships between form pages.</p>
             </div>
           )}
           
@@ -1273,6 +1920,277 @@ export default function DashboardLayout({
           </div>
         </div>
       )}
+
+      {/* Theme Selector Modal */}
+      {showThemeModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{
+            background: getTheme().colors.headerBg,
+            borderRadius: '28px',
+            width: '900px',
+            maxHeight: '85vh',
+            overflow: 'hidden',
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            boxShadow: `${getTheme().colors.borderGlow}, 0 30px 100px rgba(0,0,0,0.5)`,
+            animation: 'fadeIn 0.3s ease'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '28px 36px',
+              borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}20, ${getTheme().colors.accentSecondary}15)`
+            }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700 }}>
+                  🎨 Choose Your Theme
+                </h2>
+                <p style={{ margin: '8px 0 0', fontSize: '15px', color: getTheme().colors.textSecondary }}>
+                  Select a color scheme for your dashboard
+                </p>
+              </div>
+              <button
+                onClick={() => setShowThemeModal(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  color: getTheme().colors.textPrimary,
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: '32px', overflowY: 'auto', maxHeight: 'calc(85vh - 120px)' }}>
+              {/* Elegant Themes */}
+              <div style={{ marginBottom: '36px' }}>
+                <h3 style={{ 
+                  color: getTheme().colors.textPrimary, 
+                  fontSize: '18px', 
+                  fontWeight: 700, 
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>✨</span> Elegant Themes
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+                  {Object.entries(themes).filter(([_, t]) => t.category === 'elegant').map(([id, theme]) => (
+                    <div
+                      key={id}
+                      onClick={() => changeTheme(id)}
+                      style={{
+                        background: theme.colors.cardBg,
+                        border: currentTheme === id 
+                          ? `3px solid ${theme.colors.accentPrimary}` 
+                          : `2px solid ${theme.colors.cardBorder}`,
+                        borderRadius: '20px',
+                        padding: '20px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        boxShadow: currentTheme === id 
+                          ? theme.colors.buttonGlow 
+                          : theme.colors.cardGlow,
+                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                    >
+                      {/* Mini Preview */}
+                      <div style={{
+                        background: theme.colors.bgGradient,
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '16px',
+                        border: `1px solid ${theme.colors.cardBorder}`
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 15px ${theme.colors.accentGlow}`
+                          }} />
+                          <div style={{
+                            height: '8px',
+                            flex: 1,
+                            borderRadius: '4px',
+                            background: theme.colors.cardBorder
+                          }} />
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          gap: '8px'
+                        }}>
+                          <div style={{
+                            height: '24px',
+                            flex: 1,
+                            borderRadius: '6px',
+                            background: theme.colors.cardBg,
+                            border: `1px solid ${theme.colors.cardBorder}`
+                          }} />
+                          <div style={{
+                            width: '50px',
+                            height: '24px',
+                            borderRadius: '6px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
+                          }} />
+                        </div>
+                      </div>
+                      {/* Theme Name */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        color: theme.colors.textPrimary
+                      }}>
+                        <span style={{ fontSize: '22px' }}>{theme.emoji}</span>
+                        <span style={{ fontWeight: 600, fontSize: '15px' }}>{theme.name}</span>
+                        {currentTheme === id && (
+                          <span style={{ 
+                            marginLeft: 'auto', 
+                            background: theme.colors.accentPrimary,
+                            color: '#fff',
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: 700
+                          }}>
+                            ✓ Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Neon Themes */}
+              <div>
+                <h3 style={{ 
+                  color: getTheme().colors.textPrimary, 
+                  fontSize: '18px', 
+                  fontWeight: 700, 
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>⚡</span> Ultra Bright Neon Themes
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+                  {Object.entries(themes).filter(([_, t]) => t.category === 'neon').map(([id, theme]) => (
+                    <div
+                      key={id}
+                      onClick={() => changeTheme(id)}
+                      style={{
+                        background: theme.colors.cardBg,
+                        border: currentTheme === id 
+                          ? `3px solid ${theme.colors.accentPrimary}` 
+                          : `2px solid ${theme.colors.cardBorder}`,
+                        borderRadius: '18px',
+                        padding: '16px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        boxShadow: currentTheme === id 
+                          ? theme.colors.buttonGlow 
+                          : theme.colors.cardGlow,
+                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                    >
+                      {/* Mini Preview */}
+                      <div style={{
+                        background: theme.colors.bgGradient,
+                        borderRadius: '10px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme.colors.cardBorder}`,
+                        boxShadow: `inset 0 0 20px ${theme.colors.accentGlow}`
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginBottom: '10px'
+                        }}>
+                          <div style={{
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '6px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 20px ${theme.colors.accentPrimary}`
+                          }} />
+                          <div style={{
+                            height: '6px',
+                            flex: 1,
+                            borderRadius: '3px',
+                            background: theme.colors.cardBorder,
+                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
+                          }} />
+                        </div>
+                        <div style={{
+                          height: '18px',
+                          borderRadius: '5px',
+                          background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                          boxShadow: `0 0 15px ${theme.colors.accentPrimary}`
+                        }} />
+                      </div>
+                      {/* Theme Name */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: theme.colors.textPrimary
+                      }}>
+                        <span style={{ fontSize: '18px' }}>{theme.emoji}</span>
+                        <span style={{ fontWeight: 600, fontSize: '13px', textShadow: theme.colors.textGlow }}>{theme.name}</span>
+                        {currentTheme === id && (
+                          <span style={{ 
+                            marginLeft: 'auto', 
+                            background: theme.colors.accentPrimary,
+                            color: '#fff',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            boxShadow: `0 0 10px ${theme.colors.accentPrimary}`
+                          }}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1286,18 +2204,18 @@ const topBarStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '16px 36px',
-  background: 'rgba(55, 65, 81, 0.95)',
+  background: 'rgba(75, 85, 99, 0.9)',
   backdropFilter: 'blur(20px)',
-  borderBottom: '1px solid rgba(255,255,255,0.08)',
+  borderBottom: '2px solid rgba(156, 163, 175, 0.3)',
   position: 'sticky',
   top: 0,
   zIndex: 100,
-  boxShadow: '0 4px 30px rgba(0,0,0,0.2)'
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.15), 0 4px 30px rgba(0,0,0,0.3)'
 }
 
 const projectButtonStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))',
-  border: '1px solid rgba(99, 102, 241, 0.3)',
+  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
+  border: '2px solid rgba(99, 102, 241, 0.5)',
   borderRadius: '14px',
   padding: '12px 20px',
   color: '#fff',
@@ -1306,18 +2224,19 @@ const projectButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  transition: 'all 0.2s ease'
+  transition: 'all 0.2s ease',
+  boxShadow: '0 0 25px rgba(99, 102, 241, 0.3)'
 }
 
 const dropdownMenuStyle: React.CSSProperties = {
   position: 'absolute',
   top: 'calc(100% + 10px)',
   left: 0,
-  background: 'rgba(55, 65, 81, 0.98)',
+  background: 'rgba(75, 85, 99, 0.98)',
   backdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: '2px solid rgba(156, 163, 175, 0.35)',
   borderRadius: '18px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.2), 0 20px 60px rgba(0,0,0,0.5)',
   minWidth: '320px',
   zIndex: 1000,
   overflow: 'hidden',
@@ -1423,10 +2342,11 @@ const toastCloseStyle: React.CSSProperties = {
 
 const sidebarStyle: React.CSSProperties = {
   width: '320px',
-  background: 'rgba(55, 65, 81, 0.7)',
+  background: 'rgba(75, 85, 99, 0.6)',
   backdropFilter: 'blur(20px)',
-  borderRight: '1px solid rgba(255,255,255,0.08)',
-  flexShrink: 0
+  borderRight: '2px solid rgba(156, 163, 175, 0.25)',
+  flexShrink: 0,
+  boxShadow: 'inset -10px 0 30px rgba(0,0,0,0.1)'
 }
 
 const sidebarHeaderStyle: React.CSSProperties = {
@@ -1465,26 +2385,27 @@ const sidebarIconStyle: React.CSSProperties = {
 }
 
 const placeholderCardStyle: React.CSSProperties = {
-  background: 'rgba(75, 85, 99, 0.4)',
+  background: 'rgba(75, 85, 99, 0.5)',
   backdropFilter: 'blur(20px)',
   borderRadius: '28px',
   padding: '100px 80px',
   textAlign: 'center',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  border: '2px solid rgba(156, 163, 175, 0.35)',
+  boxShadow: '0 0 50px rgba(156, 163, 175, 0.15), 0 20px 60px rgba(0,0,0,0.3), inset 0 0 30px rgba(255,255,255,0.03)'
 }
 
 const placeholderIconStyle: React.CSSProperties = {
   width: '110px',
   height: '110px',
-  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
+  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3))',
   borderRadius: '28px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontSize: '48px',
   margin: '0 auto 28px',
-  border: '1px solid rgba(99, 102, 241, 0.3)'
+  border: '2px solid rgba(99, 102, 241, 0.5)',
+  boxShadow: '0 0 30px rgba(99, 102, 241, 0.4)'
 }
 
 const contentCardStyle: React.CSSProperties = {
@@ -1492,19 +2413,20 @@ const contentCardStyle: React.CSSProperties = {
   backdropFilter: 'blur(20px)',
   borderRadius: '24px',
   padding: '32px',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  border: '2px solid rgba(156, 163, 175, 0.3)',
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.12), 0 20px 60px rgba(0,0,0,0.25)'
 }
 
 const infoBannerStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, rgba(0, 187, 249, 0.1), rgba(0, 245, 212, 0.1))',
-  border: '1px solid rgba(0, 187, 249, 0.2)',
+  background: 'linear-gradient(135deg, rgba(0, 187, 249, 0.15), rgba(0, 245, 212, 0.12))',
+  border: '2px solid rgba(0, 187, 249, 0.4)',
   borderRadius: '16px',
   padding: '20px 24px',
   marginBottom: '28px',
   display: 'flex',
   alignItems: 'flex-start',
-  gap: '16px'
+  gap: '16px',
+  boxShadow: '0 0 35px rgba(0, 187, 249, 0.2), inset 0 0 30px rgba(0, 187, 249, 0.05)'
 }
 
 const networkSectionStyle: React.CSSProperties = {

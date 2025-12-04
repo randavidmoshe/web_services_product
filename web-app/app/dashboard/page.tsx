@@ -133,6 +133,460 @@ export default function DashboardPage() {
   // Discovery section collapse state (collapsed by default when forms exist)
   const [isDiscoveryExpanded, setIsDiscoveryExpanded] = useState(false)
   
+  // Theme state - reads from localStorage to sync with layout
+  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
+  // Theme definitions (same as layout.tsx)
+  const themes: Record<string, {
+    name: string
+    colors: {
+      bgGradient: string
+      headerBg: string
+      sidebarBg: string
+      cardBg: string
+      cardBorder: string
+      cardGlow: string
+      accentPrimary: string
+      accentSecondary: string
+      accentGlow: string
+      iconGlow: string
+      buttonGlow: string
+      textPrimary: string
+      textSecondary: string
+      textGlow: string
+      statusOnline: string
+      statusGlow: string
+      borderGlow: string
+    }
+  }> = {
+    'platinum-steel': {
+      name: 'Platinum Steel',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
+        headerBg: 'rgba(75, 85, 99, 0.9)',
+        sidebarBg: 'rgba(75, 85, 99, 0.6)',
+        cardBg: 'rgba(75, 85, 99, 0.5)',
+        cardBorder: 'rgba(156, 163, 175, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#6366f1',
+        accentSecondary: '#8b5cf6',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f3f4f6',
+        textSecondary: '#9ca3af',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'ocean-depths': {
+      name: 'Ocean Depths',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
+        headerBg: 'rgba(15, 76, 92, 0.9)',
+        sidebarBg: 'rgba(15, 76, 92, 0.6)',
+        cardBg: 'rgba(15, 76, 92, 0.5)',
+        cardBorder: 'rgba(34, 211, 238, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#06b6d4',
+        accentSecondary: '#22d3ee',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfeff',
+        textSecondary: '#67e8f9',
+        textGlow: 'none',
+        statusOnline: '#22d3ee',
+        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'aurora-borealis': {
+      name: 'Aurora Borealis',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
+        headerBg: 'rgba(49, 46, 129, 0.9)',
+        sidebarBg: 'rgba(49, 46, 129, 0.6)',
+        cardBg: 'rgba(49, 46, 129, 0.5)',
+        cardBorder: 'rgba(167, 139, 250, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#8b5cf6',
+        accentSecondary: '#a78bfa',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f5f3ff',
+        textSecondary: '#c4b5fd',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'sunset-ember': {
+      name: 'Sunset Ember',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
+        headerBg: 'rgba(124, 45, 18, 0.9)',
+        sidebarBg: 'rgba(124, 45, 18, 0.6)',
+        cardBg: 'rgba(124, 45, 18, 0.5)',
+        cardBorder: 'rgba(251, 146, 60, 0.4)',
+        cardGlow: 'none',
+        accentPrimary: '#f97316',
+        accentSecondary: '#fb923c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff7ed',
+        textSecondary: '#fdba74',
+        textGlow: 'none',
+        statusOnline: '#fbbf24',
+        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'emerald-forest': {
+      name: 'Emerald Forest',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
+        headerBg: 'rgba(6, 78, 59, 0.9)',
+        sidebarBg: 'rgba(6, 78, 59, 0.6)',
+        cardBg: 'rgba(6, 78, 59, 0.5)',
+        cardBorder: 'rgba(52, 211, 153, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#10b981',
+        accentSecondary: '#34d399',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfdf5',
+        textSecondary: '#6ee7b7',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'crimson-night': {
+      name: 'Crimson Night',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
+        headerBg: 'rgba(69, 10, 10, 0.9)',
+        sidebarBg: 'rgba(69, 10, 10, 0.6)',
+        cardBg: 'rgba(69, 10, 10, 0.5)',
+        cardBorder: 'rgba(251, 113, 133, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#f43f5e',
+        accentSecondary: '#fb7185',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff1f2',
+        textSecondary: '#fda4af',
+        textGlow: 'none',
+        statusOnline: '#fb7185',
+        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'bright-silver': {
+      name: 'Bright Silver',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
+        headerBg: 'rgba(107, 114, 128, 0.95)',
+        sidebarBg: 'rgba(107, 114, 128, 0.7)',
+        cardBg: 'rgba(107, 114, 128, 0.6)',
+        cardBorder: 'rgba(209, 213, 219, 0.5)',
+        cardGlow: 'none',
+        accentPrimary: '#1e3a5f',
+        accentSecondary: '#2d5a87',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ffffff',
+        textSecondary: '#e5e7eb',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'chrome-glow': {
+      name: 'Chrome Glow',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
+        headerBg: 'rgba(156, 163, 175, 0.95)',
+        sidebarBg: 'rgba(156, 163, 175, 0.7)',
+        cardBg: 'rgba(156, 163, 175, 0.6)',
+        cardBorder: 'rgba(229, 231, 235, 0.6)',
+        cardGlow: 'none',
+        accentPrimary: '#0f4c5c',
+        accentSecondary: '#1a6b7c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#111827',
+        textSecondary: '#374151',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'pearl-white': {
+      name: 'Pearl White',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #f9fafb 0%, #e5e7eb 50%, #d1d5db 100%)',
+        headerBg: 'rgba(249, 250, 251, 0.98)',
+        sidebarBg: 'rgba(243, 244, 246, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.9)',
+        cardBorder: 'rgba(209, 213, 219, 0.8)',
+        cardGlow: 'none',
+        accentPrimary: '#374151',
+        accentSecondary: '#4b5563',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#111827',
+        textSecondary: '#4b5563',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'snow-crystal': {
+      name: 'Snow Crystal',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #ffffff 0%, #f0f9ff 50%, #e0f2fe 100%)',
+        headerBg: 'rgba(255, 255, 255, 0.98)',
+        sidebarBg: 'rgba(240, 249, 255, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.95)',
+        cardBorder: 'rgba(186, 230, 253, 0.8)',
+        cardGlow: 'none',
+        accentPrimary: '#1e40af',
+        accentSecondary: '#2563eb',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#0c4a6e',
+        textSecondary: '#0369a1',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'cyber-pink': {
+      name: 'Cyber Pink',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
+        headerBg: 'rgba(40, 15, 40, 0.95)',
+        sidebarBg: 'rgba(40, 15, 40, 0.8)',
+        cardBg: 'rgba(50, 20, 50, 0.6)',
+        cardBorder: 'rgba(255, 0, 128, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
+        accentPrimary: '#ff0080',
+        accentSecondary: '#ff00ff',
+        accentGlow: 'rgba(255, 0, 128, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff99cc',
+        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
+      }
+    },
+    'radioactive': {
+      name: 'Radioactive',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
+        headerBg: 'rgba(20, 40, 10, 0.95)',
+        sidebarBg: 'rgba(20, 40, 10, 0.8)',
+        cardBg: 'rgba(25, 50, 15, 0.6)',
+        cardBorder: 'rgba(136, 255, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
+        accentPrimary: '#00ff00',
+        accentSecondary: '#88ff00',
+        accentGlow: 'rgba(0, 255, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#bbff66',
+        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
+        statusOnline: '#ffff00',
+        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
+      }
+    },
+    'electric-blue': {
+      name: 'Electric Blue',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
+        headerBg: 'rgba(0, 20, 50, 0.95)',
+        sidebarBg: 'rgba(0, 20, 50, 0.8)',
+        cardBg: 'rgba(0, 30, 60, 0.6)',
+        cardBorder: 'rgba(0, 204, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
+        accentPrimary: '#0066ff',
+        accentSecondary: '#00ccff',
+        accentGlow: 'rgba(0, 102, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ddff',
+        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
+      }
+    },
+    'golden-sunrise': {
+      name: 'Golden Sunrise',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
+        headerBg: 'rgba(40, 30, 10, 0.95)',
+        sidebarBg: 'rgba(40, 30, 10, 0.8)',
+        cardBg: 'rgba(50, 35, 15, 0.6)',
+        cardBorder: 'rgba(255, 204, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
+        accentPrimary: '#ff8800',
+        accentSecondary: '#ffcc00',
+        accentGlow: 'rgba(255, 136, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffdd44',
+        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
+        statusOnline: '#ffff66',
+        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
+      }
+    },
+    'plasma-purple': {
+      name: 'Plasma Purple',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
+        headerBg: 'rgba(30, 10, 50, 0.95)',
+        sidebarBg: 'rgba(30, 10, 50, 0.8)',
+        cardBg: 'rgba(40, 15, 60, 0.6)',
+        cardBorder: 'rgba(204, 102, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
+        accentPrimary: '#9900ff',
+        accentSecondary: '#cc66ff',
+        accentGlow: 'rgba(153, 0, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#dd99ff',
+        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
+        statusOnline: '#ff99ff',
+        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
+      }
+    },
+    'fire-storm': {
+      name: 'Fire Storm',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
+        headerBg: 'rgba(40, 10, 10, 0.95)',
+        sidebarBg: 'rgba(40, 10, 10, 0.8)',
+        cardBg: 'rgba(50, 15, 15, 0.6)',
+        cardBorder: 'rgba(255, 102, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
+        accentPrimary: '#ff0000',
+        accentSecondary: '#ff6600',
+        accentGlow: 'rgba(255, 0, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff9944',
+        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
+        statusOnline: '#ffcc00',
+        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
+      }
+    },
+    'arctic-aurora': {
+      name: 'Arctic Aurora',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
+        headerBg: 'rgba(0, 40, 40, 0.95)',
+        sidebarBg: 'rgba(0, 40, 40, 0.8)',
+        cardBg: 'rgba(0, 50, 50, 0.6)',
+        cardBorder: 'rgba(0, 255, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
+        accentPrimary: '#00ffcc',
+        accentSecondary: '#00ffff',
+        accentGlow: 'rgba(0, 255, 204, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ffff',
+        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
+        statusOnline: '#66ffff',
+        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
+      }
+    },
+    'midnight-rose': {
+      name: 'Midnight Rose',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
+        headerBg: 'rgba(40, 10, 25, 0.95)',
+        sidebarBg: 'rgba(40, 10, 25, 0.8)',
+        cardBg: 'rgba(50, 15, 35, 0.6)',
+        cardBorder: 'rgba(255, 102, 153, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
+        accentPrimary: '#ff3377',
+        accentSecondary: '#ff66aa',
+        accentGlow: 'rgba(255, 51, 119, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffaacc',
+        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
+        statusOnline: '#ff99cc',
+        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
+      }
+    }
+  }
+
+  // Get current theme colors
+  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
+
+  // Load theme from localStorage on mount and listen for changes
+  useEffect(() => {
+    const loadTheme = () => {
+      const savedTheme = localStorage.getItem('quathera-theme')
+      if (savedTheme && themes[savedTheme]) {
+        setCurrentTheme(savedTheme)
+      }
+    }
+    loadTheme()
+    
+    // Listen for storage changes (when theme is changed in layout)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'quathera-theme' && e.newValue && themes[e.newValue]) {
+        setCurrentTheme(e.newValue)
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Also poll for changes (in case same-tab changes don't trigger storage event)
+    const interval = setInterval(loadTheme, 500)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
+
   // Toggle step expansion
   const toggleStepExpansion = (index: number) => {
     setExpandedSteps(prev => {
@@ -814,11 +1268,19 @@ export default function DashboardPage() {
   if (!activeProjectId) {
     return (
       <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-        <div style={welcomeCardStyle}>
+        <div style={{
+          background: getTheme().colors.cardBg,
+          backdropFilter: 'blur(20px)',
+          borderRadius: '28px',
+          padding: '80px',
+          textAlign: 'center',
+          border: `2px solid ${getTheme().colors.cardBorder}`,
+          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
+        }}>
           <div style={{ fontSize: '64px', marginBottom: '24px' }}>👋</div>
-          <h2 style={{ margin: '0 0 16px', fontSize: '28px', fontWeight: 700, color: '#fff' }}>Welcome!</h2>
-          <p style={{ fontSize: '16px', color: '#94a3b8', margin: 0 }}>Please select a project from the top bar to get started.</p>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '12px' }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: '28px', fontWeight: 700, color: getTheme().colors.textPrimary, textShadow: getTheme().colors.textGlow }}>Welcome!</h2>
+          <p style={{ fontSize: '16px', color: getTheme().colors.textSecondary, margin: 0 }}>Please select a project from the top bar to get started.</p>
+          <p style={{ color: getTheme().colors.textSecondary, fontSize: '14px', marginTop: '12px', opacity: 0.7 }}>
             If you don't have any projects yet, click on the project dropdown and choose "Add Project".
           </p>
         </div>
@@ -841,10 +1303,10 @@ export default function DashboardPage() {
             to { opacity: 1; transform: translateY(0); }
           }
           .step-card:hover {
-            border-color: rgba(99, 102, 241, 0.4) !important;
+            border-color: ${getTheme().colors.accentPrimary}66 !important;
           }
           .expand-btn:hover {
-            background: rgba(99, 102, 241, 0.15) !important;
+            background: ${getTheme().colors.accentPrimary}25 !important;
           }
         `}</style>
 
@@ -868,16 +1330,17 @@ export default function DashboardPage() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '10px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: '#94a3b8',
+            background: getTheme().colors.cardBg,
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            color: getTheme().colors.textSecondary,
             padding: '14px 24px',
             borderRadius: '14px',
             fontSize: '16px',
             fontWeight: 500,
             cursor: 'pointer',
             marginBottom: '28px',
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            boxShadow: getTheme().colors.cardGlow
           }}
         >
           <span style={{ fontSize: '20px' }}>←</span>
@@ -886,12 +1349,12 @@ export default function DashboardPage() {
 
         {/* Edit Form Page Card */}
         <div style={{
-          background: 'rgba(75, 85, 99, 0.5)',
+          background: getTheme().colors.cardBg,
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: `2px solid ${getTheme().colors.cardBorder}`,
           borderRadius: '28px',
           overflow: 'hidden',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`,
           animation: 'fadeIn 0.3s ease'
         }}>
           {/* Header */}
@@ -1281,16 +1744,16 @@ export default function DashboardPage() {
             100% { background-position: 200% 0; }
           }
           .network-card:hover {
-            border-color: rgba(99, 102, 241, 0.5) !important;
+            border-color: ${getTheme().colors.accentPrimary}80 !important;
             transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15) !important;
+            box-shadow: 0 8px 30px ${getTheme().colors.accentGlow} !important;
           }
           .table-row:hover {
-            background: rgba(99, 102, 241, 0.08) !important;
+            background: ${getTheme().colors.accentPrimary}15 !important;
           }
           .action-btn:hover {
             transform: scale(1.1);
-            background: rgba(99, 102, 241, 0.2) !important;
+            background: ${getTheme().colors.accentPrimary}35 !important;
           }
         `}</style>
 
@@ -1308,30 +1771,84 @@ export default function DashboardPage() {
         )}
 
         {/* Form Pages Discovery Section - Collapsible */}
-        <div style={cardStyle}>
+        <div style={{
+          background: getTheme().colors.cardBg,
+          backdropFilter: 'blur(20px)',
+          border: `2px solid ${getTheme().colors.cardBorder}`,
+          borderRadius: '28px',
+          padding: '36px',
+          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`
+        }}>
           {/* Clickable Header to expand/collapse */}
           <div 
             onClick={() => !isDiscovering && setIsDiscoveryExpanded(!isDiscoveryExpanded)}
             style={{
-            ...discoveryHeaderStyle,
-            cursor: isDiscovering ? 'default' : 'pointer',
-            marginBottom: isDiscoveryExpanded ? '28px' : 0
+              display: 'flex',
+              alignItems: 'center',
+              gap: '24px',
+              padding: '26px 32px',
+              background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}25, ${getTheme().colors.accentSecondary}20)`,
+              border: `2px solid ${getTheme().colors.accentPrimary}60`,
+              borderRadius: '20px',
+              marginBottom: isDiscoveryExpanded ? '28px' : 0,
+              cursor: isDiscovering ? 'default' : 'pointer',
+              boxShadow: `0 0 35px ${getTheme().colors.accentGlow}, inset 0 0 30px ${getTheme().colors.accentPrimary}10`
           }}
         >
-          <div style={discoveryIconStyle}>
+          <div style={{
+            fontSize: '36px',
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
+            borderRadius: '18px',
+            padding: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: getTheme().colors.iconGlow
+          }}>
             <span>🔍</span>
           </div>
           <div style={{ flex: 1 }}>
-            <h1 style={discoveryTitleStyle}>Form Pages Discovery</h1>
-            <p style={discoverySubtitleStyle}>
+            <h1 style={{
+              margin: 0,
+              fontSize: '32px',
+              fontWeight: 700,
+              color: getTheme().colors.textPrimary,
+              letterSpacing: '-0.5px',
+              textShadow: getTheme().colors.textGlow
+            }}>Form Pages Discovery</h1>
+            <p style={{
+              margin: '10px 0 0',
+              fontSize: '18px',
+              color: getTheme().colors.textSecondary,
+              lineHeight: 1.5
+            }}>
               {isDiscoveryExpanded 
                 ? 'Automatically discover all form pages in your web application using AI-powered crawling'
                 : `Click to ${formPages.length > 0 ? 'start a new discovery' : 'begin discovering form pages'}`}
             </p>
           </div>
           {isDiscovering ? (
-            <div style={discoveringBadgeStyle}>
-              <div style={pulsingDotStyle} />
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              background: `${getTheme().colors.statusOnline}25`,
+              border: `2px solid ${getTheme().colors.statusOnline}60`,
+              padding: '16px 28px',
+              borderRadius: '30px',
+              fontSize: '17px',
+              fontWeight: 600,
+              color: getTheme().colors.statusOnline,
+              boxShadow: `0 0 25px ${getTheme().colors.statusGlow}`
+            }}>
+              <div style={{
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: getTheme().colors.statusOnline,
+                boxShadow: `0 0 20px ${getTheme().colors.statusGlow}`,
+                animation: 'pulse 1.5s infinite'
+              }} />
               <span>Discovery in Progress</span>
             </div>
           ) : (
@@ -1340,13 +1857,13 @@ export default function DashboardPage() {
               alignItems: 'center',
               gap: '12px',
               padding: '14px 24px',
-              background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.15)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.2)' : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
               borderRadius: '14px',
               fontSize: '16px',
               fontWeight: 600,
               color: '#fff',
-              boxShadow: isDiscoveryExpanded ? 'none' : '0 4px 20px rgba(99, 102, 241, 0.3)',
-              border: isDiscoveryExpanded ? '1px solid rgba(239, 68, 68, 0.3)' : 'none'
+              boxShadow: isDiscoveryExpanded ? '0 0 20px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
+              border: isDiscoveryExpanded ? '2px solid rgba(239, 68, 68, 0.4)' : '2px solid transparent'
             }}>
               <span style={{ fontSize: '18px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
               {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
@@ -1357,7 +1874,13 @@ export default function DashboardPage() {
         {/* Collapsible Content */}
         {(isDiscoveryExpanded || isDiscovering) && (
           networks.length === 0 ? (
-            <div style={emptyStateStyle}>
+            <div style={{
+              textAlign: 'center',
+              padding: '100px 60px',
+              background: `${getTheme().colors.cardBg}`,
+              borderRadius: '20px',
+              border: `1px solid ${getTheme().colors.cardBorder}`
+            }}>
               <div style={{ fontSize: '64px', marginBottom: '24px' }}>🌐</div>
               <h3 style={{ margin: '0 0 16px', fontSize: '26px', color: '#fff', fontWeight: 600 }}>No Networks Found</h3>
               <p style={{ margin: 0, color: '#94a3b8', fontSize: '18px' }}>
@@ -1504,9 +2027,21 @@ export default function DashboardPage() {
                   onClick={startDiscovery}
                   disabled={selectedNetworkIds.length === 0}
                   style={{
-                    ...startDiscoveryBtnStyle,
-                    opacity: selectedNetworkIds.length === 0 ? 0.5 : 1,
-                    cursor: selectedNetworkIds.length === 0 ? 'not-allowed' : 'pointer'
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
+                    color: '#fff',
+                    border: `2px solid ${getTheme().colors.accentSecondary}80`,
+                    padding: '18px 48px',
+                    borderRadius: '16px',
+                    fontSize: '18px',
+                    fontWeight: 700,
+                    cursor: selectedNetworkIds.length === 0 ? 'not-allowed' : 'pointer',
+                    boxShadow: getTheme().colors.buttonGlow,
+                    transition: 'all 0.3s ease',
+                    textShadow: '0 0 10px rgba(255,255,255,0.5)',
+                    opacity: selectedNetworkIds.length === 0 ? 0.5 : 1
                   }}
                 >
                   <span>🚀</span> Start Discovery
@@ -1520,33 +2055,62 @@ export default function DashboardPage() {
 
       {/* Discovery Status */}
       {discoveryQueue.length > 0 && (
-        <div style={{ ...cardStyle, marginTop: '32px' }}>
-          <h2 style={{ marginTop: 0, fontSize: '26px', color: '#fff', fontWeight: 700, marginBottom: '28px', letterSpacing: '-0.5px' }}>
+        <div style={{
+          background: getTheme().colors.cardBg,
+          backdropFilter: 'blur(20px)',
+          border: `2px solid ${getTheme().colors.cardBorder}`,
+          borderRadius: '28px',
+          padding: '36px',
+          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`,
+          marginTop: '32px'
+        }}>
+          <h2 style={{ marginTop: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700, marginBottom: '28px', letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
             <span style={{ marginRight: '14px' }}>📊</span> Discovery Progress
           </h2>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Test Sites</div>
-              <div style={statValueStyle}>{completedNetworks} / {totalNetworks}</div>
+            <div style={{
+              background: getTheme().colors.cardBg,
+              padding: '30px',
+              borderRadius: '18px',
+              border: `1px solid ${getTheme().colors.cardBorder}`
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Test Sites</div>
+              <div style={{ fontSize: '32px', fontWeight: 700, color: getTheme().colors.textPrimary, letterSpacing: '-1px' }}>{completedNetworks} / {totalNetworks}</div>
             </div>
-            <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Forms Found</div>
-              <div style={{ ...statValueStyle, color: '#10b981' }}>{stats.totalFormsFound}</div>
+            <div style={{
+              background: getTheme().colors.cardBg,
+              padding: '30px',
+              borderRadius: '18px',
+              border: `1px solid ${getTheme().colors.cardBorder}`
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Forms Found</div>
+              <div style={{ fontSize: '32px', fontWeight: 700, color: getTheme().colors.statusOnline, letterSpacing: '-1px' }}>{stats.totalFormsFound}</div>
             </div>
-            <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Current</div>
-              <div style={{ ...statValueStyle, fontSize: '18px', color: stats.runningCount > 0 ? '#f59e0b' : '#64748b' }}>
+            <div style={{
+              background: getTheme().colors.cardBg,
+              padding: '30px',
+              borderRadius: '18px',
+              border: `1px solid ${getTheme().colors.cardBorder}`
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Current</div>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: stats.runningCount > 0 ? '#f59e0b' : getTheme().colors.textSecondary, letterSpacing: '-1px' }}>
                 {stats.runningCount > 0 
                   ? discoveryQueue.find(q => q.status === 'running')?.networkName || '-'
                   : 'None'}
               </div>
             </div>
-            <div style={statBoxStyle}>
-              <div style={statLabelStyle}>Status</div>
+            <div style={{
+              background: getTheme().colors.cardBg,
+              padding: '30px',
+              borderRadius: '18px',
+              border: `1px solid ${getTheme().colors.cardBorder}`
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Status</div>
               <div style={{ 
-                ...statValueStyle, 
                 fontSize: '17px',
+                fontWeight: 700,
+                letterSpacing: '-1px',
                 color: isDiscovering ? '#f59e0b' : 
                        stats.cancelledCount > 0 ? '#f59e0b' :
                        stats.failedCount > 0 ? '#ef4444' : '#10b981'
@@ -1642,36 +2206,73 @@ export default function DashboardPage() {
       )}
 
       {/* Form Pages Table */}
-      <div style={{ ...cardStyle, marginTop: '32px' }}>
+      <div style={{
+        background: getTheme().colors.cardBg,
+        backdropFilter: 'blur(20px)',
+        border: `2px solid ${getTheme().colors.cardBorder}`,
+        borderRadius: '28px',
+        padding: '36px',
+        boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`,
+        marginTop: '32px'
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '28px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
+            <h2 style={{ margin: 0, fontSize: '28px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
               <span style={{ marginRight: '14px' }}>📋</span>Discovered Form Pages
             </h2>
-            <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8' }}>{formPages.length} forms found in this project</p>
+            <p style={{ margin: '12px 0 0', fontSize: '17px', color: getTheme().colors.textSecondary }}>{formPages.length} forms found in this project</p>
           </div>
           {formPages.length > 10 && (
-            <span style={{ fontSize: '15px', color: '#64748b', background: 'rgba(255,255,255,0.05)', padding: '12px 20px', borderRadius: '24px' }}>
+            <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, background: getTheme().colors.cardBg, padding: '12px 20px', borderRadius: '24px', border: `1px solid ${getTheme().colors.cardBorder}` }}>
               Showing {formPages.length} forms
             </span>
           )}
         </div>
         
         {loadingFormPages ? (
-          <p style={{ color: '#94a3b8', marginTop: '24px', fontSize: '17px' }}>Loading form pages...</p>
+          <p style={{ color: getTheme().colors.textSecondary, marginTop: '24px', fontSize: '17px' }}>Loading form pages...</p>
         ) : formPages.length === 0 ? (
-          <div style={emptyStateStyle}>
+          <div style={{
+            textAlign: 'center',
+            padding: '100px 60px',
+            background: getTheme().colors.cardBg,
+            borderRadius: '20px',
+            border: `1px solid ${getTheme().colors.cardBorder}`
+          }}>
             <div style={{ fontSize: '64px', marginBottom: '24px' }}>📋</div>
-            <p style={{ margin: 0, fontSize: '20px', color: '#fff', fontWeight: 500 }}>No form pages discovered yet</p>
-            <p style={{ margin: '14px 0 0', fontSize: '17px', color: '#94a3b8' }}>Expand the discovery section above and start a discovery to find form pages</p>
+            <p style={{ margin: 0, fontSize: '20px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>No form pages discovered yet</p>
+            <p style={{ margin: '14px 0 0', fontSize: '17px', color: getTheme().colors.textSecondary }}>Expand the discovery section above and start a discovery to find form pages</p>
           </div>
         ) : (
-          <div style={tableContainerStyle}>
-            <table style={tableStyle}>
+          <div style={{
+            maxHeight: '700px',
+            overflowY: 'auto',
+            background: getTheme().colors.cardBg,
+            borderRadius: '20px',
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            boxShadow: `0 0 30px ${getTheme().colors.accentGlow}20, inset 0 0 20px rgba(0,0,0,0.1)`
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th 
-                    style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }}
+                    style={{
+                      textAlign: 'left',
+                      padding: '24px 32px',
+                      borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                      fontWeight: 600,
+                      color: getTheme().colors.textSecondary,
+                      background: getTheme().colors.headerBg,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      fontSize: '14px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1.5px',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      textShadow: getTheme().colors.textGlow
+                    }}
                     onClick={() => {
                       if (sortField === 'name') {
                         setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
@@ -1683,10 +2284,51 @@ export default function DashboardPage() {
                   >
                     Form Name {sortField === 'name' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={thStyle}>Path Steps</th>
-                  <th style={thStyle}>Type</th>
+                  <th style={{
+                    textAlign: 'left',
+                    padding: '24px 32px',
+                    borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                    fontWeight: 600,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1.5px'
+                  }}>Path Steps</th>
+                  <th style={{
+                    textAlign: 'left',
+                    padding: '24px 32px',
+                    borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                    fontWeight: 600,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1.5px'
+                  }}>Type</th>
                   <th 
-                    style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }}
+                    style={{
+                      textAlign: 'left',
+                      padding: '24px 32px',
+                      borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                      fontWeight: 600,
+                      color: getTheme().colors.textSecondary,
+                      background: getTheme().colors.headerBg,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      fontSize: '14px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1.5px',
+                      cursor: 'pointer',
+                      userSelect: 'none'
+                    }}
                     onClick={() => {
                       if (sortField === 'date') {
                         setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
@@ -1698,7 +2340,21 @@ export default function DashboardPage() {
                   >
                     Discovered {sortField === 'date' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                   </th>
-                  <th style={{ ...thStyle, width: '160px', textAlign: 'center' }}>Actions</th>
+                  <th style={{
+                    textAlign: 'center',
+                    padding: '24px 32px',
+                    borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                    fontWeight: 600,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1.5px',
+                    width: '160px'
+                  }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1720,67 +2376,114 @@ export default function DashboardPage() {
                   <tr 
                     key={form.id} 
                     className="table-row"
-                    style={tableRowStyle}
+                    style={{
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      background: 'transparent'
+                    }}
                     onDoubleClick={() => openEditPanel(form)}
                   >
-                    <td style={tdStyle}>
-                      <strong style={{ fontSize: '18px', color: '#fff' }}>{form.form_name}</strong>
+                    <td style={{
+                      padding: '28px 32px',
+                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      verticalAlign: 'middle',
+                      fontSize: '18px',
+                      color: getTheme().colors.textPrimary
+                    }}>
+                      <strong style={{ fontSize: '18px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: '#64748b', marginTop: '6px' }}>
+                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '6px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
                     </td>
-                    <td style={tdStyle}>
-                      <span style={pathStepsBadgeStyle}>
+                    <td style={{
+                      padding: '28px 32px',
+                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      verticalAlign: 'middle',
+                      fontSize: '18px',
+                      color: getTheme().colors.textPrimary
+                    }}>
+                      <span style={{
+                        background: `${getTheme().colors.accentPrimary}25`,
+                        color: getTheme().colors.accentSecondary,
+                        padding: '12px 24px',
+                        borderRadius: '24px',
+                        fontSize: '16px',
+                        fontWeight: 600,
+                        border: `2px solid ${getTheme().colors.accentPrimary}60`,
+                        boxShadow: getTheme().colors.iconGlow
+                      }}>
                         {form.navigation_steps?.length || 0} steps
                       </span>
                     </td>
-                    <td style={tdStyle}>
+                    <td style={{
+                      padding: '28px 32px',
+                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      verticalAlign: 'middle',
+                      fontSize: '18px',
+                      color: getTheme().colors.textPrimary
+                    }}>
                       <span style={{
-                        background: form.is_root ? 'rgba(99, 102, 241, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                        color: form.is_root ? '#818cf8' : '#fbbf24',
+                        background: form.is_root ? `${getTheme().colors.accentPrimary}20` : 'rgba(245, 158, 11, 0.2)',
+                        color: form.is_root ? getTheme().colors.accentSecondary : '#fbbf24',
                         padding: '10px 18px',
                         borderRadius: '20px',
                         fontSize: '15px',
                         fontWeight: 600,
-                        border: form.is_root ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
+                        border: form.is_root ? `2px solid ${getTheme().colors.accentPrimary}50` : '2px solid rgba(245, 158, 11, 0.4)',
+                        boxShadow: form.is_root ? getTheme().colors.iconGlow : '0 0 10px rgba(245, 158, 11, 0.15)'
                       }}>
                         {form.is_root ? 'Root' : 'Child'}
                       </span>
                     </td>
-                    <td style={tdStyle}>
-                      <div style={{ fontSize: '16px', color: '#e2e8f0' }}>
+                    <td style={{
+                      padding: '28px 32px',
+                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      verticalAlign: 'middle',
+                      fontSize: '18px',
+                      color: getTheme().colors.textPrimary
+                    }}>
+                      <div style={{ fontSize: '16px', color: getTheme().colors.textPrimary }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                      <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                    <td style={{
+                      padding: '28px 32px',
+                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      verticalAlign: 'middle',
+                      fontSize: '18px',
+                      color: getTheme().colors.textPrimary,
+                      textAlign: 'center'
+                    }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                         {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
                           <span style={{
                             padding: '10px 16px',
-                            background: 'rgba(245, 158, 11, 0.15)',
+                            background: 'rgba(245, 158, 11, 0.2)',
                             color: '#f59e0b',
                             borderRadius: '10px',
                             fontSize: '15px',
                             fontWeight: 600,
-                            border: '1px solid rgba(245, 158, 11, 0.3)'
+                            border: '2px solid rgba(245, 158, 11, 0.4)',
+                            boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
                           }}>
                             ⏳ Mapping...
                           </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
                             padding: '10px 16px',
-                            background: 'rgba(16, 185, 129, 0.15)',
-                            color: '#10b981',
+                            background: `${getTheme().colors.statusOnline}20`,
+                            color: getTheme().colors.statusOnline,
                             borderRadius: '10px',
                             fontSize: '15px',
                             fontWeight: 600,
-                            border: '1px solid rgba(16, 185, 129, 0.3)'
+                            border: `2px solid ${getTheme().colors.statusOnline}50`,
+                            boxShadow: getTheme().colors.statusGlow
                           }}>
                             ✅ Mapped
                           </span>
@@ -1788,7 +2491,16 @@ export default function DashboardPage() {
                           <button 
                             onClick={() => startFormMapping(form)} 
                             className="action-btn"
-                            style={{ ...actionButtonStyle, background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '2px solid rgba(239, 68, 68, 0.4)',
+                              borderRadius: '12px',
+                              padding: '16px 18px',
+                              cursor: 'pointer',
+                              fontSize: '20px',
+                              transition: 'all 0.2s ease',
+                              boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
+                            }}
                             title={`Retry mapping - ${mappingStatus[form.id]?.error || 'Failed'}`}
                           >
                             🔄
@@ -1797,7 +2509,16 @@ export default function DashboardPage() {
                           <button 
                             onClick={() => startFormMapping(form)} 
                             className="action-btn"
-                            style={{ ...actionButtonStyle, background: 'rgba(99, 102, 241, 0.15)', borderColor: 'rgba(99, 102, 241, 0.3)' }}
+                            style={{
+                              background: `${getTheme().colors.accentPrimary}20`,
+                              border: `2px solid ${getTheme().colors.accentPrimary}50`,
+                              borderRadius: '12px',
+                              padding: '16px 18px',
+                              cursor: 'pointer',
+                              fontSize: '20px',
+                              transition: 'all 0.2s ease',
+                              boxShadow: getTheme().colors.iconGlow
+                            }}
                             title="Map this form page"
                           >
                             🗺️
@@ -1806,7 +2527,16 @@ export default function DashboardPage() {
                         <button 
                           onClick={() => openEditPanel(form)} 
                           className="action-btn"
-                          style={actionButtonStyle}
+                          style={{
+                            background: `${getTheme().colors.accentPrimary}15`,
+                            border: `2px solid ${getTheme().colors.cardBorder}`,
+                            borderRadius: '12px',
+                            padding: '16px 18px',
+                            cursor: 'pointer',
+                            fontSize: '20px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: `0 0 15px ${getTheme().colors.accentGlow}30`
+                          }}
                           title="Edit form page"
                         >
                           ✏️
@@ -1814,7 +2544,16 @@ export default function DashboardPage() {
                         <button 
                           onClick={() => openDeleteModal(form)} 
                           className="action-btn"
-                          style={{ ...actionButtonStyle, borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '2px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '12px',
+                            padding: '16px 18px',
+                            cursor: 'pointer',
+                            fontSize: '20px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
+                          }}
                           title="Delete form page"
                         >
                           🗑️
@@ -1832,14 +2571,22 @@ export default function DashboardPage() {
       {/* Delete Form Page Modal */}
       {showDeleteModal && formPageToDelete && (
         <div style={modalOverlayStyle}>
-          <div style={deleteModalContentStyle}>
+          <div style={{
+            background: getTheme().colors.cardBg,
+            backdropFilter: 'blur(20px)',
+            borderRadius: '24px',
+            width: '500px',
+            padding: '32px',
+            border: `2px solid rgba(239, 68, 68, 0.3)`,
+            boxShadow: '0 0 50px rgba(239, 68, 68, 0.2), 0 30px 80px rgba(0,0,0,0.5)'
+          }}>
             <h2 style={{ marginTop: 0, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '22px', fontWeight: 700 }}>
               <span style={{ fontSize: '28px' }}>⚠️</span>
               Delete Form Page?
             </h2>
             
-            <p style={{ fontSize: '16px', margin: '20px 0', color: '#e2e8f0' }}>
-              Are you sure you want to delete <strong style={{ color: '#fff' }}>"{formPageToDelete.form_name}"</strong>?
+            <p style={{ fontSize: '16px', margin: '20px 0', color: getTheme().colors.textPrimary }}>
+              Are you sure you want to delete <strong style={{ color: getTheme().colors.textPrimary }}>"{formPageToDelete.form_name}"</strong>?
             </p>
             
             <div style={deleteWarningBoxStyle}>
@@ -1882,17 +2629,17 @@ const welcomeCardStyle: React.CSSProperties = {
   borderRadius: '28px',
   padding: '80px',
   textAlign: 'center',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  border: '2px solid rgba(156, 163, 175, 0.35)',
+  boxShadow: '0 0 50px rgba(156, 163, 175, 0.15), 0 20px 60px rgba(0,0,0,0.3)'
 }
 
 const cardStyle: React.CSSProperties = {
   background: 'rgba(75, 85, 99, 0.5)',
   backdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: '2px solid rgba(156, 163, 175, 0.3)',
   borderRadius: '28px',
   padding: '36px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.12), 0 20px 60px rgba(0,0,0,0.25)'
 }
 
 const discoveryHeaderStyle: React.CSSProperties = {
@@ -1900,10 +2647,11 @@ const discoveryHeaderStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '24px',
   padding: '26px 32px',
-  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))',
-  border: '1px solid rgba(99, 102, 241, 0.2)',
+  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15))',
+  border: '2px solid rgba(99, 102, 241, 0.4)',
   borderRadius: '20px',
-  marginBottom: '0'
+  marginBottom: '0',
+  boxShadow: '0 0 35px rgba(99, 102, 241, 0.25), inset 0 0 30px rgba(99, 102, 241, 0.05)'
 }
 
 const discoveryIconStyle: React.CSSProperties = {
@@ -1914,15 +2662,16 @@ const discoveryIconStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)'
+  boxShadow: '0 0 30px rgba(99, 102, 241, 0.5), 0 4px 20px rgba(99, 102, 241, 0.4)'
 }
 
 const discoveryTitleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: '32px',
   fontWeight: 700,
-  color: '#fff',
-  letterSpacing: '-0.5px'
+  color: '#f3f4f6',
+  letterSpacing: '-0.5px',
+  textShadow: '0 0 20px rgba(243, 244, 246, 0.3)'
 }
 
 const discoverySubtitleStyle: React.CSSProperties = {
@@ -1936,13 +2685,14 @@ const discoveringBadgeStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '16px',
-  background: 'rgba(16, 185, 129, 0.15)',
-  border: '1px solid rgba(16, 185, 129, 0.3)',
+  background: 'rgba(16, 185, 129, 0.2)',
+  border: '2px solid rgba(16, 185, 129, 0.5)',
   padding: '16px 28px',
   borderRadius: '30px',
   fontSize: '17px',
   fontWeight: 600,
-  color: '#10b981'
+  color: '#10b981',
+  boxShadow: '0 0 25px rgba(16, 185, 129, 0.35)'
 }
 
 const pulsingDotStyle: React.CSSProperties = {
@@ -1950,7 +2700,7 @@ const pulsingDotStyle: React.CSSProperties = {
   height: '14px',
   borderRadius: '50%',
   background: '#10b981',
-  boxShadow: '0 0 14px rgba(16, 185, 129, 0.6)',
+  boxShadow: '0 0 20px rgba(16, 185, 129, 0.8), 0 0 40px rgba(16, 185, 129, 0.4)',
   animation: 'pulse 1.5s infinite'
 }
 
@@ -2039,14 +2789,15 @@ const startDiscoveryBtnStyle: React.CSSProperties = {
   gap: '14px',
   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
-  border: 'none',
+  border: '2px solid rgba(139, 92, 246, 0.5)',
   padding: '18px 48px',
   borderRadius: '16px',
   fontSize: '18px',
   fontWeight: 700,
   cursor: 'pointer',
-  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
-  transition: 'all 0.3s ease'
+  boxShadow: '0 0 35px rgba(99, 102, 241, 0.5), 0 10px 40px rgba(99, 102, 241, 0.4)',
+  transition: 'all 0.3s ease',
+  textShadow: '0 0 10px rgba(255,255,255,0.5)'
 }
 
 const stopDiscoveryBtnStyle: React.CSSProperties = {
@@ -2055,22 +2806,24 @@ const stopDiscoveryBtnStyle: React.CSSProperties = {
   gap: '14px',
   background: 'linear-gradient(135deg, #ef4444, #dc2626)',
   color: '#fff',
-  border: 'none',
+  border: '2px solid rgba(239, 68, 68, 0.5)',
   padding: '18px 48px',
   borderRadius: '16px',
   fontSize: '18px',
   fontWeight: 700,
   cursor: 'pointer',
-  boxShadow: '0 4px 20px rgba(239, 68, 68, 0.4)',
-  transition: 'all 0.3s ease'
+  boxShadow: '0 0 35px rgba(239, 68, 68, 0.5), 0 10px 40px rgba(239, 68, 68, 0.4)',
+  transition: 'all 0.3s ease',
+  textShadow: '0 0 10px rgba(255,255,255,0.5)'
 }
 
 const tableContainerStyle: React.CSSProperties = {
   maxHeight: '700px',
   overflowY: 'auto',
-  background: 'rgba(255,255,255,0.02)',
+  background: 'rgba(75, 85, 99, 0.3)',
   borderRadius: '20px',
-  border: '1px solid rgba(255,255,255,0.08)'
+  border: '2px solid rgba(156, 163, 175, 0.25)',
+  boxShadow: '0 0 30px rgba(156, 163, 175, 0.1), inset 0 0 20px rgba(0,0,0,0.1)'
 }
 
 const tableStyle: React.CSSProperties = {
@@ -2081,16 +2834,17 @@ const tableStyle: React.CSSProperties = {
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '24px 32px',
-  borderBottom: '1px solid rgba(255,255,255,0.1)',
+  borderBottom: '2px solid rgba(156, 163, 175, 0.2)',
   fontWeight: 600,
-  color: '#94a3b8',
-  background: 'rgba(255,255,255,0.03)',
+  color: '#d1d5db',
+  background: 'rgba(75, 85, 99, 0.5)',
   position: 'sticky',
   top: 0,
   zIndex: 1,
   fontSize: '14px',
   textTransform: 'uppercase',
-  letterSpacing: '1.5px'
+  letterSpacing: '1.5px',
+  textShadow: '0 0 10px rgba(209, 213, 219, 0.2)'
 }
 
 const tableRowStyle: React.CSSProperties = {
@@ -2101,30 +2855,32 @@ const tableRowStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = {
   padding: '28px 32px',
-  borderBottom: '1px solid rgba(255,255,255,0.05)',
+  borderBottom: '1px solid rgba(156, 163, 175, 0.1)',
   verticalAlign: 'middle',
   fontSize: '18px',
-  color: '#e2e8f0'
+  color: '#f3f4f6'
 }
 
 const pathStepsBadgeStyle: React.CSSProperties = {
-  background: 'rgba(99, 102, 241, 0.15)',
-  color: '#818cf8',
+  background: 'rgba(99, 102, 241, 0.2)',
+  color: '#a5b4fc',
   padding: '12px 24px',
   borderRadius: '24px',
   fontSize: '16px',
   fontWeight: 600,
-  border: '1px solid rgba(99, 102, 241, 0.3)'
+  border: '2px solid rgba(99, 102, 241, 0.5)',
+  boxShadow: '0 0 20px rgba(99, 102, 241, 0.3)'
 }
 
 const actionButtonStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'rgba(156, 163, 175, 0.15)',
+  border: '2px solid rgba(156, 163, 175, 0.3)',
   borderRadius: '12px',
   padding: '16px 18px',
   cursor: 'pointer',
   fontSize: '20px',
-  transition: 'all 0.2s ease'
+  transition: 'all 0.2s ease',
+  boxShadow: '0 0 15px rgba(156, 163, 175, 0.15)'
 }
 
 const statBoxStyle: React.CSSProperties = {

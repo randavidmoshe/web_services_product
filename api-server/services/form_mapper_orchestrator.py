@@ -474,11 +474,11 @@ class FormMapperOrchestrator:
             return {"success": False, "error": "Session not found"}
         
         # Store DOM and screenshot temporarily
-        self.redis.setex(f"mapper_dom:{session_id}", 3600, dom_html)
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_b64)
+        self.redis.setex(f"mapper_dom:{session_id}", 3600, json.dumps(dom_html) if isinstance(dom_html, dict) else str(dom_html or ""))
+        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, str(screenshot_b64 or ""))
         
         # Calculate DOM hash for change detection
-        dom_hash = hashlib.md5(dom_html.encode()).hexdigest()[:16]
+        dom_hash = hashlib.md5((json.dumps(dom_html) if isinstance(dom_html, dict) else str(dom_html or "")).encode()).hexdigest()[:16]
         
         # Get config
         config = session.get("config", {})
