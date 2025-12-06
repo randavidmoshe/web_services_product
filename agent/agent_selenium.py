@@ -1582,8 +1582,11 @@ class AgentSelenium:
             
             # NAVIGATE ACTION
             elif action == "navigate":
-                self.driver.get(value)
-                return _finalize_success_result({"success": True, "action": "navigate", "url": value})
+                nav_url = value or step.get("url", "")
+                if not nav_url:
+                    return {"success": False, "error": "No URL provided for navigate"}
+                self.driver.get(nav_url)
+                return _finalize_success_result({"success": True, "action": "navigate", "url": nav_url})
             
             # REFRESH ACTION
             elif action == "refresh":
@@ -1754,7 +1757,10 @@ class AgentSelenium:
         """
         try:
             # Determine selector type
-            if selector.startswith('/') or selector.startswith('//'):
+            if selector.startswith('xpath='):
+                selector = selector[6:]  # Remove 'xpath=' prefix
+                by_type = By.XPATH
+            elif selector.startswith('/') or selector.startswith('//'):
                 by_type = By.XPATH
             else:
                 by_type = By.CSS_SELECTOR

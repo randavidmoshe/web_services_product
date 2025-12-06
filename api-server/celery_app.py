@@ -11,7 +11,7 @@ celery = Celery(
     "form_discoverer",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks']
+    include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks', 'tasks.form_pages_tasks']
 )
 
 # Celery configuration
@@ -26,6 +26,17 @@ celery.conf.update(
     worker_prefetch_multiplier=1,  # One task at a time per worker
     worker_max_tasks_per_child=50,  # Restart worker after 50 tasks
 )
+
+celery.conf.beat_schedule = {
+    'cleanup-stale-sessions-hourly': {
+        'task': 'tasks.cleanup_stale_mapper_sessions',
+        'schedule': 3600.0,
+    },
+    'cleanup-stale-crawl-sessions-hourly': {
+        'task': 'tasks.cleanup_stale_crawl_sessions',
+        'schedule': 3600.0,
+    },
+}
 
 @celery.task
 def test_task():

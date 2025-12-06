@@ -2244,7 +2244,11 @@ export default function DashboardPage() {
         ) : (
           <div style={{
             maxHeight: '700px',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            background: getTheme().colors.cardBg,
+            borderRadius: '20px',
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            boxShadow: `0 0 30px ${getTheme().colors.accentGlow}20, inset 0 0 20px rgba(0,0,0,0.1)`
           }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -2380,7 +2384,6 @@ export default function DashboardPage() {
                     <td style={{
                       padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      borderLeft: `3px solid ${getTheme().colors.accentPrimary}`,
                       verticalAlign: 'middle',
                       fontSize: '16px',
                       color: getTheme().colors.textPrimary

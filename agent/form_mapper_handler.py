@@ -286,7 +286,7 @@ class FormMapperTaskHandler:
         value = step.get("value", "")
         wait_seconds = step.get("wait_seconds", 0.5)
         
-        logger.info(f"[FormMapper] Executing step {step_index}: {action} on {selector[:50]}")
+        logger.info(f"[FormMapper] Executing step {step_index}: {action} on {selector[:50] if selector else 'N/A'}")
         
         # Get DOM hash before execution
         try:

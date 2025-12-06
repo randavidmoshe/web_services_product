@@ -2380,7 +2380,6 @@ export default function DashboardPage() {
                     <td style={{
                       padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      borderLeft: `3px solid ${getTheme().colors.accentPrimary}`,
                       verticalAlign: 'middle',
                       fontSize: '16px',
                       color: getTheme().colors.textPrimary

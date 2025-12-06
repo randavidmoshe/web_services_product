@@ -20,6 +20,7 @@ class AIOperationType(str, Enum):
     FORM_MAPPER_ALERT_RECOVERY = "form_mapper_alert_recovery"
     FORM_MAPPER_UI_VERIFY = "form_mapper_ui_verify"
     FORM_MAPPER_END_ASSIGN = "form_mapper_end_assign"
+    FORM_MAPPER_REGENERATE = "form_mapper_regenerate"
     
     # Forms Runner operations
     FORMS_RUNNER_ERROR_ANALYZE = "forms_runner_error_analyze"

@@ -128,6 +128,9 @@ class FormMapperOrchestrator:
         self.redis.hset(key, mapping=session_state)
         self.redis.expire(key, 86400)
         logger.info(f"[Orchestrator] Created session {session_id} with network_id={network_id}, form_route_id={form_route_id}")
+        if form_route_id:
+            from tasks.form_mapper_tasks import cancel_previous_sessions_for_route
+            cancel_previous_sessions_for_route.delay(form_route_id, session_id)
         
         class SessionResult:
             def __init__(self, sid, state): self.id = sid; self.status = state
@@ -167,7 +170,15 @@ class FormMapperOrchestrator:
             else: serialized[k] = str(v)
         serialized["updated_at"] = datetime.utcnow().isoformat()
         self.redis.hset(self._get_session_key(session_id), mapping=serialized)
-    
+
+    def _sync_session_status_to_db(self, session_id: str, status: str, error: str = None) -> None:
+        """Queue async task to sync session status to database (scalable)"""
+        try:
+            from tasks.form_mapper_tasks import sync_mapper_session_status
+            sync_mapper_session_status.delay(session_id, status, error)
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to queue DB sync: {e}")
+
     def transition_to(self, session_id: str, new_state: MapperState, **kwargs) -> None:
         session = self.get_session(session_id)
         if session:
@@ -188,6 +199,7 @@ class FormMapperOrchestrator:
     def _fail_session(self, session_id: str, error: str) -> Dict:
         self.transition_to(session_id, MapperState.FAILED, last_error=error,
                           completed_at=datetime.utcnow().isoformat())
+        self._sync_session_status_to_db(session_id, "failed", error)
         return {"success": False, "error": error, "state": "failed"}
 
     # ============================================================
@@ -774,6 +786,7 @@ class FormMapperOrchestrator:
         final_stages = result.get("stages", session.get("executed_steps", []))
         self.transition_to(session_id, MapperState.COMPLETED, final_steps=final_stages,
                           completed_at=datetime.utcnow().isoformat())
+        self._sync_session_status_to_db(session_id, "completed")
         logger.info(f"[Orchestrator] Session {session_id} COMPLETED: {len(final_stages)} steps")
         return {"success": True, "state": "completed", "total_steps": len(final_stages)}
 

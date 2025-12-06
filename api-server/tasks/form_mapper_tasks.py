@@ -655,3 +655,93 @@ def assign_test_cases(
         
     finally:
         db.close()
+
+
+@shared_task(name="tasks.sync_mapper_session_status")
+def sync_mapper_session_status(session_id: str, status: str, error: str = None):
+    """Async task to sync mapper session status to DB"""
+    db = _get_db_session()
+    try:
+        from models.form_mapper_models import FormMapperSession
+        from datetime import datetime
+
+        db_session = db.query(FormMapperSession).filter(
+            FormMapperSession.id == int(session_id)
+        ).first()
+
+        if db_session:
+            db_session.status = status
+            if error:
+                db_session.last_error = error
+            if status in ("completed", "failed"):
+                db_session.completed_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"[MapperTasks] DB session {session_id} status -> {status}")
+    except Exception as e:
+        logger.error(f"[MapperTasks] Failed to sync DB session {session_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+@shared_task(name="tasks.cleanup_stale_mapper_sessions")
+def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
+    """
+    Periodic task to cleanup stale sessions.
+    Marks sessions stuck in 'initializing' for too long as 'failed'.
+    """
+    db = _get_db_session()
+    try:
+        from models.form_mapper_models import FormMapperSession
+        from datetime import datetime, timedelta
+
+        cutoff = datetime.utcnow() - timedelta(hours=timeout_hours)
+
+        stale_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.status.in_(["initializing", "pending", "running"]),
+            FormMapperSession.created_at < cutoff
+        ).all()
+
+        count = len(stale_sessions)
+        for session in stale_sessions:
+            session.status = "failed"
+            session.last_error = f"Session timed out after {timeout_hours} hours"
+            session.completed_at = datetime.utcnow()
+
+        db.commit()
+        logger.info(f"[MapperTasks] Cleaned up {count} stale sessions")
+        return {"cleaned": count}
+    except Exception as e:
+        logger.error(f"[MapperTasks] Cleanup failed: {e}")
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@shared_task(name="tasks.cancel_previous_sessions_for_route")
+def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: int):
+    db = _get_db_session()
+    try:
+        from models.form_mapper_models import FormMapperSession
+        from datetime import datetime
+
+        active_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.form_page_route_id == form_page_route_id,
+            FormMapperSession.id != new_session_id,
+            FormMapperSession.status.in_(["initializing", "pending", "running"])
+        ).all()
+
+        count = len(active_sessions)
+        for session in active_sessions:
+            session.status = "cancelled"
+            session.last_error = f"Cancelled - new session {new_session_id} started"
+            session.completed_at = datetime.utcnow()
+
+        db.commit()
+        return {"cancelled": count}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()

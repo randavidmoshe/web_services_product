@@ -1732,7 +1732,7 @@ export default function DashboardPage() {
 
   // ============ MAIN DISCOVERY PAGE ============
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
         {/* CSS Animations */}
         <style>{`
           @keyframes fadeIn {
@@ -1778,10 +1778,10 @@ export default function DashboardPage() {
         <div style={{
           background: getTheme().colors.cardBg,
           backdropFilter: 'blur(20px)',
-          border: `1px solid ${getTheme().colors.cardBorder}`,
-          borderRadius: '20px',
-          padding: '24px',
-          boxShadow: `${getTheme().colors.cardGlow}, 0 15px 40px rgba(0,0,0,0.2)`
+          border: `2px solid ${getTheme().colors.cardBorder}`,
+          borderRadius: '28px',
+          padding: '36px',
+          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`
         }}>
           {/* Clickable Header to expand/collapse */}
           <div 
@@ -1789,21 +1789,21 @@ export default function DashboardPage() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '18px',
-              padding: '18px 24px',
+              gap: '24px',
+              padding: '26px 32px',
               background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}25, ${getTheme().colors.accentSecondary}20)`,
-              border: `1px solid ${getTheme().colors.accentPrimary}60`,
-              borderRadius: '16px',
-              marginBottom: isDiscoveryExpanded ? '20px' : 0,
+              border: `2px solid ${getTheme().colors.accentPrimary}60`,
+              borderRadius: '20px',
+              marginBottom: isDiscoveryExpanded ? '28px' : 0,
               cursor: isDiscovering ? 'default' : 'pointer',
-              boxShadow: `0 0 25px ${getTheme().colors.accentGlow}, inset 0 0 20px ${getTheme().colors.accentPrimary}10`
+              boxShadow: `0 0 35px ${getTheme().colors.accentGlow}, inset 0 0 30px ${getTheme().colors.accentPrimary}10`
           }}
         >
           <div style={{
-            fontSize: '28px',
+            fontSize: '36px',
             background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
-            borderRadius: '14px',
-            padding: '14px',
+            borderRadius: '18px',
+            padding: '18px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1814,15 +1814,15 @@ export default function DashboardPage() {
           <div style={{ flex: 1 }}>
             <h1 style={{
               margin: 0,
-              fontSize: '24px',
-              fontWeight: 600,
+              fontSize: '32px',
+              fontWeight: 700,
               color: getTheme().colors.textPrimary,
-              letterSpacing: '-0.3px',
+              letterSpacing: '-0.5px',
               textShadow: getTheme().colors.textGlow
             }}>Form Pages Discovery</h1>
             <p style={{
-              margin: '6px 0 0',
-              fontSize: '15px',
+              margin: '10px 0 0',
+              fontSize: '18px',
               color: getTheme().colors.textSecondary,
               lineHeight: 1.5
             }}>
@@ -1835,19 +1835,19 @@ export default function DashboardPage() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '12px',
+              gap: '16px',
               background: `${getTheme().colors.statusOnline}25`,
-              border: `1px solid ${getTheme().colors.statusOnline}60`,
-              padding: '12px 20px',
-              borderRadius: '24px',
-              fontSize: '15px',
+              border: `2px solid ${getTheme().colors.statusOnline}60`,
+              padding: '16px 28px',
+              borderRadius: '30px',
+              fontSize: '17px',
               fontWeight: 600,
               color: getTheme().colors.statusOnline,
-              boxShadow: `0 0 20px ${getTheme().colors.statusGlow}`
+              boxShadow: `0 0 25px ${getTheme().colors.statusGlow}`
             }}>
               <div style={{
-                width: '12px',
-                height: '12px',
+                width: '14px',
+                height: '14px',
                 borderRadius: '50%',
                 background: getTheme().colors.statusOnline,
                 boxShadow: `0 0 20px ${getTheme().colors.statusGlow}`,
@@ -1859,17 +1859,17 @@ export default function DashboardPage() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              padding: '10px 18px',
+              gap: '12px',
+              padding: '14px 24px',
               background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.2)' : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
-              borderRadius: '12px',
-              fontSize: '14px',
+              borderRadius: '14px',
+              fontSize: '16px',
               fontWeight: 600,
               color: '#fff',
-              boxShadow: isDiscoveryExpanded ? '0 0 15px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
-              border: isDiscoveryExpanded ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid transparent'
+              boxShadow: isDiscoveryExpanded ? '0 0 20px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
+              border: isDiscoveryExpanded ? '2px solid rgba(239, 68, 68, 0.4)' : '2px solid transparent'
             }}>
-              <span style={{ fontSize: '14px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
+              <span style={{ fontSize: '18px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
               {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
             </div>
           )}
@@ -2211,17 +2211,23 @@ export default function DashboardPage() {
 
       {/* Form Pages Table */}
       <div style={{
+        background: getTheme().colors.cardBg,
+        backdropFilter: 'blur(20px)',
+        border: `2px solid ${getTheme().colors.cardBorder}`,
+        borderRadius: '28px',
+        padding: '36px',
+        boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`,
         marginTop: '32px'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '22px', color: getTheme().colors.textPrimary, fontWeight: 600, letterSpacing: '-0.3px', textShadow: getTheme().colors.textGlow }}>
-              <span style={{ marginRight: '10px' }}>📋</span>Discovered Form Pages
+            <h2 style={{ margin: 0, fontSize: '28px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
+              <span style={{ marginRight: '14px' }}>📋</span>Discovered Form Pages
             </h2>
-            <p style={{ margin: '8px 0 0', fontSize: '15px', color: getTheme().colors.textSecondary }}>{formPages.length} forms found in this project</p>
+            <p style={{ margin: '12px 0 0', fontSize: '17px', color: getTheme().colors.textSecondary }}>{formPages.length} forms found in this project</p>
           </div>
           {formPages.length > 10 && (
-            <span style={{ fontSize: '14px', color: getTheme().colors.textSecondary, background: getTheme().colors.cardBg, padding: '10px 16px', borderRadius: '20px', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+            <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, background: getTheme().colors.cardBg, padding: '12px 20px', borderRadius: '24px', border: `1px solid ${getTheme().colors.cardBorder}` }}>
               Showing {formPages.length} forms
             </span>
           )}
@@ -2244,7 +2250,11 @@ export default function DashboardPage() {
         ) : (
           <div style={{
             maxHeight: '700px',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            background: getTheme().colors.cardBg,
+            borderRadius: '20px',
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            boxShadow: `0 0 30px ${getTheme().colors.accentGlow}20, inset 0 0 20px rgba(0,0,0,0.1)`
           }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -2252,7 +2262,7 @@ export default function DashboardPage() {
                   <th 
                     style={{
                       textAlign: 'left',
-                      padding: '18px 24px',
+                      padding: '24px 32px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
                       color: getTheme().colors.textSecondary,
@@ -2260,9 +2270,9 @@ export default function DashboardPage() {
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
-                      fontSize: '15px',
+                      fontSize: '14px',
                       textTransform: 'uppercase',
-                      letterSpacing: '1px',
+                      letterSpacing: '1.5px',
                       cursor: 'pointer',
                       userSelect: 'none',
                       textShadow: getTheme().colors.textGlow
@@ -2280,7 +2290,7 @@ export default function DashboardPage() {
                   </th>
                   <th style={{
                     textAlign: 'left',
-                    padding: '18px 24px',
+                    padding: '24px 32px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
                     color: getTheme().colors.textSecondary,
@@ -2288,13 +2298,13 @@ export default function DashboardPage() {
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '15px',
+                    fontSize: '14px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1px'
+                    letterSpacing: '1.5px'
                   }}>Path Steps</th>
                   <th style={{
                     textAlign: 'left',
-                    padding: '18px 24px',
+                    padding: '24px 32px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
                     color: getTheme().colors.textSecondary,
@@ -2302,14 +2312,14 @@ export default function DashboardPage() {
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '15px',
+                    fontSize: '14px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1px'
+                    letterSpacing: '1.5px'
                   }}>Type</th>
                   <th 
                     style={{
                       textAlign: 'left',
-                      padding: '18px 24px',
+                      padding: '24px 32px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
                       color: getTheme().colors.textSecondary,
@@ -2317,9 +2327,9 @@ export default function DashboardPage() {
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
-                      fontSize: '15px',
+                      fontSize: '14px',
                       textTransform: 'uppercase',
-                      letterSpacing: '1px',
+                      letterSpacing: '1.5px',
                       cursor: 'pointer',
                       userSelect: 'none'
                     }}
@@ -2336,7 +2346,7 @@ export default function DashboardPage() {
                   </th>
                   <th style={{
                     textAlign: 'center',
-                    padding: '18px 24px',
+                    padding: '24px 32px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
                     color: getTheme().colors.textSecondary,
@@ -2344,9 +2354,9 @@ export default function DashboardPage() {
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '15px',
+                    fontSize: '14px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1px',
+                    letterSpacing: '1.5px',
                     width: '160px'
                   }}>Actions</th>
                 </tr>
@@ -2378,79 +2388,78 @@ export default function DashboardPage() {
                     onDoubleClick={() => openEditPanel(form)}
                   >
                     <td style={{
-                      padding: '20px 24px',
+                      padding: '28px 32px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      borderLeft: `3px solid ${getTheme().colors.accentPrimary}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: getTheme().colors.textPrimary
                     }}>
-                      <strong style={{ fontSize: '16px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
+                      <strong style={{ fontSize: '18px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '6px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
                     </td>
                     <td style={{
-                      padding: '20px 24px',
+                      padding: '28px 32px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: getTheme().colors.textPrimary
                     }}>
                       <span style={{
                         background: `${getTheme().colors.accentPrimary}25`,
                         color: getTheme().colors.accentSecondary,
-                        padding: '8px 16px',
-                        borderRadius: '20px',
-                        fontSize: '14px',
+                        padding: '12px 24px',
+                        borderRadius: '24px',
+                        fontSize: '16px',
                         fontWeight: 600,
-                        border: `1px solid ${getTheme().colors.accentPrimary}60`,
+                        border: `2px solid ${getTheme().colors.accentPrimary}60`,
                         boxShadow: getTheme().colors.iconGlow
                       }}>
                         {form.navigation_steps?.length || 0} steps
                       </span>
                     </td>
                     <td style={{
-                      padding: '20px 24px',
+                      padding: '28px 32px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: getTheme().colors.textPrimary
                     }}>
                       <span style={{
                         background: form.is_root ? `${getTheme().colors.accentPrimary}20` : 'rgba(245, 158, 11, 0.2)',
                         color: form.is_root ? getTheme().colors.accentSecondary : '#fbbf24',
-                        padding: '8px 14px',
-                        borderRadius: '16px',
-                        fontSize: '14px',
+                        padding: '10px 18px',
+                        borderRadius: '20px',
+                        fontSize: '15px',
                         fontWeight: 600,
-                        border: form.is_root ? `1px solid ${getTheme().colors.accentPrimary}50` : '1px solid rgba(245, 158, 11, 0.4)',
+                        border: form.is_root ? `2px solid ${getTheme().colors.accentPrimary}50` : '2px solid rgba(245, 158, 11, 0.4)',
                         boxShadow: form.is_root ? getTheme().colors.iconGlow : '0 0 10px rgba(245, 158, 11, 0.15)'
                       }}>
                         {form.is_root ? 'Root' : 'Child'}
                       </span>
                     </td>
                     <td style={{
-                      padding: '20px 24px',
+                      padding: '28px 32px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: getTheme().colors.textPrimary
                     }}>
-                      <div style={{ fontSize: '15px', color: getTheme().colors.textPrimary }}>
+                      <div style={{ fontSize: '16px', color: getTheme().colors.textPrimary }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary, marginTop: '2px' }}>
+                      <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
                     <td style={{
-                      padding: '20px 24px',
+                      padding: '28px 32px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: getTheme().colors.textPrimary,
                       textAlign: 'center'
                     }}>
