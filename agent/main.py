@@ -497,6 +497,8 @@ class FormDiscovererAgent:
                 self.logger.info(f"📤 Form Mapper result reported: {resp_data.get('next_action', 'ok')}")
             else:
                 self.logger.warning(f"⚠️ Form Mapper result report failed: HTTP {response.status_code}")
+                self.logger.warning(
+                    f"⚠️ Form Mapper result report failed: HTTP {response.status_code} - {response.text}")
                 
         except Exception as e:
             self.logger.error(f"❌ Error reporting Form Mapper result: {e}")
@@ -616,7 +618,8 @@ class FormDiscovererAgent:
                             page_html=page_html,
                             screenshot_base64=screenshot_b64,
                             username=login_username,
-                            password=login_password
+                            password=login_password,
+                            login_url = login_url
                         )
                         
                         if not login_steps:

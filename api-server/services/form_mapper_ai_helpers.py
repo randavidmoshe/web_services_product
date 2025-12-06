@@ -94,27 +94,43 @@ class AIAlertRecoveryHelper:
     
     def regenerate_steps_after_alert(
         self,
+        alert_info: Dict,
+        executed_steps: List[Dict],
         dom_html: str,
-        alert_text: str,
-        executed_steps: list,
-        test_cases: list,
+        screenshot_path: Optional[str],
+        test_cases: List[Dict],
         test_context,
-        gathered_error_info: Optional[Dict] = None,
-        screenshot_base64: Optional[str] = None,
-        previous_paths: Optional[List[Dict]] = None,
-        current_path_junctions: Optional[List[Dict]] = None
-    ) -> Dict[str, Any]:
-        """Analyze alert and regenerate steps for recovery"""
+        step_where_alert_appeared: int,
+        include_accept_step: bool = True,
+        gathered_error_info: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Generate steps to handle a JavaScript alert/confirm/prompt OR validation errors.
+        
+        Args:
+            alert_info: Dict with 'type' and 'text' of the alert (or validation error info)
+            executed_steps: Steps completed before alert appeared
+            dom_html: Current DOM HTML after alert was accepted
+            screenshot_path: Path to screenshot showing the alert
+            test_cases: Active test cases
+            test_context: Test context
+            step_where_alert_appeared: Step number that triggered the alert
+            include_accept_step: Whether AI should include accept_alert step in response
+            gathered_error_info: Optional dict with 'error_fields' and 'error_messages' from DOM detection
+            
+        Returns:
+            List of steps to handle alert + continue with remaining steps
+        """
         return self.helper.regenerate_steps_after_alert(
-            dom_html=dom_html,
-            alert_text=alert_text,
+            alert_info=alert_info,
             executed_steps=executed_steps,
+            dom_html=dom_html,
+            screenshot_path=screenshot_path,
             test_cases=test_cases,
             test_context=test_context,
-            gathered_error_info=gathered_error_info,
-            screenshot_base64=screenshot_base64,
-            previous_paths=previous_paths,
-            current_path_junctions=current_path_junctions
+            step_where_alert_appeared=step_where_alert_appeared,
+            include_accept_step=include_accept_step,
+            gathered_error_info=gathered_error_info
         )
 
 
@@ -129,12 +145,21 @@ class AIFormPageEndPrompterWrapper:
     
     def assign_test_cases(
         self,
-        steps: List[Dict],
+        stages: List[Dict],
         test_cases: List[Dict]
     ) -> List[Dict]:
-        """Assign test_case field to each step"""
+        """
+        Assign test_case field to each stage.
+        
+        Args:
+            stages: List of stage dicts (each stage should have "test_case": "" field)
+            test_cases: List of test case dicts
+            
+        Returns:
+            Updated stages list with test_case assigned
+        """
         return self.helper.assign_test_cases(
-            steps=steps,
+            stages=stages,
             test_cases=test_cases
         )
 
@@ -151,13 +176,20 @@ class AIUIVisualVerifierWrapper:
     def verify_visual_ui(
         self,
         screenshot_base64: str,
-        dom_html: str,
         previously_reported_issues: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """Verify UI for visual defects"""
+    ) -> str:
+        """
+        Verify UI visual elements by analyzing a screenshot for defects.
+        
+        Args:
+            screenshot_base64: Base64 encoded screenshot image
+            previously_reported_issues: List of issues already reported (to avoid duplicates)
+            
+        Returns:
+            String describing UI issues found, or empty string if no issues
+        """
         return self.helper.verify_visual_ui(
             screenshot_base64=screenshot_base64,
-            dom_html=dom_html,
             previously_reported_issues=previously_reported_issues
         )
 

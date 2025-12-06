@@ -318,13 +318,15 @@ This checklist will remain active until the test completes successfully.
 {critical_fields_section}
 {route_planning_section}
         === SELECTOR GUIDELINES ===
-
+        
+        **CRITICAL THE LOCATOR MUST SUCCEED - IF IN DOUBT → USE XPATH **
+        
         **Use CSS selectors (RECOMMENDED):**
            ✅ input[name='email']                           ← Good: form attributes
            ✅ input[data-qa='username-input']               ← Best: unique data attributes
            ✅ #email-field                                  ← Good: unique ID
            ✅ select[name='country']                        ← Good: dropdowns
-           ✅ .submit-button                                ← Good: specific classes
+           ✅ .submit-button                                ← Good: IF unique on page
         
         ** or buttons like accept/save/submit/ok use unique locators as most look alike  - so maybe XPATH for them
         
@@ -333,6 +335,8 @@ This checklist will remain active until the test completes successfully.
            Priority 2: name, type, id attributes
            Priority 3: Unique IDs or classes
            Priority 4: Structural selectors (last resort)
+           
+        
 
         **FORBIDDEN SYNTAX (Playwright/jQuery specific):**
            ❌ :has-text('text')           ← Playwright only - NOT in Selenium
@@ -361,9 +365,20 @@ This checklist will remain active until the test completes successfully.
         **Key Rules:**
         - Prefer CSS selectors with attributes (name, id, data-*, type)
         - Use unique identifiers when available
-        - Keep selectors simple and robust
-
+        -- Keep selectors simple and robust
+         
+             
+        **CRITICAL - AVOID GENERIC CLASS SELECTORS:**
+        ❌ BAD: input.oxd-input.oxd-input--active (matches sidebar Search AND form fields!)
+        ✅ GOOD: form .form-row input (scoped to form)
+        ✅ GOOD: input[placeholder='Event Name'] (unique attribute)
+        ✅ GOOD: //label[contains(text(),'Event Name')]/following::input[1] (XPath with label)
+        
         === END SELECTOR GUIDELINES ===
+        
+        === FORM TARGETING ===
+        - Look at the screenshot. ONLY target elements inside the MAIN FORM area.
+        === END FORM TARGETING ===
 
 
         === YOUR TASK: FORM PAGE TESTING ===

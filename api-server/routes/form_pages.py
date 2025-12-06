@@ -474,13 +474,34 @@ async def generate_login_steps(
             status_code=402,
             detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
         )
-    
+
     steps = service.generate_login_steps(
         data.get("page_html"),
         data.get("screenshot_base64"),
         data.get("username"),
         data.get("password")
     )
+
+    # Prepend navigate to URL as first step
+    login_url = data.get("login_url")
+    if login_url and steps:
+        navigate_step = {
+            "action": "navigate",
+            "selector": "",
+            "value": login_url
+        }
+
+        steps = [navigate_step] + steps
+
+    # Save login_stages to Network (overwrite existing)
+    if crawl_session_id and steps:
+        from models.database import Network, CrawlSession
+        crawl_session = db.query(CrawlSession).filter(CrawlSession.id == crawl_session_id).first()
+        if crawl_session and crawl_session.network_id:
+            network = db.query(Network).filter(Network.id == crawl_session.network_id).first()
+            if network:
+                network.login_stages = steps
+                db.commit()
     
     # Track AI cost immediately after call
     if company_id and product_id and user_id:
@@ -510,11 +531,21 @@ async def generate_logout_steps(
             status_code=402,
             detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
         )
-    
+
     steps = service.generate_logout_steps(
         data.get("page_html"),
         data.get("screenshot_base64")
     )
+
+    # Save logout_stages to Network (overwrite existing)
+    if crawl_session_id and steps:
+        from models.database import Network, CrawlSession
+        crawl_session = db.query(CrawlSession).filter(CrawlSession.id == crawl_session_id).first()
+        if crawl_session and crawl_session.network_id:
+            network = db.query(Network).filter(Network.id == crawl_session.network_id).first()
+            if network:
+                network.logout_stages = steps
+                db.commit()
     
     # Track AI cost immediately after call
     if company_id and product_id and user_id:

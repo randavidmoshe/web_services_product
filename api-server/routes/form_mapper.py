@@ -110,6 +110,7 @@ async def start_form_mapping(
     """
     user_id = request.user_id
     network_id = request.network_id
+    print(f"[DEBUG] start_form_mapping: network_id from request = {network_id}")
     company_id = request.company_id
     
     # Validate form_page_route exists
@@ -159,13 +160,11 @@ async def start_form_mapping(
             config=request.config
         )
         
-        # Start the mapping process
-        success = orchestrator.start_mapping(
-            session_id=str(db_session.id),
-            agent_id=agent_id,
-            form_page_route=form_page_route,
-            test_cases=request.test_cases
+        # Start the mapping process (Login → Navigate → Map)
+        result = orchestrator.start_login_phase(
+            session_id=str(db_session.id)
         )
+        success = result.get("success", False)
         
         if not success:
             raise HTTPException(status_code=500, detail="Failed to start mapping")
@@ -242,7 +241,6 @@ async def cancel_session(
     db: Session = Depends(get_db)
 ):
     """Cancel a mapping session."""
-    # Get session
     session = db.query(FormMapperSession).filter(
         FormMapperSession.id == session_id
     ).first()
@@ -251,13 +249,13 @@ async def cancel_session(
         raise HTTPException(status_code=404, detail="Session not found")
     
     if session.status in [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]:
-        raise HTTPException(status_code=400, detail=f"Session already {session.status}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel session with status: {session.status}"
+        )
     
     orchestrator = FormMapperOrchestrator(db)
-    
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to cancel session")
+    orchestrator.cancel_session(session_id)
     
     return {"status": "cancelled", "session_id": session_id}
 
@@ -430,9 +428,7 @@ async def agent_task_result(
         
         # Trigger Celery task if orchestrator requests it
         if response.get("trigger_celery") and response.get("celery_task"):
-            from tasks.form_mapper_tasks import analyze_form_page
-            celery_args = response.get("celery_args", {})
-            analyze_form_page.delay(**celery_args)
+            _trigger_celery_task(response.get("celery_task"), response.get("celery_args", {}))
             logger.info(f"[API] Triggered Celery task: {response.get('celery_task')}")
         
         return AgentTaskResultResponse(
@@ -444,6 +440,39 @@ async def agent_task_result(
     except Exception as e:
         logger.error(f"[API] Error processing agent result: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _trigger_celery_task(task_name: str, celery_args: dict):
+    """
+    Trigger the appropriate Celery task based on task name.
+    
+    This dynamically routes to the correct task based on what
+    the orchestrator requests.
+    """
+    from tasks.form_mapper_tasks import (
+        analyze_form_page,
+        analyze_failure_and_recover,
+        handle_alert_recovery,
+        verify_ui_visual,
+        regenerate_steps,
+        assign_test_cases
+    )
+    
+    task_map = {
+        "analyze_form_page": analyze_form_page,
+        "analyze_failure_and_recover": analyze_failure_and_recover,
+        "handle_alert_recovery": handle_alert_recovery,
+        "verify_ui_visual": verify_ui_visual,
+        "regenerate_steps": regenerate_steps,
+        "assign_test_cases": assign_test_cases,
+    }
+    
+    task = task_map.get(task_name)
+    if task:
+        task.delay(**celery_args)
+    else:
+        logger.error(f"[API] Unknown Celery task requested: {task_name}")
+        raise ValueError(f"Unknown Celery task: {task_name}")
 
 
 # ============================================================================

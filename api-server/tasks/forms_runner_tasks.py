@@ -707,24 +707,17 @@ def persist_runner_stages(
     
     try:
         if phase == "login" and network_id:
-            from models.database import Network
-            network = db.query(Network).filter(Network.id == network_id).first()
-            if network:
-                network.login_stages = stages
-                db.commit()
-                logger.info(f"[FormsRunner] Updated login_stages for network {network_id}")
-                return {"success": True, "updated": "network.login_stages"}
-        
+            # Login stages are managed by form pages discovery, not runner
+            logger.info(f"[FormsRunner] Login phase complete for network {network_id} (stages managed by discovery)")
+            return {"success": True, "phase": "login"}
+
         elif phase == "navigate" and form_route_id:
-            from models.database import FormPageRoute
-            route = db.query(FormPageRoute).filter(FormPageRoute.id == form_route_id).first()
-            if route:
-                route.navigation_steps = stages
-                db.commit()
-                logger.info(f"[FormsRunner] Updated navigation_steps for form_route {form_route_id}")
-                return {"success": True, "updated": "form_page_route.navigation_steps"}
-        
-        return {"success": False, "error": "No matching record found"}
+            # Navigation stages are managed by form pages discovery, not runner
+            logger.info(
+                f"[FormsRunner] Navigate phase complete for form_route {form_route_id} (stages managed by discovery)")
+            return {"success": True, "phase": "navigate"}
+
+        return {"success": False, "error": "Unknown phase"}
         
     except Exception as e:
         db.rollback()

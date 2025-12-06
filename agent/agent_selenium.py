@@ -1021,7 +1021,7 @@ class AgentSelenium:
         self.info_logger.info(f"Executing step {step_number}: {action} | Selector: {step.get('selector', 'N/A')} | Value: {step.get('value', 'N/A')}")
         
         # STEP 1: Capture old DOM hash BEFORE action
-        dom_before = self.extract_form_dom_with_js()
+        dom_before = self.extract_dom()
         old_dom_hash = dom_before.get("dom_hash", "") if dom_before.get("success") else ""
         
         def _finalize_success_result(base_result: Dict) -> Dict:
@@ -1054,7 +1054,7 @@ class AgentSelenium:
                 # Get new DOM hash after alert is accepted
                 # Wait briefly for JavaScript to finish
                 time.sleep(0.5)
-                dom_after = self.extract_form_dom_with_js()
+                dom_after = self.extract_dom()
                 new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
                 
                 # Check if fields changed
@@ -1074,7 +1074,7 @@ class AgentSelenium:
             # No alert - get new DOM hash
             # Wait briefly for JavaScript to finish (especially for conditional field visibility changes)
             time.sleep(0.5)
-            dom_after = self.extract_form_dom_with_js()
+            dom_after = self.extract_dom()
             new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
             
             # Check if fields changed
@@ -1468,9 +1468,17 @@ class AgentSelenium:
                     return _finalize_success_result({"success": True, "action": "wait", "duration": wait_time})
             
             # WAIT_FOR_READY ACTION (explicit AJAX waiting)
-            elif action == "wait_for_ready":
+            elif action in ("wait_for_ready", "wait_dom_ready"):
                 if not selector:
-                    return {"success": False, "error": "wait_for_ready requires a selector"}
+                    # No selector - wait for document ready state
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            lambda d: d.execute_script("return document.readyState") == "complete"
+                        )
+                        time.sleep(0.5)  # Extra buffer for JS to finish
+                        return _finalize_success_result({"success": True, "action": "wait_dom_ready"})
+                    except Exception as e:
+                        return {"success": False, "error": f"Wait for DOM ready failed: {str(e)}"}
                 
                 try:
                     # Determine selector type
@@ -1509,7 +1517,27 @@ class AgentSelenium:
                         "message": f"Timeout but continuing: {error_msg}",
                         "warning": error_msg
                     })
-            
+
+            elif action == "verify_clickables":
+                # Verify login succeeded by checking for 3+ clickable elements
+                clickables = self.driver.find_elements(By.CSS_SELECTOR,
+                                                       "a, button, [onclick], [role='button'], input[type='submit'], input[type='button']")
+                clickable_count = len([el for el in clickables if el.is_displayed()])
+
+                if clickable_count >= 5:
+                    return _finalize_success_result({
+                        "success": True,
+                        "action": "verify_clickables",
+                        "clickable_count": clickable_count
+                    })
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Only {clickable_count} clickables found, expected 3+",
+                        "action": "verify_clickables"
+                    }
+
+
             # SWITCH TO IFRAME
             elif action == "switch_to_frame":
                 iframe = self._find_element(selector)

@@ -34,11 +34,6 @@ class FormMapperTaskHandler:
     - form_mapper_navigate: Navigate to URL
     - form_mapper_close: Close browser
     - forms_runner_exec_step: Execute login/navigation step (with error context)
-    - form_mapper_navigate_to_url: Navigate to URL (orchestrator alias)
-    - form_mapper_get_screenshot: Get screenshot with base64 encoding
-    - form_mapper_extract_dom_for_recovery: Extract DOM + screenshot for step failure recovery
-    - form_mapper_extract_dom_for_alert: Extract DOM after alert detected
-    - form_mapper_save_screenshot_and_log: Save screenshot to file and log UI issue
     """
     
     def __init__(self, agent_selenium):
@@ -75,12 +70,6 @@ class FormMapperTaskHandler:
             "form_mapper_navigate": self._handle_navigate,
             "form_mapper_close": self._handle_close,
             "forms_runner_exec_step": self._handle_runner_exec_step,  # Forms Runner
-            # NEW - Required by distributed orchestrator:
-            "form_mapper_navigate_to_url": self._handle_navigate,  # Alias
-            "form_mapper_get_screenshot": self._handle_get_screenshot,
-            "form_mapper_extract_dom_for_recovery": self._handle_extract_dom_for_recovery,
-            "form_mapper_extract_dom_for_alert": self._handle_extract_dom_for_alert,
-            "form_mapper_save_screenshot_and_log": self._handle_save_screenshot_and_log,
         }
         
         handler = handlers.get(task_type)
@@ -179,41 +168,46 @@ class FormMapperTaskHandler:
             "success": True,
             "current_url": self.selenium.driver.current_url
         }
-
+    
     def _handle_extract_dom(self, session_id: int, payload: Dict) -> Dict:
         """
         Extract DOM HTML from current page.
-
+        
         Payload:
             use_full_dom: Extract full page DOM vs form container only
+            include_js_in_dom: Include JavaScript in extraction
         """
         use_full_dom = payload.get("use_full_dom", True)
-
+        include_js_in_dom = payload.get("include_js_in_dom", True)
+        
         try:
             if use_full_dom:
-                result = self.selenium.extract_dom()
+                # Extract full page DOM
+                if include_js_in_dom:
+                    dom_html = self.selenium.extract_form_dom_with_js()
+                else:
+                    dom_html = self.selenium.extract_dom()
             else:
-                result = self.selenium.extract_form_container_with_js()
-
-            # Handle Dict result from agent_selenium
-            if isinstance(result, dict):
-                if not result.get("success"):
-                    return {"success": False, "error": result.get("error", "Failed to extract DOM")}
-                dom_html = result.get("dom_html", "")
-            else:
-                dom_html = result
-
+                # Extract only form container
+                dom_html = self.selenium.extract_form_container_with_js()
+            
             if not dom_html:
-                return {"success": False, "error": "Failed to extract DOM"}
-
+                return {
+                    "success": False,
+                    "error": "Failed to extract DOM"
+                }
+            
             return {
                 "success": True,
                 "dom_html": dom_html,
                 "dom_length": len(dom_html)
             }
-
+            
         except Exception as e:
-            return {"success": False, "error": f"DOM extraction failed: {e}"}
+            return {
+                "success": False,
+                "error": f"DOM extraction failed: {e}"
+            }
     
     def _handle_runner_exec_step(self, session_id: int, payload: Dict) -> Dict:
         """
@@ -454,16 +448,9 @@ class FormMapperTaskHandler:
     # ========================================================================
     # Step Execution
     # ========================================================================
-
+    
     def _execute_step(self, step: Dict) -> bool:
-        """Execute a single step using agent_selenium."""
-        result = self.selenium.execute_step(step)
-        print(f"[DEBUG] execute_step result: {result}")
-        return result.get("success", False)
-
-
-
-        ''' OBSOLETE - agent selenium is now doing this
+        """Execute a single step based on action type."""
         action = step.get("action", "")
         selector = step.get("selector", "")
         value = step.get("value", "")
@@ -495,7 +482,6 @@ class FormMapperTaskHandler:
             return False
         
         return handler(selector, value, step)
-        '''
     
     def _action_fill(self, selector: str, value: str, step: Dict) -> bool:
         """Fill a text input field."""
@@ -776,195 +762,6 @@ class FormMapperTaskHandler:
         except Exception as e:
             logger.error(f"[FormMapper] Dismiss alert failed: {e}")
             return False
-    
-    # ========================================================================
-    # NEW Handlers - Required by Distributed Orchestrator
-    # ========================================================================
-    
-    def _handle_get_screenshot(self, session_id: int, payload: Dict) -> Dict:
-        """
-        Get screenshot with base64 encoding.
-        Used by orchestrator for UI verification.
-        
-        Payload:
-            scenario: Description of when screenshot was taken
-        """
-        scenario = payload.get("scenario", "")
-        
-        try:
-            screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
-            
-            return {
-                "success": True,
-                "scenario": scenario,
-                "screenshot_base64": screenshot_b64
-            }
-            
-        except Exception as e:
-            logger.error(f"[FormMapper] Get screenshot failed: {e}")
-            return {
-                "success": False,
-                "error": f"Screenshot failed: {e}"
-            }
-    
-    def _handle_extract_dom_for_recovery(self, session_id: int, payload: Dict) -> Dict:
-        """
-        Extract DOM and screenshot for step failure recovery.
-        Called when a step fails and AI needs fresh DOM + screenshot.
-        
-        Payload:
-            capture_screenshot: Whether to capture screenshot
-            save_screenshot: Whether to save screenshot to file
-            scenario_description: Description for screenshot filename
-        """
-        capture_screenshot = payload.get("capture_screenshot", True)
-        save_screenshot = payload.get("save_screenshot", False)
-        scenario_description = payload.get("scenario_description", "recovery")
-        
-        try:
-            # Extract DOM
-            dom_html = self.selenium.driver.page_source
-            
-            result = {
-                "success": True,
-                "dom_html": dom_html,
-                "dom_length": len(dom_html) if dom_html else 0
-            }
-            
-            # Capture screenshot if requested
-            if capture_screenshot:
-                try:
-                    screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
-                    result["screenshot_base64"] = screenshot_b64
-                    
-                    # Save to file if requested
-                    if save_screenshot and hasattr(self.selenium, 'config'):
-                        import os
-                        from datetime import datetime
-                        
-                        screenshot_folder = getattr(self.selenium.config, 'screenshot_folder', None)
-                        if screenshot_folder:
-                            os.makedirs(screenshot_folder, exist_ok=True)
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            safe_scenario = "".join(c if c.isalnum() or c in "_-" else "_" for c in scenario_description)
-                            filepath = os.path.join(screenshot_folder, f"{safe_scenario}_{timestamp}.png")
-                            
-                            screenshot_bytes = base64.b64decode(screenshot_b64)
-                            with open(filepath, 'wb') as f:
-                                f.write(screenshot_bytes)
-                            
-                            result["screenshot_path"] = filepath
-                            logger.info(f"[FormMapper] Screenshot saved: {filepath}")
-                            
-                except Exception as e:
-                    logger.warning(f"[FormMapper] Screenshot capture failed: {e}")
-                    result["screenshot_error"] = str(e)
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"[FormMapper] Extract DOM for recovery failed: {e}")
-            return {
-                "success": False,
-                "error": f"DOM extraction failed: {e}"
-            }
-    
-    def _handle_extract_dom_for_alert(self, session_id: int, payload: Dict) -> Dict:
-        """
-        Extract DOM after alert detected.
-        Called when an alert/validation error was detected and AI needs fresh DOM.
-        
-        Payload:
-            alert_type: Type of alert detected
-            alert_text: Text from the alert
-        """
-        alert_type = payload.get("alert_type", "unknown")
-        alert_text = payload.get("alert_text", "")
-        
-        logger.info(f"[FormMapper] Extracting DOM after alert: {alert_type}")
-        
-        try:
-            # Extract DOM
-            dom_html = self.selenium.driver.page_source
-            
-            # Also capture screenshot for context
-            screenshot_b64 = None
-            try:
-                screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
-            except:
-                pass
-            
-            # Gather any validation error info from the page
-            gathered_error_info = self._gather_error_info()
-            
-            return {
-                "success": True,
-                "dom_html": dom_html,
-                "dom_length": len(dom_html) if dom_html else 0,
-                "screenshot_base64": screenshot_b64,
-                "alert_type": alert_type,
-                "alert_text": alert_text,
-                "gathered_error_info": gathered_error_info
-            }
-            
-        except Exception as e:
-            logger.error(f"[FormMapper] Extract DOM for alert failed: {e}")
-            return {
-                "success": False,
-                "error": f"DOM extraction failed: {e}"
-            }
-    
-    def _handle_save_screenshot_and_log(self, session_id: int, payload: Dict) -> Dict:
-        """
-        Save screenshot to file and log UI issue.
-        Called when UI verification detects an issue.
-        
-        Payload:
-            ui_issue: Description of the UI issue detected
-            scenario: Screenshot scenario description
-        """
-        ui_issue = payload.get("ui_issue", "")
-        scenario = payload.get("scenario", "ui_issue")
-        
-        try:
-            # Capture screenshot
-            screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
-            screenshot_bytes = base64.b64decode(screenshot_b64)
-            
-            # Save to file
-            filepath = None
-            if hasattr(self.selenium, 'config'):
-                import os
-                from datetime import datetime
-                
-                screenshot_folder = getattr(self.selenium.config, 'screenshot_folder', None)
-                if screenshot_folder:
-                    os.makedirs(screenshot_folder, exist_ok=True)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    safe_scenario = "".join(c if c.isalnum() or c in "_-" else "_" for c in scenario)
-                    filepath = os.path.join(screenshot_folder, f"ui_issue_{safe_scenario}_{timestamp}.png")
-                    
-                    with open(filepath, 'wb') as f:
-                        f.write(screenshot_bytes)
-                    
-                    logger.info(f"[FormMapper] UI issue screenshot saved: {filepath}")
-            
-            # Log the UI issue
-            logger.warning(f"[FormMapper] UI Issue detected: {ui_issue}")
-            
-            return {
-                "success": True,
-                "ui_issue": ui_issue,
-                "screenshot_path": filepath,
-                "screenshot_base64": screenshot_b64
-            }
-            
-        except Exception as e:
-            logger.error(f"[FormMapper] Save screenshot and log failed: {e}")
-            return {
-                "success": False,
-                "error": f"Save screenshot failed: {e}"
-            }
     
     # ========================================================================
     # Helper Methods

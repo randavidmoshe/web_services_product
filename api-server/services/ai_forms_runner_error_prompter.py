@@ -84,7 +84,9 @@ class AIFormPageRunError:
         error_message: str
     ) -> str:
         """Build prompt for error analysis"""
-        
+
+        dom_truncated = (dom_html or "")[:50000]
+        stages_truncated = (all_stages or [])[:20]
         prompt = f"""# FORM PAGE EXECUTION ERROR ANALYSIS
 
 ## Context
@@ -102,12 +104,12 @@ You are analyzing an error that occurred during automated execution of form page
 
 ## Current DOM (at failure point)
 ```html
-{dom_html[:50000]}
+{dom_truncated}
 ```
 
 ## All Stages Context (first 20 for reference)
 ```json
-{json.dumps(all_stages[:20], indent=2)}
+{json.dumps(stages_truncated, indent=2)}
 ```
 
 ## Your Task

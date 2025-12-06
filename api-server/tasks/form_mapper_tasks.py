@@ -1,13 +1,16 @@
 # form_mapper_tasks.py
 # Celery tasks for Form Mapper AI operations
 # SCALABLE: Integrated with AI Budget Service for token tracking and limits
+# 
+# IMPORTANT: Each task calls orchestrator.process_celery_result() after completion
+# to continue the state machine chain.
 
 import os
 import json
 import logging
 from celery_app import celery
 from celery import shared_task
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,6 @@ logger = logging.getLogger(__name__)
 def _get_redis_client():
     """Get Redis client with connection pooling"""
     import redis
-    # Use connection pool for efficiency at scale
     pool = redis.ConnectionPool(
         host=os.getenv("REDIS_HOST", "redis"),
         port=int(os.getenv("REDIS_PORT", 6379)),
@@ -32,24 +34,18 @@ def _get_db_session():
 
 
 def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
-    """
-    Check budget and get API key.
-    Uses customer's API key if provided, otherwise falls back to system key.
-    Raises BudgetExceededError if budget exceeded.
-    """
+    """Check budget and get API key."""
     from services.ai_budget_service import get_budget_service, BudgetExceededError
     from models.database import CompanyProductSubscription
     
     redis_client = _get_redis_client()
     budget_service = get_budget_service(redis_client)
     
-    # Check budget (raises BudgetExceededError if exceeded)
     has_budget, remaining, total = budget_service.check_budget(db, company_id, product_id)
     
     if not has_budget:
         raise BudgetExceededError(company_id, total, total - remaining)
     
-    # Get API key (customer's or system)
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id,
         CompanyProductSubscription.product_id == product_id
@@ -90,7 +86,6 @@ def _get_session_context(redis_client, session_id: str) -> Dict:
     if not session_data:
         return {}
     
-    # Decode bytes if needed
     decoded = {}
     for k, v in session_data.items():
         key_str = k.decode() if isinstance(k, bytes) else k
@@ -106,6 +101,57 @@ def _get_session_context(redis_client, session_id: str) -> Dict:
     }
 
 
+def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
+    """
+    Continue the orchestrator state machine after a Celery task completes.
+    This chains Celery tasks together via the orchestrator.
+    """
+    from services.form_mapper_orchestrator import FormMapperOrchestrator
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
+    try:
+        orchestrator = FormMapperOrchestrator(redis_client, db)
+        response = orchestrator.process_celery_result(session_id, task_name, result)
+        
+        if response.get("trigger_celery") and response.get("celery_task"):
+            next_task_name = response.get("celery_task")
+            celery_args = response.get("celery_args", {})
+            logger.info(f"[FormMapperTask] Chaining to next task: {next_task_name}")
+            _trigger_celery_task(next_task_name, celery_args)
+        
+        if response.get("push_agent_task"):
+            logger.info(f"[FormMapperTask] Agent task queued: {response.get('agent_task_type')}")
+        
+        return response
+        
+    finally:
+        db.close()
+
+
+def _trigger_celery_task(task_name: str, celery_args: dict):
+    """Trigger another Celery task by name"""
+    task_map = {
+        "analyze_form_page": analyze_form_page,
+        "analyze_failure_and_recover": analyze_failure_and_recover,
+        "handle_alert_recovery": handle_alert_recovery,
+        "verify_ui_visual": verify_ui_visual,
+        "regenerate_steps": regenerate_steps,
+        "assign_test_cases": assign_test_cases,
+    }
+    
+    task = task_map.get(task_name)
+    if task:
+        task.delay(**celery_args)
+    else:
+        logger.error(f"[FormMapperTask] Unknown task: {task_name}")
+
+
+# ============================================================================
+# CELERY TASKS
+# ============================================================================
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10, 
              autoretry_for=(Exception,), retry_backoff=True)
 def analyze_form_page(
@@ -114,20 +160,17 @@ def analyze_form_page(
     dom_html: str,
     screenshot_base64: str,
     test_cases: list,
-    previous_paths: list,
-    current_path: int,
+    previous_paths: list = None,
+    current_path: int = 1,
+    current_path_junctions: list = None,
     enable_junction_discovery: bool = True,
     max_junction_paths: int = 5,
     use_detect_fields_change: bool = True,
-    enable_ui_verification: bool = True
+    enable_ui_verification: bool = True,
+    critical_fields_checklist: dict = None,
+    field_requirements: str = ""
 ) -> Dict:
-    """
-    Celery task: Analyze form page with AI.
-    
-    - Checks budget before AI call
-    - Records token usage after call
-    - Stores result in Redis for orchestrator
-    """
+    """Celery task: Analyze form page with AI (initial step generation)."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
     
     logger.info(f"[FormMapperTask] Analyzing form page for session {session_id}")
@@ -136,34 +179,37 @@ def analyze_form_page(
     redis_client = _get_redis_client()
     
     try:
-        # Get session context
         ctx = _get_session_context(redis_client, session_id)
-        if ctx.get("company_id") is None:
-            return {"success": False, "error": "Session not found"}
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+            return result
         
-        # Check budget and get API key
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
         if not api_key:
-            return {"success": False, "error": "No API key available"}
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+            return result
         
-        # Import and use AI helper
         from services.form_mapper_ai_helpers import create_ai_helpers
         helpers = create_ai_helpers(api_key)
         
-        ai_helper = helpers["main"]
-        result = ai_helper.generate_next_steps(
+        ai_helper = helpers["form_mapper"]
+        logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
+            test_cases=test_cases,
             screenshot_base64=screenshot_base64,
-            test_context={"test_cases": test_cases},
-            previous_paths=previous_paths,
-            current_path_junctions=[],
-            current_step_number=1
+            previous_paths=previous_paths if enable_junction_discovery else None,
+            current_path_junctions=current_path_junctions or [],
+            critical_fields_checklist=critical_fields_checklist or {},
+            field_requirements=field_requirements or "",
+            is_first_iteration=True
         )
         
-        # Record usage (estimate tokens)
-        input_tokens = len(dom_html) // 4 + len(screenshot_base64) // 100
-        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
+        output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
         
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
@@ -171,26 +217,129 @@ def analyze_form_page(
             input_tokens, output_tokens, session_id
         )
         
-        # Store result in Redis for orchestrator
-        result_key = f"mapper_ai_result:{session_id}"
-        redis_client.setex(result_key, 3600, json.dumps(result))
+        result = {
+            "success": True,
+            "steps": ai_result.get("steps", []),
+            "no_more_paths": ai_result.get("no_more_paths", False),
+            "form_fields": ai_result.get("form_fields", [])
+        }
         
         logger.info(f"[FormMapperTask] Analysis complete: {len(result.get('steps', []))} steps")
+        for step in result.get('steps', []):
+            logger.info(f"  Step {step.get('step_number')}: {step.get('action')} | {step.get('description')}")
+            logger.info(f"    selector: {step.get('selector')}")
+            if step.get('value'):
+                val = str(step.get('value'))[:60]
+                logger.info(f"    value: {val}")
+
+        _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
         
     except BudgetExceededError as e:
         logger.warning(f"[FormMapperTask] Budget exceeded for company {e.company_id}")
-        return {
-            "success": False, 
-            "error": "AI budget exceeded",
-            "budget_exceeded": True,
-            "budget": e.budget,
-            "used": e.used
-        }
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+        return result
         
     except Exception as e:
-        logger.error(f"[FormMapperTask] Analysis failed: {e}")
-        raise  # Let Celery retry handle it
+        logger.error(f"[FormMapperTask] Analysis failed: {e}", exc_info=True)
+        raise
+        
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10,
+             autoretry_for=(Exception,), retry_backoff=True)
+def analyze_failure_and_recover(
+    self,
+    session_id: str,
+    failed_step: Dict,
+    executed_steps: List[Dict],
+    fresh_dom: str,
+    screenshot_path: str,
+    test_cases: List[Dict],
+    test_context: Dict,
+    attempt_number: int = 1,
+    recovery_failure_history: List[Dict] = None
+) -> Dict:
+    """Celery task: AI analyzes step failure and generates recovery steps."""
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] Analyzing failure for session {session_id}, attempt {attempt_number}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+            return result
+        
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+            return result
+        
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+        
+        ai_helper = helpers["form_mapper"]
+        
+        recovery_context = {
+            "failed_step": failed_step,
+            "attempt_number": attempt_number,
+            "recovery_failure_history": recovery_failure_history or [],
+            **(test_context or {})
+        }
+        
+        ai_result = ai_helper.regenerate_steps(
+            dom_html=fresh_dom,
+            executed_steps=executed_steps,
+            test_cases=test_cases,
+            test_context=recovery_context,
+            screenshot_base64=None,
+            critical_fields_checklist=None,
+            field_requirements=None,
+            previous_paths=None,
+            current_path_junctions=None
+        )
+        
+        input_tokens = len(fresh_dom) // 4 + 500
+        output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
+        
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_RECOVERY,
+            input_tokens, output_tokens, session_id
+        )
+        
+        result = {
+            "success": True,
+            "recovery_steps": ai_result.get("steps", []),
+            "no_more_paths": ai_result.get("no_more_paths", False)
+        }
+        
+        logger.info(f"[FormMapperTask] Recovery generated: {len(result.get('recovery_steps', []))} steps")
+        for step in result.get('recovery_steps', []):
+            logger.info(f"  Step: {step.get('action')} | {step.get('description')}")
+            logger.info(f"    selector: {step.get('selector')}")
+
+        _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+        return result
+        
+    except BudgetExceededError as e:
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+        return result
+        
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Failure analysis failed: {e}", exc_info=True)
+        raise
         
     finally:
         db.close()
@@ -201,15 +350,17 @@ def analyze_form_page(
 def handle_alert_recovery(
     self,
     session_id: str,
-    alert_text: str,
+    alert_info: Dict,
+    executed_steps: List[Dict],
     dom_html: str,
-    screenshot_base64: str,
-    all_steps: list,
-    current_step_index: int
+    screenshot_path: Optional[str],
+    test_cases: List[Dict],
+    test_context: Dict,
+    step_where_alert_appeared: int,
+    include_accept_step: bool = True,
+    gathered_error_info: Optional[Dict] = None
 ) -> Dict:
-    """
-    Celery task: Handle alert/error recovery with AI.
-    """
+    """Celery task: Handle alert/error recovery with AI."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
     
     logger.info(f"[FormMapperTask] Alert recovery for session {session_id}")
@@ -219,31 +370,36 @@ def handle_alert_recovery(
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if ctx.get("company_id") is None:
-            return {"success": False, "error": "Session not found"}
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
+            return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
         if not api_key:
-            return {"success": False, "error": "No API key available"}
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
+            return result
         
         from services.form_mapper_ai_helpers import create_ai_helpers
         helpers = create_ai_helpers(api_key)
         
         ai_recovery = helpers["alert_recovery"]
-        failed_step = all_steps[current_step_index] if current_step_index < len(all_steps) else {}
-        
-        result = ai_recovery.analyze_and_recover(
+        ai_result = ai_recovery.regenerate_steps_after_alert(
+            alert_info=alert_info,
+            executed_steps=executed_steps,
             dom_html=dom_html,
-            screenshot_base64=screenshot_base64,
-            alert_text=alert_text,
-            failed_step=failed_step,
-            all_steps=all_steps
+            screenshot_path=screenshot_path,
+            test_cases=test_cases,
+            test_context=test_context,
+            step_where_alert_appeared=step_where_alert_appeared,
+            include_accept_step=include_accept_step,
+            gathered_error_info=gathered_error_info
         )
         
-        # Record usage
-        input_tokens = len(dom_html) // 4 + len(screenshot_base64) // 100
-        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        input_tokens = len(dom_html) // 4 + 500
+        output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
         
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
@@ -251,17 +407,19 @@ def handle_alert_recovery(
             input_tokens, output_tokens, session_id
         )
         
-        # Store result
-        result_key = f"mapper_recovery_result:{session_id}"
-        redis_client.setex(result_key, 3600, json.dumps(result))
+        result = {"success": True, **ai_result}
         
+        logger.info(f"[FormMapperTask] Alert recovery complete: scenario={ai_result.get('scenario', 'unknown')}")
+        _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
         return result
         
     except BudgetExceededError as e:
-        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
+        return result
         
     except Exception as e:
-        logger.error(f"[FormMapperTask] Alert recovery failed: {e}")
+        logger.error(f"[FormMapperTask] Alert recovery failed: {e}", exc_info=True)
         raise
         
     finally:
@@ -273,40 +431,42 @@ def verify_ui_visual(
     self,
     session_id: str,
     screenshot_base64: str,
-    expected_state: dict
+    previously_reported_issues: Optional[List[str]] = None
 ) -> Dict:
-    """
-    Celery task: Visual UI verification with AI.
-    """
+    """Celery task: Visual UI verification with AI."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
     
     logger.info(f"[FormMapperTask] UI verification for session {session_id}")
+
     
     db = _get_db_session()
     redis_client = _get_redis_client()
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if ctx.get("company_id") is None:
-            return {"success": False, "error": "Session not found"}
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
+            return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
         if not api_key:
-            return {"success": False, "error": "No API key available"}
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
+            return result
         
         from services.form_mapper_ai_helpers import create_ai_helpers
         helpers = create_ai_helpers(api_key)
         
         ai_verifier = helpers["ui_verifier"]
-        result = ai_verifier.verify_ui(
+        ui_issue = ai_verifier.verify_visual_ui(
             screenshot_base64=screenshot_base64,
-            expected_state=expected_state
+            previously_reported_issues=previously_reported_issues
         )
         
-        # Record usage (mostly image tokens)
         input_tokens = len(screenshot_base64) // 100 + 500
-        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        output_tokens = len(ui_issue) // 4 if ui_issue else 0
         
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
@@ -314,13 +474,111 @@ def verify_ui_visual(
             input_tokens, output_tokens, session_id
         )
         
+        result = {"success": True, "ui_issue": ui_issue}
+        
+        logger.info(f"[FormMapperTask] UI verification complete: {'issue found' if ui_issue else 'no issues'}")
+        if ui_issue:
+            logger.info(f"  UI Issue: {ui_issue[:150]}")
+        _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
         return result
         
     except BudgetExceededError as e:
-        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
+        return result
         
     except Exception as e:
-        logger.error(f"[FormMapperTask] UI verification failed: {e}")
+        logger.error(f"[FormMapperTask] UI verification failed: {e}", exc_info=True)
+        raise
+        
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10,
+             autoretry_for=(Exception,), retry_backoff=True)
+def regenerate_steps(
+    self,
+    session_id: str,
+    dom_html: str,
+    executed_steps: List[Dict],
+    test_cases: List[Dict],
+    test_context: Dict,
+    screenshot_base64: Optional[str] = None,
+    critical_fields_checklist: Optional[Dict] = None,
+    field_requirements: Optional[str] = None,
+    previous_paths: Optional[List[Dict]] = None,
+    current_path_junctions: Optional[List[Dict]] = None,
+    enable_junction_discovery: bool = True
+) -> Dict:
+    """Celery task: Regenerate remaining steps after DOM change."""
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+    
+    logger.info(f"[FormMapperTask] Regenerating steps for session {session_id}")
+    
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+            return result
+        
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+            return result
+        
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+        
+        ai_helper = helpers["form_mapper"]
+        ai_result = ai_helper.regenerate_steps(
+            dom_html=dom_html,
+            executed_steps=executed_steps,
+            test_cases=test_cases,
+            test_context=test_context,
+            screenshot_base64=screenshot_base64,
+            critical_fields_checklist=critical_fields_checklist,
+            field_requirements=field_requirements,
+            previous_paths=previous_paths if enable_junction_discovery else None,
+            current_path_junctions=current_path_junctions
+        )
+        
+        input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
+        output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
+        
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_REGENERATE,
+            input_tokens, output_tokens, session_id
+        )
+        
+        result = {
+            "success": True,
+            "new_steps": ai_result.get("steps", []),
+            "no_more_paths": ai_result.get("no_more_paths", False)
+        }
+        
+        logger.info(f"[FormMapperTask] Regeneration complete: {len(result.get('new_steps', []))} new steps")
+        for step in result.get('new_steps', []):
+            logger.info(f"  Step {step.get('step_number')}: {step.get('action')} | {step.get('description')}")
+            logger.info(f"    selector: {step.get('selector')}")
+
+        _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+        return result
+        
+    except BudgetExceededError as e:
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+        return result
+        
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Step regeneration failed: {e}", exc_info=True)
         raise
         
     finally:
@@ -331,60 +589,69 @@ def verify_ui_visual(
 def assign_test_cases(
     self,
     session_id: str,
-    all_steps: list,
-    test_cases: list
+    stages: List[Dict],
+    test_cases: List[Dict]
 ) -> Dict:
-    """
-    Celery task: Assign test cases to steps at end of mapping.
-    """
+    """Celery task: Assign test cases to stages at end of mapping."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
     
     logger.info(f"[FormMapperTask] Assigning test cases for session {session_id}")
+
     
     db = _get_db_session()
     redis_client = _get_redis_client()
     
     try:
         ctx = _get_session_context(redis_client, session_id)
-        if ctx.get("company_id") is None:
-            return {"success": False, "error": "Session not found"}
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+            return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
         
         if not api_key:
-            return {"success": False, "error": "No API key available"}
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+            return result
         
         from services.form_mapper_ai_helpers import create_ai_helpers
         helpers = create_ai_helpers(api_key)
         
         ai_end = helpers["end_prompter"]
-        result = ai_end.assign_test_cases(
-            steps=all_steps,
+        updated_stages = ai_end.assign_test_cases(
+            stages=stages,
             test_cases=test_cases
         )
         
-        # Record usage
-        input_tokens = len(json.dumps(all_steps)) // 4 + len(json.dumps(test_cases)) // 4
-        output_tokens = len(json.dumps(result)) // 4 if result else 0
+        input_tokens = len(json.dumps(stages)) // 4 + len(json.dumps(test_cases)) // 4
+        output_tokens = len(json.dumps(updated_stages)) // 4 if updated_stages else 0
         
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
             AIOperationType.FORM_MAPPER_END_ASSIGN,
             input_tokens, output_tokens, session_id
         )
+
+        result = {"stages": updated_stages, "success": True}
         
-        # Store final result
-        result_key = f"mapper_final_result:{session_id}"
-        redis_client.setex(result_key, 86400, json.dumps(result))  # 24h TTL
-        
+        logger.info(f"[FormMapperTask] Test case assignment complete: {len(updated_stages)} stages")
+        for stage in updated_stages:
+            logger.info(f"  Stage {stage.get('step_number')}: {stage.get('action')} | {stage.get('description')}")
+
+        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
         return result
         
     except BudgetExceededError as e:
-        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+        return result
         
     except Exception as e:
-        logger.error(f"[FormMapperTask] Test case assignment failed: {e}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"[FormMapperTask] Test case assignment failed: {e}", exc_info=True)
+        result = {"success": False, "error": str(e)}
+        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+        return result
         
     finally:
         db.close()

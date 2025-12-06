@@ -569,7 +569,7 @@ def detect_page_error(driver) -> Optional[str]:
                 'not authorized', 'permission denied', 'login required'
             ],
             PageErrorCode.SERVER_ERROR: [
-                '500', 'internal server error', 'server error',
+                'error 500', '500 internal', 'internal server error', 'server error',
                 'something went wrong', 'unexpected error'
             ],
             PageErrorCode.SITE_UNAVAILABLE: [

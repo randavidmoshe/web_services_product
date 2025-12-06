@@ -159,13 +159,14 @@ class FormPagesAPIClient:
         self._put(f"/api/form-pages/sessions/{self.crawl_session_id}", data)
     
     # ========== AI OPERATIONS ==========
-    
+
     def generate_login_steps(
-        self,
-        page_html: str,
-        screenshot_base64: str,
-        username: str,
-        password: str
+            self,
+            page_html: str,
+            screenshot_base64: str,
+            username: str,
+            password: str,
+            login_url: str = ""
     ) -> List[Dict[str, Any]]:
         """Generate login automation steps using AI"""
         print("[APIClient] 🔑 Requesting login steps from server...")
@@ -175,6 +176,7 @@ class FormPagesAPIClient:
             "screenshot_base64": screenshot_base64,
             "username": username,
             "password": password,
+            "login_url": login_url,
             "company_id": self.company_id,
             "product_id": self.product_id,
             "user_id": self.user_id,

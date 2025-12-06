@@ -85,7 +85,6 @@ export default function DashboardPage() {
   const router = useRouter()
   const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
   
@@ -605,7 +604,6 @@ export default function DashboardPage() {
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedProjectId = localStorage.getItem('active_project_id')
     const storedProjectName = localStorage.getItem('active_project_name')
     
@@ -616,7 +614,6 @@ export default function DashboardPage() {
     
     setToken(storedToken)
     setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
     setActiveProjectId(storedProjectId)
     setActiveProjectName(storedProjectName)
     
@@ -761,7 +758,6 @@ export default function DashboardPage() {
         body: JSON.stringify({
           form_page_route_id: formPage.id,
           user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: formPage.network_id,
           test_cases: [
             { test_id: 1, test_name: 'Default Test', description: 'Auto-generated test case' }

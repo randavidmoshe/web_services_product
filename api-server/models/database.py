@@ -83,6 +83,10 @@ class User(Base):
     # 2FA fields
     totp_secret = Column(String, nullable=True)
     totp_enabled = Column(Boolean, default=False)
+    # Invitation fields
+    invite_token = Column(String(100), unique=True, nullable=True)
+    invite_sent_at = Column(DateTime, nullable=True)
+    invite_accepted_at = Column(DateTime, nullable=True)
 
 class Project(Base):
     __tablename__ = "projects"
@@ -173,8 +177,8 @@ class FormPageRoute(Base):
     parent = relationship("FormPageRoute", remote_side=[id], backref="children")
     
     # Form Mapper relationships  # <-- ADD THESE
-    mapper_sessions = relationship("FormMapperSession", back_populates="form_page_route")
-    map_results = relationship("FormMapResult", back_populates="form_page_route")
+    mapper_sessions = relationship("FormMapperSession", back_populates="form_page_route", cascade="all, delete-orphan")
+    map_results = relationship("FormMapResult", back_populates="form_page_route", cascade="all, delete-orphan")
 
 class ApiUsage(Base):
     __tablename__ = "api_usage"

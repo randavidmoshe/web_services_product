@@ -1670,7 +1670,10 @@ class FormPagesCrawler:
                             continue
 
                         if '\n' in text:
-                            continue
+                            lines = [l.strip() for l in text.split('\n') if len(l.strip()) > 1]
+                            text = lines[0] if lines else ""
+                            if not text:
+                                continue
                         
                         tag = el.tag_name.lower()
                         has_href = el.get_attribute("href")
@@ -1728,7 +1731,7 @@ class FormPagesCrawler:
                                 if ai_clickables:
                                     text_lower = text.lower().strip()
                                     is_ai_target = any(
-                                        text_lower == ai_name.lower().strip()
+                                        ai_name.lower().strip() in text_lower or text_lower in ai_name.lower().strip()
                                         for ai_name in ai_clickables
                                     )
                                     if not is_ai_target:
@@ -1863,7 +1866,10 @@ class FormPagesCrawler:
                         continue
 
                     if '\n' in text:
-                        continue
+                        lines = [l.strip() for l in text.split('\n') if len(l.strip()) > 1]
+                        text = lines[0] if lines else ""
+                        if not text:
+                            continue
 
                     try:
                         href = el.get_attribute("href") or ""
@@ -1889,10 +1895,11 @@ class FormPagesCrawler:
                     # ═══════════════════════════════════════════════════════════════
                     # AI VISION FILTER: Only include if AI identified as navigation
                     # ═══════════════════════════════════════════════════════════════
+                    print(f"    [DEBUG] Checking text '{text}' against AI targets")
                     if ai_clickables:
                         text_lower = text.lower().strip()
                         is_ai_target = any(
-                            text_lower == ai_name.lower().strip()
+                            ai_name.lower().strip() in text_lower or text_lower in ai_name.lower().strip()
                             for ai_name in ai_clickables
                         )
                         if not is_ai_target:

@@ -12,6 +12,7 @@ interface User {
   totp_enabled: boolean
   created_at: string
   last_login_at: string | null
+  invite_pending: boolean
 }
 
 interface Company {
@@ -34,13 +35,12 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   
-  // Add user modal
-  const [showAddModal, setShowAddModal] = useState(false)
+  // Invite user modal
+  const [showInviteModal, setShowInviteModal] = useState(false)
   const [newUserName, setNewUserName] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
-  const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserRole, setNewUserRole] = useState('user')
-  const [addingUser, setAddingUser] = useState(false)
+  const [invitingUser, setInvitingUser] = useState(false)
   
   // Edit user modal
   const [showEditModal, setShowEditModal] = useState(false)
@@ -59,6 +59,9 @@ export default function UsersPage() {
   const [showReset2FAModal, setShowReset2FAModal] = useState(false)
   const [userToReset2FA, setUserToReset2FA] = useState<User | null>(null)
   const [resetting2FA, setResetting2FA] = useState(false)
+  
+  // Resend invite
+  const [resendingInvite, setResendingInvite] = useState<number | null>(null)
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
@@ -69,7 +72,6 @@ export default function UsersPage() {
       return
     }
     
-    // Only admins and super_admin can access this page
     if (storedUserType !== 'admin' && storedUserType !== 'super_admin') {
       router.push('/dashboard')
       return
@@ -131,13 +133,13 @@ export default function UsersPage() {
     }
   }
 
-  const handleAddUser = async (e: React.FormEvent) => {
+  const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    setAddingUser(true)
+    setInvitingUser(true)
     setError(null)
     
     try {
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/users/invite', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -146,28 +148,50 @@ export default function UsersPage() {
         body: JSON.stringify({
           name: newUserName,
           email: newUserEmail,
-          password: newUserPassword,
           role: newUserRole
         })
       })
       
       if (response.ok) {
-        setMessage('User created successfully!')
-        setShowAddModal(false)
+        setMessage(`Invitation sent to ${newUserEmail}!`)
+        setShowInviteModal(false)
         setNewUserName('')
         setNewUserEmail('')
-        setNewUserPassword('')
         setNewUserRole('user')
         loadUsers()
-        setTimeout(() => setMessage(null), 3000)
+        setTimeout(() => setMessage(null), 5000)
       } else {
         const data = await response.json()
-        setError(data.detail || 'Failed to create user')
+        setError(data.detail || 'Failed to send invitation')
       }
     } catch (err) {
       setError('Connection error')
     } finally {
-      setAddingUser(false)
+      setInvitingUser(false)
+    }
+  }
+
+  const handleResendInvite = async (userId: number) => {
+    setResendingInvite(userId)
+    setError(null)
+    
+    try {
+      const response = await fetch(`/api/users/${userId}/resend-invite`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (response.ok) {
+        setMessage('Invitation resent successfully!')
+        setTimeout(() => setMessage(null), 3000)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to resend invitation')
+      }
+    } catch (err) {
+      setError('Connection error')
+    } finally {
+      setResendingInvite(null)
     }
   }
 
@@ -331,7 +355,7 @@ export default function UsersPage() {
           
           {userType !== 'super_admin' && (
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => setShowInviteModal(true)}
               style={{
                 background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                 color: '#fff',
@@ -347,7 +371,7 @@ export default function UsersPage() {
                 boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)'
               }}
             >
-              ➕ Add User
+              ✉️ Invite User
             </button>
           )}
         </div>
@@ -431,7 +455,7 @@ export default function UsersPage() {
               <div style={{ fontSize: '48px', marginBottom: '16px' }}>👤</div>
               <p style={{ fontSize: '18px', marginBottom: '8px', color: '#fff' }}>No users found</p>
               {userType !== 'super_admin' && (
-                <p style={{ fontSize: '14px' }}>Click "Add User" to create your first team member</p>
+                <p style={{ fontSize: '14px' }}>Click "Invite User" to invite your first team member</p>
               )}
             </div>
           ) : (
@@ -441,6 +465,7 @@ export default function UsersPage() {
                   <th style={thStyle}>Name</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Status</th>
                   {userType === 'super_admin' && <th style={thStyle}>Company</th>}
                   <th style={thStyle}>2FA</th>
                   <th style={thStyle}>Last Login</th>
@@ -471,6 +496,21 @@ export default function UsersPage() {
                         {user.role === 'admin' ? '👑 Admin' : '👤 User'}
                       </span>
                     </td>
+                    <td style={tdStyle}>
+                      {user.invite_pending ? (
+                        <span style={{ 
+                          color: '#fbbf24', 
+                          fontWeight: 500,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          📧 Invite Pending
+                        </span>
+                      ) : (
+                        <span style={{ color: '#4ade80', fontWeight: 500 }}>✅ Active</span>
+                      )}
+                    </td>
                     {userType === 'super_admin' && (
                       <td style={tdStyle}>
                         <span style={{ color: '#a0aec0' }}>{user.company_name || '-'}</span>
@@ -490,6 +530,20 @@ export default function UsersPage() {
                     </td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: '8px' }}>
+                        {user.invite_pending && (
+                          <button
+                            onClick={() => handleResendInvite(user.id)}
+                            disabled={resendingInvite === user.id}
+                            style={{
+                              ...actionButtonStyle,
+                              background: 'rgba(251, 191, 36, 0.2)',
+                              borderColor: 'rgba(251, 191, 36, 0.3)'
+                            }}
+                            title="Resend invitation"
+                          >
+                            {resendingInvite === user.id ? '...' : '📧'}
+                          </button>
+                        )}
                         <button
                           onClick={() => openEditModal(user)}
                           style={actionButtonStyle}
@@ -528,15 +582,18 @@ export default function UsersPage() {
           )}
         </div>
 
-        {/* Add User Modal */}
-        {showAddModal && (
+        {/* Invite User Modal */}
+        {showInviteModal && (
           <div style={modalOverlayStyle}>
             <div style={modalContentStyle}>
-              <h2 style={{ margin: '0 0 24px', fontSize: '24px', fontWeight: 700, color: '#fff' }}>
-                ➕ Add New User
+              <h2 style={{ margin: '0 0 8px', fontSize: '24px', fontWeight: 700, color: '#fff' }}>
+                ✉️ Invite New User
               </h2>
+              <p style={{ margin: '0 0 24px', color: '#a0aec0', fontSize: '14px' }}>
+                An invitation email will be sent to set up their account.
+              </p>
               
-              <form onSubmit={handleAddUser}>
+              <form onSubmit={handleInviteUser}>
                 <div style={{ marginBottom: '20px' }}>
                   <label style={labelStyle}>Full Name *</label>
                   <input
@@ -561,19 +618,6 @@ export default function UsersPage() {
                   />
                 </div>
                 
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={labelStyle}>Password *</label>
-                  <input
-                    type="password"
-                    value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
-                    style={inputStyle}
-                    placeholder="At least 6 characters"
-                    minLength={6}
-                    required
-                  />
-                </div>
-                
                 <div style={{ marginBottom: '28px' }}>
                   <label style={labelStyle}>Role *</label>
                   <select
@@ -589,17 +633,17 @@ export default function UsersPage() {
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={() => setShowInviteModal(false)}
                     style={cancelButtonStyle}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={addingUser}
+                    disabled={invitingUser}
                     style={primaryButtonStyle}
                   >
-                    {addingUser ? 'Creating...' : 'Create User'}
+                    {invitingUser ? 'Sending...' : 'Send Invitation'}
                   </button>
                 </div>
               </form>

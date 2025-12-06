@@ -73,15 +73,21 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-password}@db:5432/formfinder
-      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-eu-west-1}
       - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,https://localhost}
+      # SES Email Configuration
+      - SES_SENDER_EMAIL=${SES_SENDER_EMAIL:-no-reply@quathera.com}
+      - SES_SENDER_NAME=${SES_SENDER_NAME:-Quathera}
+      - SES_SANDBOX_MODE=${SES_SANDBOX_MODE:-true}
+      - SES_TEST_SENDER=${SES_TEST_SENDER:-ranlaser@gmail.com}
+      - APP_URL=${APP_URL:-https://localhost}
     depends_on:
       - db
       - redis
@@ -121,14 +127,16 @@ services:
   celery-worker:
     build: ./api-server
     command: celery -A celery_app.celery worker --loglevel=info -Q celery
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-password}@db:5432/formfinder
-      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-eu-west-1}
       - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
     depends_on:
       - db

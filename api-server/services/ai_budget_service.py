@@ -143,11 +143,20 @@ class AIBudgetService:
             db.commit()
             return
         
-        if datetime.utcnow() >= subscription.budget_reset_date:
+        # Convert to datetime for comparison if it's a date object
+        reset_date = subscription.budget_reset_date
+        if hasattr(reset_date, 'hour'):
+            # It's already a datetime
+            reset_datetime = reset_date
+        else:
+            # It's a date, convert to datetime at midnight
+            reset_datetime = datetime.combine(reset_date, datetime.min.time())
+        
+        if datetime.utcnow() >= reset_datetime:
             # Reset budget
             subscription.claude_used_this_month = 0.0
-            # Set next reset date
-            next_reset = subscription.budget_reset_date + timedelta(days=32)
+            # Set next reset date (use reset_datetime which is guaranteed to be datetime)
+            next_reset = reset_datetime + timedelta(days=32)
             subscription.budget_reset_date = next_reset.replace(day=1)
             db.commit()
             
@@ -418,6 +427,17 @@ class AIBudgetService:
         if not subscription:
             return {"error": "No subscription found"}
         
+        # Convert budget_reset_date to datetime if it's a date
+        reset_date = subscription.budget_reset_date
+        if reset_date:
+            if hasattr(reset_date, 'hour'):
+                reset_datetime = reset_date
+            else:
+                reset_datetime = datetime.combine(reset_date, datetime.min.time())
+            filter_date = reset_datetime - timedelta(days=32)
+        else:
+            filter_date = datetime.utcnow() - timedelta(days=32)
+        
         # Get usage breakdown by operation type
         breakdown = db.query(
             ApiUsage.operation_type,
@@ -428,7 +448,7 @@ class AIBudgetService:
             and_(
                 ApiUsage.company_id == company_id,
                 ApiUsage.product_id == product_id,
-                ApiUsage.created_at >= subscription.budget_reset_date - timedelta(days=32)
+                ApiUsage.created_at >= filter_date
             )
         ).group_by(ApiUsage.operation_type).all()
         

@@ -473,24 +473,16 @@ class FormsRunnerService:
         
         try:
             if phase == RunnerPhase.LOGIN.value and network_id:
-                # Update Network.login_stages
-                from models.database import Network
-                network = self.db.query(Network).filter(Network.id == network_id).first()
-                if network:
-                    network.login_stages = stages
-                    self.db.commit()
-                    logger.info(f"[FormsRunner] Updated login_stages for network {network_id}")
-                    return True
-            
+                # Login stages are managed by form pages discovery, not runner
+                logger.info(
+                    f"[FormsRunner] Login phase complete for network {network_id} (stages managed by discovery)")
+                return True
+
             elif phase == RunnerPhase.NAVIGATE.value and form_route_id:
-                # Update FormPageRoute.navigation_steps
-                from models.database import FormPageRoute
-                route = self.db.query(FormPageRoute).filter(FormPageRoute.id == form_route_id).first()
-                if route:
-                    route.navigation_steps = stages
-                    self.db.commit()
-                    logger.info(f"[FormsRunner] Updated navigation_steps for form_route {form_route_id}")
-                    return True
+                # Navigation stages are managed by form pages discovery, not runner
+                logger.info(
+                    f"[FormsRunner] Navigate phase complete for form_route {form_route_id} (stages managed by discovery)")
+                return True
             
             logger.warning(f"[FormsRunner] Could not persist - phase={phase}, network_id={network_id}, form_route_id={form_route_id}")
             return False
