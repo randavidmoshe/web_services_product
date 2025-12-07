@@ -269,100 +269,39 @@ class FormMapperTaskHandler:
                 logger.warning(f"[FormMapper] Failed to capture error context: {e}")
         
         return result
-    
+
     def _handle_exec_step(self, session_id: int, payload: Dict) -> Dict:
         """
         Execute a single test step.
-        
+
         Payload:
             step: Step dict with action, selector, value, etc.
             step_index: Index of step being executed
         """
         step = payload.get("step", {})
         step_index = payload.get("step_index", 0)
-        
+
         action = step.get("action", "")
         selector = step.get("selector", "")
-        value = step.get("value", "")
         wait_seconds = step.get("wait_seconds", 0.5)
-        
+
         logger.info(f"[FormMapper] Executing step {step_index}: {action} on {selector[:50] if selector else 'N/A'}")
-        
-        # Get DOM hash before execution
-        try:
-            old_dom = self.selenium.driver.page_source
-            old_dom_hash = hashlib.md5(old_dom.encode()).hexdigest()
-        except:
-            old_dom_hash = ""
-        
-        # Execute the step
-        try:
-            success = self._execute_step(step)
-            
-            if not success:
-                return {
-                    "success": False,
-                    "error": f"Step execution failed: {action}",
-                    "failed_step": step,
-                    "step_index": step_index
-                }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "failed_step": step,
-                "step_index": step_index
-            }
-        
+
+        # Execute the step using agent_selenium (returns full result with fields_changed)
+        result = self.selenium.execute_step(step)
+        print(f"[DEBUG] execute_step result: {result}")
+
         # Wait as specified
         if wait_seconds:
             time.sleep(wait_seconds)
-        
-        # Check for alerts (agent accepts them automatically)
-        alert_info = self._check_and_handle_alert()
-        
-        # Check for DOM changes
-        dom_changed = False
-        fields_changed = False
-        new_dom_html = ""
-        new_dom_hash = ""
-        
-        try:
-            new_dom = self.selenium.driver.page_source
-            new_dom_hash = hashlib.md5(new_dom.encode()).hexdigest()
-            
-            if new_dom_hash != old_dom_hash:
-                dom_changed = True
-                new_dom_html = new_dom
-                
-                # Check if form fields changed (simplified check)
-                fields_changed = self._check_fields_changed(old_dom, new_dom)
-        except:
-            pass
-        
-        # Check for validation errors in DOM
-        gathered_error_info = None
-        if alert_info.get("alert_present"):
-            gathered_error_info = self._gather_error_info()
-        
-        result = {
-            "success": True,
-            "step_index": step_index,
-            "executed_step": step,
-            "old_dom_hash": old_dom_hash,
-            "new_dom_hash": new_dom_hash,
-            "dom_changed": dom_changed,
-            "fields_changed": fields_changed
-        }
-        
-        if dom_changed and fields_changed:
-            result["new_dom_html"] = new_dom_html
-        
-        if alert_info.get("alert_present"):
-            result.update(alert_info)
-            result["gathered_error_info"] = gathered_error_info
-        
+
+        # Add step_index to result
+        result["step_index"] = step_index
+        result["executed_step"] = step
+
+        if not result.get("success"):
+            result["failed_step"] = step
+
         return result
     
     def _handle_screenshot(self, session_id: int, payload: Dict) -> Dict:

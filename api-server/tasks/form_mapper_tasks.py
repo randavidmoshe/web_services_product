@@ -197,6 +197,9 @@ def analyze_form_page(
         
         ai_helper = helpers["form_mapper"]
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Entering AI for Generating steps ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! previous_paths: {previous_paths} steps")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
             test_cases=test_cases,
@@ -296,7 +299,10 @@ def analyze_failure_and_recover(
             "recovery_failure_history": recovery_failure_history or [],
             **(test_context or {})
         }
-        
+
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for analyze errors and recover ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! recovery_context: {recovery_context} steps")
         ai_result = ai_helper.regenerate_steps(
             dom_html=fresh_dom,
             executed_steps=executed_steps,
@@ -308,6 +314,8 @@ def analyze_failure_and_recover(
             previous_paths=None,
             current_path_junctions=None
         )
+        print(
+            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (for analyze errors and recover) returned {ai_result.get('steps', [])} new steps")
         
         input_tokens = len(fresh_dom) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -386,6 +394,10 @@ def handle_alert_recovery(
         helpers = create_ai_helpers(api_key)
         
         ai_recovery = helpers["alert_recovery"]
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for alert ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! gathered_error_info: {gathered_error_info} steps")
+
         ai_result = ai_recovery.regenerate_steps_after_alert(
             alert_info=alert_info,
             executed_steps=executed_steps,
@@ -397,7 +409,10 @@ def handle_alert_recovery(
             include_accept_step=include_accept_step,
             gathered_error_info=gathered_error_info
         )
-        
+        print(
+            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (alert) returned {ai_result} new steps")
+
+
         input_tokens = len(dom_html) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
         
@@ -537,6 +552,10 @@ def regenerate_steps(
         helpers = create_ai_helpers(api_key)
         
         ai_helper = helpers["form_mapper"]
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for non analyze errors and recover ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! field_requirements: {field_requirements} steps")
         ai_result = ai_helper.regenerate_steps(
             dom_html=dom_html,
             executed_steps=executed_steps,
@@ -548,6 +567,7 @@ def regenerate_steps(
             previous_paths=previous_paths if enable_junction_discovery else None,
             current_path_junctions=current_path_junctions
         )
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (non error analysis) returned {ai_result.get('steps', [])} new steps")
         
         input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0

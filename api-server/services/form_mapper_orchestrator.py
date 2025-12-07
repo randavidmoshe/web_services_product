@@ -383,6 +383,7 @@ class FormMapperOrchestrator:
         if current_index >= len(all_steps):
             return self._handle_path_complete(session_id)
         step = all_steps[current_index]
+
         self.transition_to(session_id, MapperState.EXECUTING_STEP)
         task = self._push_agent_task(session_id, "form_mapper_exec_step", {
             "step": step, "step_index": current_index, "total_steps": len(all_steps),
@@ -393,6 +394,10 @@ class FormMapperOrchestrator:
     def handle_step_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+        step = result.get("executed_step") or {}
+        selector = step.get('selector') or ''
+        description = step.get('description') or ''
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Got result from Agent step: action={step.get('action')}, selector={selector[:30]}, description={description[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}")
         if not result.get("success"):
             return self._handle_step_failure(session_id, result)
         return self._handle_step_success(session_id, result)
@@ -628,11 +633,15 @@ class FormMapperOrchestrator:
         # Check fields_changed
         if config.get("use_detect_fields_change", True):
             if not result.get("fields_changed", True):
+                print(
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ℹ️  We are using Fields Detection and Fields did not change - skipping AI regeneration")
                 logger.info(f"[Orchestrator] Fields unchanged, skipping regeneration")
                 current_index = session.get("current_step_index", 0)
                 self.update_session(session_id, {"current_step_index": current_index + 1})
                 return self._execute_next_step(session_id)
-        
+            else:
+                print(
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ We are using Fields Detection and Fields changed - proceeding with AI regeneration")
         # Track junction
         if config.get("enable_junction_discovery", True):
             action = step.get("action", "").lower()
@@ -642,14 +651,17 @@ class FormMapperOrchestrator:
                                  "selector": step.get("selector", ""),
                                  "value": step.get("value", ""), "action": action})
                 self.update_session(session_id, {"current_path_junctions": junctions})
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Junction detected: {step.get('description')} = {step.get('value')}")
                 logger.info(f"[Orchestrator] Junction: {step.get('description')}")
         
         # Get screenshot for UI verification
         if config.get("enable_ui_verification", True):
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 📸 Capturing screenshot for UI verification...")
             self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
             task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
                                         {"encode_base64": True, "save_to_folder": False})
             return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔄 Triggering regenerate_steps...")
         return self._trigger_regenerate_steps(session_id, None)
     
     def handle_dom_change_screenshot_result(self, session_id: str, result: Dict) -> Dict:
@@ -685,6 +697,7 @@ class FormMapperOrchestrator:
         return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
     
     def _trigger_regenerate_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔄 Regenerating remaining steps...")
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         self.transition_to(session_id, MapperState.DOM_CHANGE_REGENERATING_STEPS)
@@ -712,13 +725,13 @@ class FormMapperOrchestrator:
             if session.get("current_path", 1) > 1:
                 logger.info(f"[Orchestrator] AI says no more paths")
                 return self._handle_path_complete(session_id)
-        new_steps = result.get("steps", [])
+        new_steps = result.get("new_steps", []) or result.get("steps", [])
         if not new_steps: return self._handle_path_complete(session_id)
         executed_steps = session.get("executed_steps", [])
         current_index = session.get("current_step_index", 0)
         self.update_session(session_id, {"all_steps": executed_steps + new_steps,
-                                         "current_step_index": current_index + 1})
-        logger.info(f"[Orchestrator] Regenerated {len(new_steps)} steps")
+                                         "current_step_index": len(executed_steps)})
+        logger.info(f"[Orchestrator] Regenerated {len(new_steps)} steps, continuing from step {len(executed_steps) + 1}")
         return self._execute_next_step(session_id)
     
     # ============================================================
