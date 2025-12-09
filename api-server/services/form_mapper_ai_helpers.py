@@ -97,7 +97,7 @@ class AIAlertRecoveryHelper:
         alert_info: Dict,
         executed_steps: List[Dict],
         dom_html: str,
-        screenshot_path: Optional[str],
+        screenshot_base64: Optional[str],
         test_cases: List[Dict],
         test_context,
         step_where_alert_appeared: int,
@@ -111,7 +111,7 @@ class AIAlertRecoveryHelper:
             alert_info: Dict with 'type' and 'text' of the alert (or validation error info)
             executed_steps: Steps completed before alert appeared
             dom_html: Current DOM HTML after alert was accepted
-            screenshot_path: Path to screenshot showing the alert
+            screenshot_base64: screenshot_base64
             test_cases: Active test cases
             test_context: Test context
             step_where_alert_appeared: Step number that triggered the alert
@@ -125,7 +125,7 @@ class AIAlertRecoveryHelper:
             alert_info=alert_info,
             executed_steps=executed_steps,
             dom_html=dom_html,
-            screenshot_path=screenshot_path,
+            screenshot_base64=screenshot_base64,
             test_cases=test_cases,
             test_context=test_context,
             step_where_alert_appeared=step_where_alert_appeared,
@@ -143,7 +143,7 @@ class AIFormPageEndPrompterWrapper:
     def __init__(self, api_key: str):
         self.helper = AIFormPageEndPrompter(api_key)
     
-    def assign_test_cases(
+    def organize_stages(
         self,
         stages: List[Dict],
         test_cases: List[Dict]
@@ -158,7 +158,7 @@ class AIFormPageEndPrompterWrapper:
         Returns:
             Updated stages list with test_case assigned
         """
-        return self.helper.assign_test_cases(
+        return self.helper.organize_stages(
             stages=stages,
             test_cases=test_cases
         )

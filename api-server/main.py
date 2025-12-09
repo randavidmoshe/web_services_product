@@ -16,7 +16,17 @@ from services.s3_storage import create_s3_bucket_if_not_exists
 from routes import form_pages
 from routes import form_mapper
 from routes import company_config  # <-- ADD THIS
+from routes import test_templates
 from passlib.context import CryptContext
+
+import logging
+
+# Configure logging for all modules
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
 
 load_dotenv()
 
@@ -124,6 +134,7 @@ app.include_router(form_mapper.router)
 app.include_router(company_config.router)  # <-- ADD THIS
 app.include_router(two_fa.router, prefix="/api", tags=["2fa"])  # 2FA router
 app.include_router(users.router)  # Users management router
+app.include_router(test_templates.router)
 
 @app.get("/")
 async def root():

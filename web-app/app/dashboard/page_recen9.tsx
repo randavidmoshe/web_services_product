@@ -768,50 +768,11 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json()
         setFormPages(data)
-        // Check for active mapping sessions after loading form pages
-        checkActiveMappingSessions(authToken)
       }
     } catch (err) {
       console.error('Failed to load form pages:', err)
     } finally {
       setLoadingFormPages(false)
-    }
-  }
-
-  // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
-    try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      })
-      
-      if (response.ok) {
-        const activeSessions = await response.json()
-        // activeSessions is array of { form_page_route_id, session_id, status }
-        
-        const newMappingIds = new Set<number>()
-        const newMappingStatus: Record<number, { status: string; sessionId?: number }> = {}
-        
-        for (const session of activeSessions) {
-          const activeStatuses = ['running', 'initializing', 'pending', 'logging_in', 'navigating', 'extracting_initial_dom', 'getting_initial_screenshot', 'ai_analyzing', 'executing_step', 'waiting_for_dom', 'waiting_for_screenshot']
-          if (activeStatuses.includes(session.status)) {
-            newMappingIds.add(session.form_page_route_id)
-            newMappingStatus[session.form_page_route_id] = {
-              status: 'mapping',
-              sessionId: session.session_id
-            }
-            // Resume polling for this session
-            startMappingStatusPolling(session.form_page_route_id, session.session_id)
-          }
-        }
-        
-        if (newMappingIds.size > 0) {
-          setMappingFormIds(newMappingIds)
-          setMappingStatus(prev => ({ ...prev, ...newMappingStatus }))
-        }
-      }
-    } catch (err) {
-      console.error('Failed to check active mapping sessions:', err)
     }
   }
 
@@ -1001,46 +962,6 @@ export default function DashboardPage() {
     if (mappingPollingRef.current[formPageId]) {
       clearInterval(mappingPollingRef.current[formPageId])
       delete mappingPollingRef.current[formPageId]
-    }
-  }
-  
-  // Cancel a running mapping session
-  const cancelMapping = async (formPageId: number) => {
-    const status = mappingStatus[formPageId]
-    if (!status?.sessionId) {
-      console.error('No session ID found for form page', formPageId)
-      return
-    }
-    
-    try {
-      const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      
-      if (response.ok) {
-        // Stop polling
-        stopMappingStatusPolling(formPageId)
-        
-        // Update status
-        setMappingFormIds(prev => {
-          const next = new Set(prev)
-          next.delete(formPageId)
-          return next
-        })
-        setMappingStatus(prev => ({
-          ...prev,
-          [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
-        }))
-        
-        setMessage('Mapping cancelled')
-      } else {
-        const errorData = await response.json()
-        setError(`Failed to cancel mapping: ${errorData.detail || 'Unknown error'}`)
-      }
-    } catch (err: any) {
-      console.error('Failed to cancel mapping:', err)
-      setError(`Failed to cancel mapping: ${err.message}`)
     }
   }
   
@@ -1684,9 +1605,9 @@ export default function DashboardPage() {
                   Path Steps ({editNavigationSteps.length})
                 </h3>
                 <button onClick={addStepAtEnd} style={{
-                  background: isLightTheme() ? 'rgba(37, 99, 235, 0.08)' : 'rgba(99, 102, 241, 0.15)',
-                  color: isLightTheme() ? '#2563eb' : getTheme().colors.accentSecondary,
-                  border: isLightTheme() ? '1px solid rgba(37, 99, 235, 0.25)' : `1px solid ${getTheme().colors.accentPrimary}30`,
+                  background: isLightTheme() ? `${getTheme().colors.accentPrimary}12` : 'rgba(99, 102, 241, 0.15)',
+                  color: getTheme().colors.accentSecondary,
+                  border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '50' : '30'}`,
                   padding: '14px 22px',
                   borderRadius: '12px',
                   fontSize: '16px',
@@ -1706,17 +1627,14 @@ export default function DashboardPage() {
                   <div style={{ textAlign: 'center', padding: '60px 30px', color: getTheme().colors.textSecondary, background: isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', borderRadius: '18px', border: `1px dashed ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}` }}>
                     <p style={{ fontSize: '18px', marginBottom: '24px' }}>No path steps defined.</p>
                     <button onClick={addStepAtEnd} style={{
-                      background: isLightTheme() 
-                        ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                        : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
+                      background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
                       color: '#fff',
                       border: 'none',
                       padding: '16px 28px',
                       borderRadius: '14px',
                       fontSize: '17px',
                       fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.25)' : 'none'
+                      cursor: 'pointer'
                     }}>＋ Add First Step</button>
                   </div>
                 ) : (
@@ -1753,17 +1671,14 @@ export default function DashboardPage() {
                           width: '44px',
                           height: '44px',
                           borderRadius: '50%',
-                          background: isLightTheme() 
-                            ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                            : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
+                          background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
                           color: '#fff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           fontSize: '18px',
                           fontWeight: 700,
-                          flexShrink: 0,
-                          boxShadow: isLightTheme() ? '0 2px 6px rgba(37, 99, 235, 0.25)' : 'none'
+                          flexShrink: 0
                         }}>{index + 1}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '18px', fontWeight: 600, color: getTheme().colors.textPrimary, marginBottom: '8px' }}>
@@ -1788,9 +1703,9 @@ export default function DashboardPage() {
                             <button 
                               onClick={() => addStepAfter(index)} 
                               style={{
-                                background: isLightTheme() ? 'rgba(37, 99, 235, 0.08)' : 'rgba(99, 102, 241, 0.15)',
-                                border: isLightTheme() ? '1px solid rgba(37, 99, 235, 0.25)' : `1px solid ${getTheme().colors.accentPrimary}30`,
-                                color: isLightTheme() ? '#2563eb' : getTheme().colors.accentSecondary,
+                                background: isLightTheme() ? `${getTheme().colors.accentPrimary}10` : 'rgba(99, 102, 241, 0.15)',
+                                border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '50' : '30'}`,
+                                color: getTheme().colors.accentSecondary,
                                 padding: '12px 20px',
                                 borderRadius: '10px',
                                 fontSize: '15px',
@@ -1892,81 +1807,26 @@ export default function DashboardPage() {
             gap: '18px'
           }}>
             {editingFormPage && (
-              mappingFormIds.has(editingFormPage.id) ? (
-                <button 
-                  onClick={() => cancelMapping(editingFormPage.id)} 
-                  style={{
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  ⏹️ Stop Mapping
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setShowEditPanel(false)
-                    openMapModal(editingFormPage)
-                  }} 
-                  style={{
-                    background: isLightTheme() 
-                      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                      : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: isLightTheme() ? '0 2px 8px rgba(245, 158, 11, 0.25)' : '0 4px 20px rgba(245, 158, 11, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  🗺️ Map Form
-                </button>
-              )
+              <button 
+                onClick={() => {
+                  setShowEditPanel(false)
+                  openMapModal(editingFormPage)
+                }} 
+                style={{
+                  ...primaryButtonStyle,
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)'
+                }}
+                disabled={mappingFormIds.has(editingFormPage.id)}
+              >
+                🗺️ Map Form
+              </button>
             )}
-            <button 
-              onClick={() => setShowEditPanel(false)} 
-              style={{
-                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-                color: isLightTheme() ? '#4b5563' : '#e2e8f0',
-                padding: '16px 32px',
-                border: isLightTheme() ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(255,255,255,0.12)',
-                borderRadius: '14px',
-                fontSize: '17px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
+            <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
               Cancel
             </button>
             <button 
               onClick={saveFormPage} 
-              style={{
-                background: isLightTheme() 
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                color: 'white',
-                padding: '16px 32px',
-                border: 'none',
-                borderRadius: '14px',
-                fontSize: '17px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.25)' : '0 4px 20px rgba(99, 102, 241, 0.3)',
-                transition: 'all 0.2s ease'
-              }}
+              style={primaryButtonStyle}
               disabled={savingFormPage}
             >
               {savingFormPage ? 'Saving...' : 'Save Changes'}
@@ -2138,21 +1998,13 @@ export default function DashboardPage() {
               alignItems: 'center',
               gap: '10px',
               padding: '10px 18px',
-              background: isDiscoveryExpanded 
-                ? (isLightTheme() ? 'rgba(220, 38, 38, 0.1)' : 'rgba(239, 68, 68, 0.2)')
-                : (isLightTheme() ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`),
+              background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.2)' : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
               borderRadius: '12px',
               fontSize: '14px',
               fontWeight: 600,
-              color: isDiscoveryExpanded 
-                ? (isLightTheme() ? '#dc2626' : '#fff')
-                : '#fff',
-              boxShadow: isDiscoveryExpanded 
-                ? (isLightTheme() ? 'none' : '0 0 15px rgba(239, 68, 68, 0.3)')
-                : (isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.25)' : getTheme().colors.buttonGlow),
-              border: isDiscoveryExpanded 
-                ? (isLightTheme() ? '1px solid rgba(220, 38, 38, 0.3)' : '1px solid rgba(239, 68, 68, 0.4)')
-                : '1px solid transparent'
+              color: '#fff',
+              boxShadow: isDiscoveryExpanded ? '0 0 15px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
+              border: isDiscoveryExpanded ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid transparent'
             }}>
               <span style={{ fontSize: '14px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
               {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
@@ -2345,19 +2197,17 @@ export default function DashboardPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '14px',
-                    background: isLightTheme() 
-                      ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                      : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
+                    background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
                     color: '#fff',
-                    border: isLightTheme() ? '1px solid #2563eb' : `2px solid ${getTheme().colors.accentSecondary}80`,
+                    border: `2px solid ${getTheme().colors.accentSecondary}80`,
                     padding: '18px 48px',
                     borderRadius: '16px',
                     fontSize: '18px',
                     fontWeight: 700,
                     cursor: selectedNetworkIds.length === 0 ? 'not-allowed' : 'pointer',
-                    boxShadow: isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.3)' : getTheme().colors.buttonGlow,
+                    boxShadow: getTheme().colors.buttonGlow,
                     transition: 'all 0.3s ease',
-                    textShadow: isLightTheme() ? 'none' : '0 0 10px rgba(255,255,255,0.5)',
+                    textShadow: '0 0 10px rgba(255,255,255,0.5)',
                     opacity: selectedNetworkIds.length === 0 ? 0.5 : 1
                   }}
                 >
@@ -2568,8 +2418,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                      color: getTheme().colors.textSecondary,
+                      background: getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2596,8 +2446,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2610,8 +2460,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2625,8 +2475,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                      color: getTheme().colors.textSecondary,
+                      background: getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2652,8 +2502,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2687,9 +2537,9 @@ export default function DashboardPage() {
                       transition: 'all 0.2s ease',
                       cursor: 'pointer',
                       background: isLightTheme() 
-                        ? (index % 2 === 0 ? '#fffef8' : '#f8f9fa')
+                        ? (index % 2 === 0 ? 'rgba(255, 255, 255, 0.98)' : 'rgba(240, 245, 250, 0.98)')
                         : 'transparent',
-                      borderBottom: isLightTheme() ? '1px solid rgba(0,0,0,0.06)' : 'none'
+                      boxShadow: isLightTheme() ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
                     }}
                     onDoubleClick={() => openEditPanel(form)}
                   >
@@ -2779,39 +2629,20 @@ export default function DashboardPage() {
                       textAlign: 'center'
                     }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                        {/* Map Button or Stop Button */}
+                        {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(245, 158, 11, 0.2)',
-                              color: '#f59e0b',
-                              borderRadius: '10px',
-                              fontSize: '15px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(245, 158, 11, 0.4)',
-                              boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
-                            }}>
-                              ⏳ Mapping...
-                            </span>
-                            <button 
-                              onClick={() => cancelMapping(form.id)} 
-                              className="action-btn"
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.2)',
-                                border: '2px solid rgba(239, 68, 68, 0.4)',
-                                borderRadius: '12px',
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
-                                transition: 'all 0.2s ease',
-                                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
-                              }}
-                              title="Stop mapping"
-                            >
-                              ⏹️
-                            </button>
-                          </div>
+                          <span style={{
+                            padding: '10px 16px',
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#f59e0b',
+                            borderRadius: '10px',
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            border: '2px solid rgba(245, 158, 11, 0.4)',
+                            boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
+                          }}>
+                            ⏳ Mapping...
+                          </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
                             padding: '10px 16px',
@@ -2849,17 +2680,15 @@ export default function DashboardPage() {
                             className="action-btn"
                             style={{
                               background: isLightTheme() 
-                                ? 'rgba(30, 64, 175, 0.08)'
+                                ? `${getTheme().colors.accentPrimary}25`
                                 : `${getTheme().colors.accentPrimary}20`,
-                              border: isLightTheme() 
-                                ? '1px solid rgba(30, 64, 175, 0.25)'
-                                : `2px solid ${getTheme().colors.accentPrimary}50`,
+                              border: `2px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '70' : '50'}`,
                               borderRadius: '12px',
                               padding: '16px 18px',
                               cursor: 'pointer',
                               fontSize: '20px',
                               transition: 'all 0.2s ease',
-                              boxShadow: isLightTheme() ? 'none' : getTheme().colors.iconGlow
+                              boxShadow: isLightTheme() ? `0 2px 8px ${getTheme().colors.accentPrimary}30` : getTheme().colors.iconGlow
                             }}
                             title="Map this form page"
                           >
@@ -2871,17 +2700,15 @@ export default function DashboardPage() {
                           className="action-btn"
                           style={{
                             background: isLightTheme() 
-                              ? 'rgba(30, 64, 175, 0.08)'
+                              ? `${getTheme().colors.accentPrimary}20`
                               : `${getTheme().colors.accentPrimary}15`,
-                            border: isLightTheme() 
-                              ? '1px solid rgba(30, 64, 175, 0.25)'
-                              : `2px solid ${getTheme().colors.cardBorder}`,
+                            border: `2px solid ${isLightTheme() ? getTheme().colors.accentPrimary + '50' : getTheme().colors.cardBorder}`,
                             borderRadius: '12px',
                             padding: '16px 18px',
                             cursor: 'pointer',
                             fontSize: '20px',
                             transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : `0 0 15px ${getTheme().colors.accentGlow}30`
+                            boxShadow: isLightTheme() ? `0 2px 8px rgba(0,0,0,0.1)` : `0 0 15px ${getTheme().colors.accentGlow}30`
                           }}
                           title="Edit form page"
                         >
@@ -2891,14 +2718,14 @@ export default function DashboardPage() {
                           onClick={() => openDeleteModal(form)} 
                           className="action-btn"
                           style={{
-                            background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
-                            border: isLightTheme() ? '1px solid rgba(239, 68, 68, 0.25)' : '2px solid rgba(239, 68, 68, 0.3)',
+                            background: isLightTheme() ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.15)',
+                            border: `2px solid rgba(239, 68, 68, ${isLightTheme() ? '0.5' : '0.3'})`,
                             borderRadius: '12px',
                             padding: '16px 18px',
                             cursor: 'pointer',
                             fontSize: '20px',
                             transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : '0 0 15px rgba(239, 68, 68, 0.2)'
+                            boxShadow: isLightTheme() ? '0 2px 8px rgba(239, 68, 68, 0.15)' : '0 0 15px rgba(239, 68, 68, 0.2)'
                           }}
                           title="Delete form page"
                         >

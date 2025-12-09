@@ -157,7 +157,8 @@ async def start_form_mapping(
             user_id=user_id,
             network_id=network_id,
             company_id=company_id,
-            config=request.config
+            config=request.config,
+            test_cases=request.test_cases
         )
         
         # Start the mapping process (Login → Navigate → Map)
@@ -180,6 +181,25 @@ async def start_form_mapping(
     except Exception as e:
         logger.error(f"[API] Error starting mapping: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/active-sessions")
+async def get_active_mapping_sessions(
+        db: Session = Depends(get_db)
+):
+    """Get all active mapping sessions for the current user."""
+    active_sessions = db.query(FormMapperSession).filter(
+        FormMapperSession.status.in_(['initializing', 'pending', 'running'])
+    ).all()
+
+    return [
+        {
+            "session_id": session.id,
+            "form_page_route_id": session.form_page_route_id,
+            "status": session.status
+        }
+        for session in active_sessions
+    ]
 
 
 @router.get("/sessions/{session_id}/status", response_model=SessionStatusResponse)
@@ -237,26 +257,32 @@ async def get_session_status(
 
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(
-    session_id: str,
-    db: Session = Depends(get_db)
+        session_id: str,
+        db: Session = Depends(get_db)
 ):
     """Cancel a mapping session."""
     session = db.query(FormMapperSession).filter(
         FormMapperSession.id == session_id
     ).first()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     if session.status in [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel session with status: {session.status}"
         )
-    
+
+    # Update DB status (for heartbeat to detect)
+    session.status = SessionStatus.CANCELLED
+    db.commit()
+
+    # Update Redis state
     orchestrator = FormMapperOrchestrator(db)
     orchestrator.cancel_session(session_id)
-    
+
+    logger.info(f"[API] Cancelled mapping session {session_id}")
     return {"status": "cancelled", "session_id": session_id}
 
 
@@ -412,7 +438,8 @@ async def agent_task_result(
         "error": request.error,
         **request.payload
     }
-    
+    logger.info(
+        f"[API] AGENT_TASK_RESULT: session={session_id}, task_type={request.task_type}, success={request.success}, payload_keys={list(request.payload.keys())}")
     orchestrator = FormMapperOrchestrator(db)
     
     # Write result to Redis for Celery worker
@@ -455,7 +482,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         handle_alert_recovery,
         verify_ui_visual,
         regenerate_steps,
-        assign_test_cases
+        save_mapping_result
     )
     
     task_map = {
@@ -464,7 +491,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "handle_alert_recovery": handle_alert_recovery,
         "verify_ui_visual": verify_ui_visual,
         "regenerate_steps": regenerate_steps,
-        "assign_test_cases": assign_test_cases,
+        "save_mapping_result": save_mapping_result
     }
     
     task = task_map.get(task_name)

@@ -223,6 +223,15 @@ class Screenshot(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TestTemplate(Base):
+    __tablename__ = "test_templates"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)  # "create_verify", "create_verify_edit_verify"
+    display_name = Column(String(200), nullable=False)  # "Create & Verify", "Create, Verify, Edit & Verify"
+    test_cases = Column(JSON, nullable=False)  # The JSON array of test cases
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 # Note: Agent model is defined in models/agent_models.py to avoid duplication
 
 # Import related models to resolve relationships

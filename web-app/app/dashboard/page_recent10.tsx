@@ -134,6 +134,12 @@ export default function DashboardPage() {
   // Discovery section collapse state (collapsed by default when forms exist)
   const [isDiscoveryExpanded, setIsDiscoveryExpanded] = useState(false)
   
+  // Test Template Selection state
+  const [testTemplates, setTestTemplates] = useState<{id: number, name: string, display_name: string, test_cases: any[]}[]>([])
+  const [showMapModal, setShowMapModal] = useState(false)
+  const [selectedFormForMapping, setSelectedFormForMapping] = useState<FormPage | null>(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  
   // Theme state - reads from localStorage to sync with layout
   const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
 
@@ -561,6 +567,19 @@ export default function DashboardPage() {
   // Get current theme colors
   const getTheme = () => themes[currentTheme] || themes['platinum-steel']
 
+  // Detect if current theme is light (for contrast adjustments)
+  const isLightTheme = () => {
+    const lightThemes = ['pearl-white', 'snow-crystal', 'chrome-glow', 'bright-silver']
+    return lightThemes.includes(currentTheme)
+  }
+
+  // Get contrasting background for elements (darker on light themes)
+  const getContrastBg = (opacity: number = 0.1) => {
+    return isLightTheme() 
+      ? `rgba(0, 0, 0, ${opacity})`
+      : `rgba(255, 255, 255, ${opacity * 0.3})`
+  }
+
   // Load theme from localStorage on mount and listen for changes
   useEffect(() => {
     const loadTheme = () => {
@@ -586,6 +605,26 @@ export default function DashboardPage() {
       window.removeEventListener('storage', handleStorageChange)
       clearInterval(interval)
     }
+  }, [])
+
+  // Fetch test templates on mount
+  useEffect(() => {
+    const fetchTestTemplates = async () => {
+      try {
+        const response = await fetch('/api/test-templates')
+        if (response.ok) {
+          const data = await response.json()
+          setTestTemplates(data.templates || [])
+          // Auto-select first template
+          if (data.templates?.length > 0) {
+            setSelectedTemplateId(data.templates[0].id)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch test templates:', err)
+      }
+    }
+    fetchTestTemplates()
   }, [])
 
   // Toggle step expansion
@@ -799,6 +838,74 @@ export default function DashboardPage() {
       }))
       setError(`Failed to start mapping: ${err.message}`)
     }
+  }
+
+  const openMapModal = (formPage: FormPage) => {
+    setSelectedFormForMapping(formPage)
+    setShowMapModal(true)
+  }
+
+  const startMappingWithTemplate = async () => {
+    if (!selectedFormForMapping || !selectedTemplateId || !token || !userId) return
+    
+    const template = testTemplates.find(t => t.id === selectedTemplateId)
+    if (!template) return
+    
+    setShowMapModal(false)
+    
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(selectedFormForMapping.id))
+    setMappingStatus(prev => ({
+      ...prev,
+      [selectedFormForMapping.id]: { status: 'starting' }
+    }))
+    
+    try {
+      const response = await fetch('/api/form-mapper/start', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: selectedFormForMapping.id,
+          user_id: parseInt(userId),
+          company_id: companyId ? parseInt(companyId) : undefined,
+          network_id: selectedFormForMapping.network_id,
+          test_cases: template.test_cases
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to start mapping')
+      }
+      
+      const data = await response.json()
+      
+      setMappingStatus(prev => ({
+        ...prev,
+        [selectedFormForMapping.id]: { status: 'mapping', sessionId: data.session_id }
+      }))
+      
+      startMappingStatusPolling(selectedFormForMapping.id, data.session_id)
+      setMessage(`Started mapping: ${selectedFormForMapping.form_name}`)
+      
+    } catch (err: any) {
+      console.error('Failed to start mapping:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(selectedFormForMapping.id)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [selectedFormForMapping.id]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to start mapping: ${err.message}`)
+    }
+    
+    setSelectedFormForMapping(null)
   }
   
   const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
@@ -1364,14 +1471,14 @@ export default function DashboardPage() {
           {/* Header */}
           <div style={{
             padding: '32px 40px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08))'
+            borderBottom: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '10' : '12'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '08' : '08'})`
           }}>
-            <h1 style={{ margin: 0, fontSize: '32px', color: '#fff', fontWeight: 700, letterSpacing: '-0.5px' }}>
+            <h1 style={{ margin: 0, fontSize: '32px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px' }}>
               <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
             </h1>
-            <p style={{ margin: '12px 0 0', color: '#94a3b8', fontSize: '18px' }}>
-              Editing: <strong style={{ color: '#fff' }}>{editingFormPage.form_name}</strong>
+            <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+              Editing: <strong style={{ color: getTheme().colors.textPrimary }}>{editingFormPage.form_name}</strong>
             </p>
           </div>
 
@@ -1382,12 +1489,12 @@ export default function DashboardPage() {
               width: '420px', 
               minWidth: '420px',
               padding: '36px 40px',
-              borderRight: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(0,0,0,0.1)'
+              borderRight: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+              background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.1)'
             }}>
               {/* Form Name */}
               <div style={{ marginBottom: '32px' }}>
-                <label style={{ display: 'block', marginBottom: '14px', fontWeight: 600, color: '#e2e8f0', fontSize: '18px' }}>Form Name</label>
+                <label style={{ display: 'block', marginBottom: '14px', fontWeight: 600, color: getTheme().colors.textPrimary, fontSize: '18px' }}>Form Name</label>
                 <input
                   type="text"
                   value={editFormName}
@@ -1395,12 +1502,12 @@ export default function DashboardPage() {
                   style={{
                     width: '100%',
                     padding: '18px 22px',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
                     borderRadius: '14px',
                     fontSize: '18px',
                     boxSizing: 'border-box',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: '#fff',
+                    background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.05)',
+                    color: getTheme().colors.textPrimary,
                     outline: 'none'
                   }}
                 />
@@ -1408,18 +1515,22 @@ export default function DashboardPage() {
 
               {/* Hierarchy Info */}
               <div style={{
-                background: 'rgba(255,255,255,0.03)',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
                 borderRadius: '16px',
                 padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
                 marginBottom: '28px'
               }}>
-                <h4 style={{ margin: '0 0 20px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
+                <h4 style={{ margin: '0 0 20px', fontSize: '13px', color: getTheme().colors.textSecondary, textTransform: 'uppercase', letterSpacing: '1.5px' }}>Hierarchy</h4>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Type:</span>
+                  <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '80px' }}>Type:</span>
                   <span style={{
-                    background: editingFormPage.is_root ? 'rgba(99, 102, 241, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                    color: editingFormPage.is_root ? '#818cf8' : '#fbbf24',
+                    background: editingFormPage.is_root 
+                      ? (isLightTheme() ? `${getTheme().colors.accentPrimary}15` : 'rgba(99, 102, 241, 0.2)')
+                      : (isLightTheme() ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.2)'),
+                    color: editingFormPage.is_root 
+                      ? getTheme().colors.accentSecondary 
+                      : (isLightTheme() ? '#b45309' : '#fbbf24'),
                     padding: '10px 20px',
                     borderRadius: '10px',
                     fontSize: '16px',
@@ -1430,18 +1541,18 @@ export default function DashboardPage() {
                 </div>
                 {editingFormPage.parent_form_name && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b', minWidth: '80px' }}>Parent:</span>
-                    <span style={{ fontSize: '17px', color: '#e2e8f0' }}>{editingFormPage.parent_form_name}</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '80px' }}>Parent:</span>
+                    <span style={{ fontSize: '17px', color: getTheme().colors.textPrimary }}>{editingFormPage.parent_form_name}</span>
                   </div>
                 )}
                 {editingFormPage.children && editingFormPage.children.length > 0 && (
                   <div style={{ marginTop: '16px' }}>
-                    <span style={{ fontSize: '16px', color: '#64748b' }}>Children:</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary }}>Children:</span>
                     <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                       {editingFormPage.children.map((c, i) => (
                         <span key={i} style={{
-                          background: 'rgba(245, 158, 11, 0.15)',
-                          color: '#fbbf24',
+                          background: isLightTheme() ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.15)',
+                          color: isLightTheme() ? '#b45309' : '#fbbf24',
                           padding: '8px 16px',
                           borderRadius: '8px',
                           fontSize: '15px'
@@ -1454,13 +1565,13 @@ export default function DashboardPage() {
 
               {/* URL Info */}
               <div style={{
-                background: 'rgba(255,255,255,0.03)',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
                 borderRadius: '16px',
                 padding: '26px',
-                border: '1px solid rgba(255,255,255,0.08)'
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`
               }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
-                <div style={{ fontSize: '15px', color: '#64748b', wordBreak: 'break-all', lineHeight: 1.6 }}>
+                <h4 style={{ margin: '0 0 16px', fontSize: '13px', color: getTheme().colors.textSecondary, textTransform: 'uppercase', letterSpacing: '1.5px' }}>URL</h4>
+                <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, wordBreak: 'break-all', lineHeight: 1.6 }}>
                   {editingFormPage.url}
                 </div>
               </div>
@@ -1481,8 +1592,8 @@ export default function DashboardPage() {
               }}>
                 <div style={{ fontSize: '36px' }}>💡</div>
                 <div>
-                  <strong style={{ fontSize: '20px', color: '#00BBF9' }}>AI-Discovered Path</strong>
-                  <p style={{ margin: '12px 0 0', fontSize: '17px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  <strong style={{ fontSize: '20px', color: isLightTheme() ? '#0284c7' : '#00BBF9' }}>AI-Discovered Path</strong>
+                  <p style={{ margin: '12px 0 0', fontSize: '17px', color: getTheme().colors.textSecondary, lineHeight: 1.5 }}>
                     This navigation path was automatically discovered by AI. Click on a step to expand and edit it.
                   </p>
                 </div>
@@ -1490,13 +1601,13 @@ export default function DashboardPage() {
 
               {/* Path Steps Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 600 }}>
+                <h3 style={{ margin: 0, fontSize: '22px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
                   Path Steps ({editNavigationSteps.length})
                 </h3>
                 <button onClick={addStepAtEnd} style={{
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  color: '#818cf8',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  background: isLightTheme() ? `${getTheme().colors.accentPrimary}12` : 'rgba(99, 102, 241, 0.15)',
+                  color: getTheme().colors.accentSecondary,
+                  border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '50' : '30'}`,
                   padding: '14px 22px',
                   borderRadius: '12px',
                   fontSize: '16px',
@@ -1513,10 +1624,10 @@ export default function DashboardPage() {
               {/* Steps List */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {editNavigationSteps.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '60px 30px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '18px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                  <div style={{ textAlign: 'center', padding: '60px 30px', color: getTheme().colors.textSecondary, background: isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', borderRadius: '18px', border: `1px dashed ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}` }}>
                     <p style={{ fontSize: '18px', marginBottom: '24px' }}>No path steps defined.</p>
                     <button onClick={addStepAtEnd} style={{
-                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
                       color: '#fff',
                       border: 'none',
                       padding: '16px 28px',
@@ -1532,8 +1643,12 @@ export default function DashboardPage() {
                       key={index} 
                       className="step-card"
                       style={{
-                        background: expandedSteps.has(index) ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)',
-                        border: expandedSteps.has(index) ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+                        background: expandedSteps.has(index) 
+                          ? (isLightTheme() ? `${getTheme().colors.accentPrimary}08` : 'rgba(99, 102, 241, 0.08)')
+                          : (isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)'),
+                        border: expandedSteps.has(index) 
+                          ? `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '40' : '30'}`
+                          : `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
                         borderRadius: '16px',
                         overflow: 'hidden',
                         transition: 'all 0.2s ease'
@@ -1556,7 +1671,7 @@ export default function DashboardPage() {
                           width: '44px',
                           height: '44px',
                           borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                          background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
                           color: '#fff',
                           display: 'flex',
                           alignItems: 'center',
@@ -1566,16 +1681,16 @@ export default function DashboardPage() {
                           flexShrink: 0
                         }}>{index + 1}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '18px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '18px', fontWeight: 600, color: getTheme().colors.textPrimary, marginBottom: '8px' }}>
                             {step.description || `Step ${index + 1}`}
                           </div>
-                          <div style={{ fontSize: '15px', color: '#64748b' }}>
+                          <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>
                             {step.action || 'click'} • {step.selector ? (step.selector.length > 50 ? step.selector.substring(0, 50) + '...' : step.selector) : 'No selector'}
                           </div>
                         </div>
                         <span style={{ 
                           fontSize: '22px', 
-                          color: '#64748b',
+                          color: getTheme().colors.textSecondary,
                           transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.2s ease'
                         }}>▼</span>
@@ -1583,14 +1698,14 @@ export default function DashboardPage() {
 
                       {/* Expanded Content */}
                       {expandedSteps.has(index) && (
-                        <div style={{ padding: '0 24px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ padding: '0 24px 24px', borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
                           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', padding: '16px 0' }}>
                             <button 
                               onClick={() => addStepAfter(index)} 
                               style={{
-                                background: 'rgba(99, 102, 241, 0.15)',
-                                border: '1px solid rgba(99, 102, 241, 0.3)',
-                                color: '#818cf8',
+                                background: isLightTheme() ? `${getTheme().colors.accentPrimary}10` : 'rgba(99, 102, 241, 0.15)',
+                                border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '50' : '30'}`,
+                                color: getTheme().colors.accentSecondary,
                                 padding: '12px 20px',
                                 borderRadius: '10px',
                                 fontSize: '15px',
@@ -1601,9 +1716,9 @@ export default function DashboardPage() {
                             <button 
                               onClick={() => confirmDeleteStep(index)} 
                               style={{
-                                background: 'rgba(239, 68, 68, 0.15)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                color: '#f87171',
+                                background: isLightTheme() ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.15)',
+                                border: `1px solid rgba(239, 68, 68, ${isLightTheme() ? '0.4' : '0.3'})`,
+                                color: isLightTheme() ? '#dc2626' : '#f87171',
                                 padding: '12px 20px',
                                 borderRadius: '10px',
                                 fontSize: '15px',
@@ -1614,7 +1729,7 @@ export default function DashboardPage() {
                           </div>
                           <div style={{ display: 'flex', gap: '18px', marginBottom: '18px' }}>
                             <div style={{ flex: 1 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Action</label>
+                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Action</label>
                               <input
                                 type="text"
                                 value={step.action || ''}
@@ -1622,18 +1737,18 @@ export default function DashboardPage() {
                                 style={{
                                   width: '100%',
                                   padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
                                   borderRadius: '12px',
                                   fontSize: '16px',
                                   boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  color: '#64748b',
+                                  background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.02)',
+                                  color: getTheme().colors.textSecondary,
                                   cursor: 'not-allowed'
                                 }}
                               />
                             </div>
                             <div style={{ flex: 2 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Description</label>
+                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Description</label>
                               <input
                                 type="text"
                                 value={step.description || ''}
@@ -1641,12 +1756,12 @@ export default function DashboardPage() {
                                 style={{
                                   width: '100%',
                                   padding: '16px 20px',
-                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'}`,
                                   borderRadius: '12px',
                                   fontSize: '16px',
                                   boxSizing: 'border-box',
-                                  background: 'rgba(255,255,255,0.05)',
-                                  color: '#fff',
+                                  background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.05)',
+                                  color: getTheme().colors.textPrimary,
                                   outline: 'none'
                                 }}
                                 placeholder="Describe this action"
@@ -1654,7 +1769,7 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div>
-                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: '#94a3b8' }}>Selector (Locator)</label>
+                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Selector (Locator)</label>
                             <input
                               type="text"
                               value={step.selector || ''}
@@ -1662,12 +1777,12 @@ export default function DashboardPage() {
                               style={{
                                 width: '100%',
                                 padding: '16px 20px',
-                                border: '1px solid rgba(255,255,255,0.12)',
+                                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'}`,
                                 borderRadius: '12px',
                                 fontSize: '16px',
                                 boxSizing: 'border-box',
-                                background: 'rgba(255,255,255,0.05)',
-                                color: '#fff',
+                                background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.05)',
+                                color: getTheme().colors.textPrimary,
                                 outline: 'none'
                               }}
                               placeholder="CSS selector or XPath"
@@ -1691,6 +1806,21 @@ export default function DashboardPage() {
             justifyContent: 'flex-end',
             gap: '18px'
           }}>
+            {editingFormPage && (
+              <button 
+                onClick={() => {
+                  setShowEditPanel(false)
+                  openMapModal(editingFormPage)
+                }} 
+                style={{
+                  ...primaryButtonStyle,
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)'
+                }}
+                disabled={mappingFormIds.has(editingFormPage.id)}
+              >
+                🗺️ Map Form
+              </button>
+            )}
             <button onClick={() => setShowEditPanel(false)} style={secondaryButtonStyle}>
               Cancel
             </button>
@@ -1752,12 +1882,19 @@ export default function DashboardPage() {
             transform: translateY(-2px);
             box-shadow: 0 8px 30px ${getTheme().colors.accentGlow} !important;
           }
+          .table-row {
+            background: ${isLightTheme() ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.01)'};
+            ${isLightTheme() ? 'box-shadow: 0 1px 3px rgba(0,0,0,0.08);' : ''}
+          }
           .table-row:hover {
-            background: ${getTheme().colors.accentPrimary}15 !important;
+            background: ${isLightTheme() ? 'rgba(0, 0, 0, 0.06)' : `${getTheme().colors.accentPrimary}15`} !important;
+          }
+          .table-row:nth-child(even) {
+            background: ${isLightTheme() ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.03)'};
           }
           .action-btn:hover {
             transform: scale(1.1);
-            background: ${getTheme().colors.accentPrimary}35 !important;
+            background: ${isLightTheme() ? 'rgba(0, 0, 0, 0.15)' : `${getTheme().colors.accentPrimary}35`} !important;
           }
         `}</style>
 
@@ -1778,10 +1915,10 @@ export default function DashboardPage() {
         <div style={{
           background: getTheme().colors.cardBg,
           backdropFilter: 'blur(20px)',
-          border: `2px solid ${getTheme().colors.cardBorder}`,
-          borderRadius: '28px',
-          padding: '36px',
-          boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`
+          border: `1px solid ${getTheme().colors.cardBorder}`,
+          borderRadius: '20px',
+          padding: '24px',
+          boxShadow: `${getTheme().colors.cardGlow}, 0 15px 40px rgba(0,0,0,0.2)`
         }}>
           {/* Clickable Header to expand/collapse */}
           <div 
@@ -1789,21 +1926,21 @@ export default function DashboardPage() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '24px',
-              padding: '26px 32px',
+              gap: '18px',
+              padding: '18px 24px',
               background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}25, ${getTheme().colors.accentSecondary}20)`,
-              border: `2px solid ${getTheme().colors.accentPrimary}60`,
-              borderRadius: '20px',
-              marginBottom: isDiscoveryExpanded ? '28px' : 0,
+              border: `1px solid ${getTheme().colors.accentPrimary}60`,
+              borderRadius: '16px',
+              marginBottom: isDiscoveryExpanded ? '20px' : 0,
               cursor: isDiscovering ? 'default' : 'pointer',
-              boxShadow: `0 0 35px ${getTheme().colors.accentGlow}, inset 0 0 30px ${getTheme().colors.accentPrimary}10`
+              boxShadow: `0 0 25px ${getTheme().colors.accentGlow}, inset 0 0 20px ${getTheme().colors.accentPrimary}10`
           }}
         >
           <div style={{
-            fontSize: '36px',
+            fontSize: '28px',
             background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
-            borderRadius: '18px',
-            padding: '18px',
+            borderRadius: '14px',
+            padding: '14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1814,15 +1951,15 @@ export default function DashboardPage() {
           <div style={{ flex: 1 }}>
             <h1 style={{
               margin: 0,
-              fontSize: '32px',
-              fontWeight: 700,
+              fontSize: '24px',
+              fontWeight: 600,
               color: getTheme().colors.textPrimary,
-              letterSpacing: '-0.5px',
+              letterSpacing: '-0.3px',
               textShadow: getTheme().colors.textGlow
             }}>Form Pages Discovery</h1>
             <p style={{
-              margin: '10px 0 0',
-              fontSize: '18px',
+              margin: '6px 0 0',
+              fontSize: '15px',
               color: getTheme().colors.textSecondary,
               lineHeight: 1.5
             }}>
@@ -1835,19 +1972,19 @@ export default function DashboardPage() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '16px',
+              gap: '12px',
               background: `${getTheme().colors.statusOnline}25`,
-              border: `2px solid ${getTheme().colors.statusOnline}60`,
-              padding: '16px 28px',
-              borderRadius: '30px',
-              fontSize: '17px',
+              border: `1px solid ${getTheme().colors.statusOnline}60`,
+              padding: '12px 20px',
+              borderRadius: '24px',
+              fontSize: '15px',
               fontWeight: 600,
               color: getTheme().colors.statusOnline,
-              boxShadow: `0 0 25px ${getTheme().colors.statusGlow}`
+              boxShadow: `0 0 20px ${getTheme().colors.statusGlow}`
             }}>
               <div style={{
-                width: '14px',
-                height: '14px',
+                width: '12px',
+                height: '12px',
                 borderRadius: '50%',
                 background: getTheme().colors.statusOnline,
                 boxShadow: `0 0 20px ${getTheme().colors.statusGlow}`,
@@ -1859,17 +1996,17 @@ export default function DashboardPage() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '12px',
-              padding: '14px 24px',
+              gap: '10px',
+              padding: '10px 18px',
               background: isDiscoveryExpanded ? 'rgba(239, 68, 68, 0.2)' : `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`,
-              borderRadius: '14px',
-              fontSize: '16px',
+              borderRadius: '12px',
+              fontSize: '14px',
               fontWeight: 600,
               color: '#fff',
-              boxShadow: isDiscoveryExpanded ? '0 0 20px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
-              border: isDiscoveryExpanded ? '2px solid rgba(239, 68, 68, 0.4)' : '2px solid transparent'
+              boxShadow: isDiscoveryExpanded ? '0 0 15px rgba(239, 68, 68, 0.3)' : getTheme().colors.buttonGlow,
+              border: isDiscoveryExpanded ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid transparent'
             }}>
-              <span style={{ fontSize: '18px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
+              <span style={{ fontSize: '14px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
               {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
             </div>
           )}
@@ -1886,9 +2023,9 @@ export default function DashboardPage() {
               border: `1px solid ${getTheme().colors.cardBorder}`
             }}>
               <div style={{ fontSize: '64px', marginBottom: '24px' }}>🌐</div>
-              <h3 style={{ margin: '0 0 16px', fontSize: '26px', color: '#fff', fontWeight: 600 }}>No Networks Found</h3>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '18px' }}>
-                Open the <strong style={{ color: '#fff' }}>Test Sites</strong> tab from the sidebar to add your first test site.
+              <h3 style={{ margin: '0 0 16px', fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>No Networks Found</h3>
+              <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+                Open the <strong style={{ color: getTheme().colors.textPrimary }}>Test Sites</strong> tab from the sidebar to add your first test site.
               </p>
             </div>
           ) : (
@@ -1897,12 +2034,32 @@ export default function DashboardPage() {
               <div style={sectionStyle}>
                 <div style={sectionHeaderStyle}>
                   <div>
-                    <h3 style={sectionTitleStyle}>Select Test Sites</h3>
-                    <p style={sectionSubtitleStyle}>Select QA environment test sites to discover form pages</p>
+                    <h3 style={{ 
+                      margin: 0,
+                      fontSize: '26px',
+                      fontWeight: 700,
+                      color: getTheme().colors.textPrimary,
+                      letterSpacing: '-0.5px'
+                    }}>Select Test Sites</h3>
+                    <p style={{ 
+                      margin: '10px 0 0',
+                      fontSize: '18px',
+                      color: getTheme().colors.textSecondary
+                    }}>Select QA environment test sites to discover form pages</p>
                   </div>
                   <button 
                     onClick={selectAllNetworks} 
-                    style={selectAllBtnStyle}
+                    style={{
+                      background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                      color: getTheme().colors.textPrimary,
+                      border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)'}`,
+                      padding: '16px 28px',
+                      borderRadius: '14px',
+                      fontSize: '17px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
                     disabled={isDiscovering}
                   >
                     {selectedNetworkIds.length === qaNetworks.length ? '✓ All Selected' : 'Select All'}
@@ -1925,35 +2082,41 @@ export default function DashboardPage() {
                           alignItems: 'center',
                           gap: '18px',
                           padding: '20px 26px',
-                          border: isSelected ? '2px solid rgba(99, 102, 241, 0.5)' : '1px solid rgba(255,255,255,0.08)',
+                          border: isSelected 
+                            ? `2px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '80' : '50'}` 
+                            : `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
                           borderRadius: '16px',
                           background: isSelected 
-                            ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))'
-                            : 'rgba(255,255,255,0.02)',
+                            ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '18' : '15'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '12' : '10'})`
+                            : isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.02)',
                           cursor: isDiscovering ? 'not-allowed' : 'pointer',
                           opacity: isDiscovering ? 0.7 : 1,
                           transition: 'all 0.25s ease',
-                          boxShadow: isSelected ? '0 4px 20px rgba(99, 102, 241, 0.1)' : 'none'
+                          boxShadow: isSelected 
+                            ? (isLightTheme() ? `0 4px 12px ${getTheme().colors.accentPrimary}20` : '0 4px 20px rgba(99, 102, 241, 0.1)')
+                            : 'none'
                       }}
                     >
                       <div style={{
                         ...networkCheckboxStyle,
                         background: isSelected 
-                          ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' 
-                          : 'rgba(255,255,255,0.05)',
-                        borderColor: isSelected ? '#6366f1' : 'rgba(255,255,255,0.2)',
-                        boxShadow: isSelected ? '0 4px 12px rgba(99, 102, 241, 0.3)' : 'none'
+                          ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})` 
+                          : isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)',
+                        borderColor: isSelected 
+                          ? getTheme().colors.accentPrimary 
+                          : isLightTheme() ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)',
+                        boxShadow: isSelected ? `0 4px 12px ${getTheme().colors.accentPrimary}30` : 'none'
                       }}>
                         {isSelected && <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>✓</span>}
                       </div>
-                      <span style={{ fontWeight: 600, fontSize: '16px', color: '#fff', minWidth: '160px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '16px', color: getTheme().colors.textPrimary, minWidth: '160px' }}>
                         {network.name}
                       </span>
-                      <span style={{ fontSize: '14px', color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '14px', color: getTheme().colors.textSecondary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {network.url}
                       </span>
                       {network.login_username && (
-                        <span style={{ fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '13px', color: getTheme().colors.textSecondary, display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
                           <span>👤</span> {network.login_username}
                         </span>
                       )}
@@ -2213,15 +2376,15 @@ export default function DashboardPage() {
       <div style={{
         marginTop: '32px'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '28px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
-              <span style={{ marginRight: '14px' }}>📋</span>Discovered Form Pages
+            <h2 style={{ margin: 0, fontSize: '22px', color: getTheme().colors.textPrimary, fontWeight: 600, letterSpacing: '-0.3px', textShadow: getTheme().colors.textGlow }}>
+              <span style={{ marginRight: '10px' }}>📋</span>Discovered Form Pages
             </h2>
-            <p style={{ margin: '12px 0 0', fontSize: '17px', color: getTheme().colors.textSecondary }}>{formPages.length} forms found in this project</p>
+            <p style={{ margin: '8px 0 0', fontSize: '15px', color: getTheme().colors.textSecondary }}>{formPages.length} forms found in this project</p>
           </div>
           {formPages.length > 10 && (
-            <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, background: getTheme().colors.cardBg, padding: '12px 20px', borderRadius: '24px', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+            <span style={{ fontSize: '14px', color: getTheme().colors.textSecondary, background: getTheme().colors.cardBg, padding: '10px 16px', borderRadius: '20px', border: `1px solid ${getTheme().colors.cardBorder}` }}>
               Showing {formPages.length} forms
             </span>
           )}
@@ -2244,11 +2407,7 @@ export default function DashboardPage() {
         ) : (
           <div style={{
             maxHeight: '700px',
-            overflowY: 'auto',
-            background: getTheme().colors.cardBg,
-            borderRadius: '20px',
-            border: `2px solid ${getTheme().colors.cardBorder}`,
-            boxShadow: `0 0 30px ${getTheme().colors.accentGlow}20, inset 0 0 20px rgba(0,0,0,0.1)`
+            overflowY: 'auto'
           }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -2256,17 +2415,17 @@ export default function DashboardPage() {
                   <th 
                     style={{
                       textAlign: 'left',
-                      padding: '24px 32px',
+                      padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: getTheme().colors.textSecondary,
-                      background: getTheme().colors.headerBg,
+                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
-                      fontSize: '14px',
+                      fontSize: '15px',
                       textTransform: 'uppercase',
-                      letterSpacing: '1.5px',
+                      letterSpacing: '1px',
                       cursor: 'pointer',
                       userSelect: 'none',
                       textShadow: getTheme().colors.textGlow
@@ -2284,46 +2443,46 @@ export default function DashboardPage() {
                   </th>
                   <th style={{
                     textAlign: 'left',
-                    padding: '24px 32px',
+                    padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getTheme().colors.headerBg,
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '14px',
+                    fontSize: '15px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1.5px'
+                    letterSpacing: '1px'
                   }}>Path Steps</th>
                   <th style={{
                     textAlign: 'left',
-                    padding: '24px 32px',
+                    padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getTheme().colors.headerBg,
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '14px',
+                    fontSize: '15px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1.5px'
+                    letterSpacing: '1px'
                   }}>Type</th>
                   <th 
                     style={{
                       textAlign: 'left',
-                      padding: '24px 32px',
+                      padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: getTheme().colors.textSecondary,
-                      background: getTheme().colors.headerBg,
+                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
-                      fontSize: '14px',
+                      fontSize: '15px',
                       textTransform: 'uppercase',
-                      letterSpacing: '1.5px',
+                      letterSpacing: '1px',
                       cursor: 'pointer',
                       userSelect: 'none'
                     }}
@@ -2340,17 +2499,17 @@ export default function DashboardPage() {
                   </th>
                   <th style={{
                     textAlign: 'center',
-                    padding: '24px 32px',
+                    padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getTheme().colors.headerBg,
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
-                    fontSize: '14px',
+                    fontSize: '15px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1.5px',
+                    letterSpacing: '1px',
                     width: '160px'
                   }}>Actions</th>
                 </tr>
@@ -2377,83 +2536,95 @@ export default function DashboardPage() {
                     style={{
                       transition: 'all 0.2s ease',
                       cursor: 'pointer',
-                      background: 'transparent'
+                      background: isLightTheme() 
+                        ? (index % 2 === 0 ? '#fffef8' : '#f8f9fa')
+                        : 'transparent',
+                      borderBottom: isLightTheme() ? '1px solid rgba(0,0,0,0.06)' : 'none'
                     }}
                     onDoubleClick={() => openEditPanel(form)}
                   >
                     <td style={{
-                      padding: '28px 32px',
+                      padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                      borderLeft: `3px solid ${getTheme().colors.accentPrimary}`,
                       verticalAlign: 'middle',
-                      fontSize: '18px',
+                      fontSize: '16px',
                       color: getTheme().colors.textPrimary
                     }}>
-                      <strong style={{ fontSize: '18px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
+                      <strong style={{ fontSize: '16px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
                       {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '6px' }}>
+                        <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
                           Parent: {form.parent_form_name}
                         </div>
                       )}
                     </td>
                     <td style={{
-                      padding: '28px 32px',
+                      padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '18px',
+                      fontSize: '16px',
                       color: getTheme().colors.textPrimary
                     }}>
                       <span style={{
-                        background: `${getTheme().colors.accentPrimary}25`,
+                        background: isLightTheme() 
+                          ? `${getTheme().colors.accentPrimary}18`
+                          : `${getTheme().colors.accentPrimary}25`,
                         color: getTheme().colors.accentSecondary,
-                        padding: '12px 24px',
-                        borderRadius: '24px',
-                        fontSize: '16px',
+                        padding: '8px 16px',
+                        borderRadius: '20px',
+                        fontSize: '14px',
                         fontWeight: 600,
-                        border: `2px solid ${getTheme().colors.accentPrimary}60`,
-                        boxShadow: getTheme().colors.iconGlow
+                        border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '80' : '60'}`,
+                        boxShadow: isLightTheme() ? `0 1px 4px ${getTheme().colors.accentPrimary}25` : getTheme().colors.iconGlow
                       }}>
                         {form.navigation_steps?.length || 0} steps
                       </span>
                     </td>
                     <td style={{
-                      padding: '28px 32px',
+                      padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '18px',
+                      fontSize: '16px',
                       color: getTheme().colors.textPrimary
                     }}>
                       <span style={{
-                        background: form.is_root ? `${getTheme().colors.accentPrimary}20` : 'rgba(245, 158, 11, 0.2)',
-                        color: form.is_root ? getTheme().colors.accentSecondary : '#fbbf24',
-                        padding: '10px 18px',
-                        borderRadius: '20px',
-                        fontSize: '15px',
+                        background: form.is_root 
+                          ? (isLightTheme() ? `${getTheme().colors.accentPrimary}15` : `${getTheme().colors.accentPrimary}20`)
+                          : (isLightTheme() ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.2)'),
+                        color: form.is_root ? getTheme().colors.accentSecondary : (isLightTheme() ? '#b45309' : '#fbbf24'),
+                        padding: '8px 14px',
+                        borderRadius: '16px',
+                        fontSize: '14px',
                         fontWeight: 600,
-                        border: form.is_root ? `2px solid ${getTheme().colors.accentPrimary}50` : '2px solid rgba(245, 158, 11, 0.4)',
-                        boxShadow: form.is_root ? getTheme().colors.iconGlow : '0 0 10px rgba(245, 158, 11, 0.15)'
+                        border: form.is_root 
+                          ? `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '70' : '50'}` 
+                          : `1px solid rgba(245, 158, 11, ${isLightTheme() ? '0.6' : '0.4'})`,
+                        boxShadow: form.is_root 
+                          ? (isLightTheme() ? `0 1px 4px ${getTheme().colors.accentPrimary}20` : getTheme().colors.iconGlow)
+                          : (isLightTheme() ? '0 1px 4px rgba(245, 158, 11, 0.2)' : '0 0 10px rgba(245, 158, 11, 0.15)')
                       }}>
                         {form.is_root ? 'Root' : 'Child'}
                       </span>
                     </td>
                     <td style={{
-                      padding: '28px 32px',
+                      padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '18px',
+                      fontSize: '16px',
                       color: getTheme().colors.textPrimary
                     }}>
-                      <div style={{ fontSize: '16px', color: getTheme().colors.textPrimary }}>
+                      <div style={{ fontSize: '15px', color: getTheme().colors.textPrimary }}>
                         {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
                       </div>
-                      <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                      <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary, marginTop: '2px' }}>
                         {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
                       </div>
                     </td>
                     <td style={{
-                      padding: '28px 32px',
+                      padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '18px',
+                      fontSize: '16px',
                       color: getTheme().colors.textPrimary,
                       textAlign: 'center'
                     }}>
@@ -2487,7 +2658,7 @@ export default function DashboardPage() {
                           </span>
                         ) : mappingStatus[form.id]?.status === 'failed' ? (
                           <button 
-                            onClick={() => startFormMapping(form)} 
+                            onClick={() => openMapModal(form)} 
                             className="action-btn"
                             style={{
                               background: 'rgba(239, 68, 68, 0.2)',
@@ -2505,17 +2676,21 @@ export default function DashboardPage() {
                           </button>
                         ) : (
                           <button 
-                            onClick={() => startFormMapping(form)} 
+                            onClick={() => openMapModal(form)} 
                             className="action-btn"
                             style={{
-                              background: `${getTheme().colors.accentPrimary}20`,
-                              border: `2px solid ${getTheme().colors.accentPrimary}50`,
+                              background: isLightTheme() 
+                                ? 'rgba(30, 64, 175, 0.08)'
+                                : `${getTheme().colors.accentPrimary}20`,
+                              border: isLightTheme() 
+                                ? '1px solid rgba(30, 64, 175, 0.25)'
+                                : `2px solid ${getTheme().colors.accentPrimary}50`,
                               borderRadius: '12px',
                               padding: '16px 18px',
                               cursor: 'pointer',
                               fontSize: '20px',
                               transition: 'all 0.2s ease',
-                              boxShadow: getTheme().colors.iconGlow
+                              boxShadow: isLightTheme() ? 'none' : getTheme().colors.iconGlow
                             }}
                             title="Map this form page"
                           >
@@ -2526,14 +2701,18 @@ export default function DashboardPage() {
                           onClick={() => openEditPanel(form)} 
                           className="action-btn"
                           style={{
-                            background: `${getTheme().colors.accentPrimary}15`,
-                            border: `2px solid ${getTheme().colors.cardBorder}`,
+                            background: isLightTheme() 
+                              ? 'rgba(30, 64, 175, 0.08)'
+                              : `${getTheme().colors.accentPrimary}15`,
+                            border: isLightTheme() 
+                              ? '1px solid rgba(30, 64, 175, 0.25)'
+                              : `2px solid ${getTheme().colors.cardBorder}`,
                             borderRadius: '12px',
                             padding: '16px 18px',
                             cursor: 'pointer',
                             fontSize: '20px',
                             transition: 'all 0.2s ease',
-                            boxShadow: `0 0 15px ${getTheme().colors.accentGlow}30`
+                            boxShadow: isLightTheme() ? 'none' : `0 0 15px ${getTheme().colors.accentGlow}30`
                           }}
                           title="Edit form page"
                         >
@@ -2543,14 +2722,14 @@ export default function DashboardPage() {
                           onClick={() => openDeleteModal(form)} 
                           className="action-btn"
                           style={{
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            border: '2px solid rgba(239, 68, 68, 0.3)',
+                            background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
+                            border: isLightTheme() ? '1px solid rgba(239, 68, 68, 0.25)' : '2px solid rgba(239, 68, 68, 0.3)',
                             borderRadius: '12px',
                             padding: '16px 18px',
                             cursor: 'pointer',
                             fontSize: '20px',
                             transition: 'all 0.2s ease',
-                            boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
+                            boxShadow: isLightTheme() ? 'none' : '0 0 15px rgba(239, 68, 68, 0.2)'
                           }}
                           title="Delete form page"
                         >
@@ -2565,6 +2744,87 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Test Template Selection Modal */}
+      {showMapModal && selectedFormForMapping && (
+        <div style={modalOverlayStyle}>
+          <div style={{
+            ...smallModalContentStyle,
+            maxWidth: '500px'
+          }}>
+            <h3 style={{ marginTop: 0, color: '#fff', fontSize: '22px', fontWeight: 700 }}>
+              <span style={{ marginRight: '10px' }}>🗺️</span>
+              Map Form: {selectedFormForMapping.form_name}
+            </h3>
+            
+            <p style={{ fontSize: '15px', color: '#94a3b8', margin: '16px 0' }}>
+              Select a test template to define what tests will be generated:
+            </p>
+            
+            <div style={{ marginBottom: '24px' }}>
+              {testTemplates.map(template => (
+                <label 
+                  key={template.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '16px',
+                    marginBottom: '12px',
+                    background: selectedTemplateId === template.id 
+                      ? 'rgba(99, 102, 241, 0.2)' 
+                      : 'rgba(255,255,255,0.05)',
+                    border: selectedTemplateId === template.id 
+                      ? '2px solid rgba(99, 102, 241, 0.5)' 
+                      : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="testTemplate"
+                    checked={selectedTemplateId === template.id}
+                    onChange={() => setSelectedTemplateId(template.id)}
+                    style={{ marginTop: '4px' }}
+                  />
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 600, fontSize: '16px' }}>
+                      {template.display_name}
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '14px', marginTop: '4px' }}>
+                      {template.test_cases.length} test(s): {template.test_cases.map((t: any) => t.test_id).join(', ')}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => {
+                  setShowMapModal(false)
+                  setSelectedFormForMapping(null)
+                }} 
+                style={secondaryButtonStyle}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={startMappingWithTemplate}
+                style={{
+                  ...primaryButtonStyle,
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)'
+                }}
+                disabled={!selectedTemplateId}
+              >
+                🗺️ Start Mapping
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Form Page Modal */}
       {showDeleteModal && formPageToDelete && (

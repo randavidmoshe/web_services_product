@@ -768,50 +768,11 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json()
         setFormPages(data)
-        // Check for active mapping sessions after loading form pages
-        checkActiveMappingSessions(authToken)
       }
     } catch (err) {
       console.error('Failed to load form pages:', err)
     } finally {
       setLoadingFormPages(false)
-    }
-  }
-
-  // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
-    try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      })
-      
-      if (response.ok) {
-        const activeSessions = await response.json()
-        // activeSessions is array of { form_page_route_id, session_id, status }
-        
-        const newMappingIds = new Set<number>()
-        const newMappingStatus: Record<number, { status: string; sessionId?: number }> = {}
-        
-        for (const session of activeSessions) {
-          const activeStatuses = ['running', 'initializing', 'pending', 'logging_in', 'navigating', 'extracting_initial_dom', 'getting_initial_screenshot', 'ai_analyzing', 'executing_step', 'waiting_for_dom', 'waiting_for_screenshot']
-          if (activeStatuses.includes(session.status)) {
-            newMappingIds.add(session.form_page_route_id)
-            newMappingStatus[session.form_page_route_id] = {
-              status: 'mapping',
-              sessionId: session.session_id
-            }
-            // Resume polling for this session
-            startMappingStatusPolling(session.form_page_route_id, session.session_id)
-          }
-        }
-        
-        if (newMappingIds.size > 0) {
-          setMappingFormIds(newMappingIds)
-          setMappingStatus(prev => ({ ...prev, ...newMappingStatus }))
-        }
-      }
-    } catch (err) {
-      console.error('Failed to check active mapping sessions:', err)
     }
   }
 
@@ -1001,46 +962,6 @@ export default function DashboardPage() {
     if (mappingPollingRef.current[formPageId]) {
       clearInterval(mappingPollingRef.current[formPageId])
       delete mappingPollingRef.current[formPageId]
-    }
-  }
-  
-  // Cancel a running mapping session
-  const cancelMapping = async (formPageId: number) => {
-    const status = mappingStatus[formPageId]
-    if (!status?.sessionId) {
-      console.error('No session ID found for form page', formPageId)
-      return
-    }
-    
-    try {
-      const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      
-      if (response.ok) {
-        // Stop polling
-        stopMappingStatusPolling(formPageId)
-        
-        // Update status
-        setMappingFormIds(prev => {
-          const next = new Set(prev)
-          next.delete(formPageId)
-          return next
-        })
-        setMappingStatus(prev => ({
-          ...prev,
-          [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
-        }))
-        
-        setMessage('Mapping cancelled')
-      } else {
-        const errorData = await response.json()
-        setError(`Failed to cancel mapping: ${errorData.detail || 'Unknown error'}`)
-      }
-    } catch (err: any) {
-      console.error('Failed to cancel mapping:', err)
-      setError(`Failed to cancel mapping: ${err.message}`)
     }
   }
   
@@ -1892,48 +1813,29 @@ export default function DashboardPage() {
             gap: '18px'
           }}>
             {editingFormPage && (
-              mappingFormIds.has(editingFormPage.id) ? (
-                <button 
-                  onClick={() => cancelMapping(editingFormPage.id)} 
-                  style={{
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  ⏹️ Stop Mapping
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setShowEditPanel(false)
-                    openMapModal(editingFormPage)
-                  }} 
-                  style={{
-                    background: isLightTheme() 
-                      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                      : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: isLightTheme() ? '0 2px 8px rgba(245, 158, 11, 0.25)' : '0 4px 20px rgba(245, 158, 11, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  🗺️ Map Form
-                </button>
-              )
+              <button 
+                onClick={() => {
+                  setShowEditPanel(false)
+                  openMapModal(editingFormPage)
+                }} 
+                style={{
+                  background: isLightTheme() 
+                    ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                    : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  color: 'white',
+                  padding: '16px 32px',
+                  border: 'none',
+                  borderRadius: '14px',
+                  fontSize: '17px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: isLightTheme() ? '0 2px 8px rgba(245, 158, 11, 0.25)' : '0 4px 20px rgba(245, 158, 11, 0.3)',
+                  transition: 'all 0.2s ease'
+                }}
+                disabled={mappingFormIds.has(editingFormPage.id)}
+              >
+                🗺️ Map Form
+              </button>
             )}
             <button 
               onClick={() => setShowEditPanel(false)} 
@@ -2779,39 +2681,20 @@ export default function DashboardPage() {
                       textAlign: 'center'
                     }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                        {/* Map Button or Stop Button */}
+                        {/* Map Button */}
                         {mappingFormIds.has(form.id) ? (
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(245, 158, 11, 0.2)',
-                              color: '#f59e0b',
-                              borderRadius: '10px',
-                              fontSize: '15px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(245, 158, 11, 0.4)',
-                              boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
-                            }}>
-                              ⏳ Mapping...
-                            </span>
-                            <button 
-                              onClick={() => cancelMapping(form.id)} 
-                              className="action-btn"
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.2)',
-                                border: '2px solid rgba(239, 68, 68, 0.4)',
-                                borderRadius: '12px',
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
-                                transition: 'all 0.2s ease',
-                                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
-                              }}
-                              title="Stop mapping"
-                            >
-                              ⏹️
-                            </button>
-                          </div>
+                          <span style={{
+                            padding: '10px 16px',
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#f59e0b',
+                            borderRadius: '10px',
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            border: '2px solid rgba(245, 158, 11, 0.4)',
+                            boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
+                          }}>
+                            ⏳ Mapping...
+                          </span>
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
                             padding: '10px 16px',

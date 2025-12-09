@@ -2128,6 +2128,8 @@ class FormPagesCrawler:
         shortest = self._find_shortest_path(path)
 
         steps = []
+
+
         for step in shortest:
             selector = step.get('selector', '')
             text = step.get('text', '')

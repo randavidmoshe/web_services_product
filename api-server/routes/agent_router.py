@@ -319,13 +319,26 @@ async def agent_heartbeat(
         CrawlSession.status == 'cancelled',
         CrawlSession.completed_at >= cancel_threshold
     ).first()
-    
+
     if cancelled_session:
         cancel_requested = True
         # Mark as acknowledged so we don't keep sending cancel
         cancelled_session.status = 'cancelled_ack'
         db.commit()
-    
+
+    # Check FormMapperSession (Form Mapper)
+    from models.database import FormMapperSession
+    cancelled_mapper = db.query(FormMapperSession).filter(
+        FormMapperSession.user_id == agent.user_id,
+        FormMapperSession.status == 'cancelled',
+        FormMapperSession.updated_at >= cancel_threshold
+    ).first()
+
+    if cancelled_mapper:
+        cancel_requested = True
+        cancelled_mapper.status = 'cancelled_ack'
+        db.commit()
+
     return {"success": True, "cancel_requested": cancel_requested}
 
 

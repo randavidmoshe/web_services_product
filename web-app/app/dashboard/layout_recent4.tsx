@@ -1219,14 +1219,20 @@ export default function DashboardLayout({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '12px',
+                padding: '12px 18px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '12px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
                 fontSize: '15px'
               }} 
               title={`AI Usage: $${aiUsed} / $${aiBudget}`}
             >
               <span style={{ 
                 fontSize: '16px',
-                color: getTheme().colors.textSecondary,
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
                 fontWeight: 600
               }}>AI:</span>
               <span style={{ 

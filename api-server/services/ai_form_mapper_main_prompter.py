@@ -1700,7 +1700,7 @@ Return ONLY the JSON object, no other text.
         failed_step: Dict,
         executed_steps: List[Dict],
         fresh_dom: str,
-        screenshot_path: str,
+        screenshot_base64: str,
         test_cases: List[Dict],
         test_context,
         attempt_number: int,
@@ -1713,7 +1713,7 @@ Return ONLY the JSON object, no other text.
             failed_step: The step that failed
             executed_steps: Steps completed successfully so far
             fresh_dom: Current DOM state
-            screenshot_path: Path to full page screenshot
+            screenshot_base64: Base64 encoded screenshot for visual context
             test_cases: Active test cases
             test_context: Test context
             attempt_number: Attempt number (1 or 2)
@@ -1729,8 +1729,7 @@ Return ONLY the JSON object, no other text.
             print(f"[AIHelper] Analyzing failure with vision...")
             
             # Read and encode screenshot
-            with open(screenshot_path, 'rb') as f:
-                screenshot_data = base64.standard_b64encode(f.read()).decode('utf-8')
+            screenshot_data = screenshot_base64
             
             # Build the prompt
             prompt = self._build_recovery_prompt(

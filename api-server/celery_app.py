@@ -3,6 +3,15 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 
+import logging
+
+# Configure logging for Celery workers
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
 # Redis URL
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 

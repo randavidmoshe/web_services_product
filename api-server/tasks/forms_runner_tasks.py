@@ -776,7 +776,7 @@ def trigger_mapping_phase(self, session_id: str) -> Dict:
     Called automatically by runner when navigate phase finishes.
     """
     logger.info(f"[FormsRunner] Triggering mapping phase for session {session_id}")
-    
+    print(f"[TRACE] trigger_mapping_phase CELERY TASK CALLED for session={session_id}")
     from models.database import SessionLocal
     from services.form_mapper_orchestrator import FormMapperOrchestrator
     

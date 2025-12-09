@@ -340,6 +340,12 @@ class FormDiscovererAgent:
                         self.execute_task(task)
                 elif response.status_code == 204:
                     consecutive_errors = 0
+                    # Check if cancel was requested while idle
+                    if self.cancel_requested:
+                        self.logger.info("⏹ Cancel requested - closing browser")
+                        self.cancel_requested = False
+                        if self.selenium_agent.driver:
+                            self.selenium_agent.close_browser()
                     time.sleep(1)
                 elif response.status_code == 401:
                     error_detail = ""
@@ -390,16 +396,27 @@ class FormDiscovererAgent:
         
         try:
             # Update status to running
+            # Update status to running
             self._update_task_status(task_id, 'running')
-            
+
+
             # ===== FORM MAPPER TASKS =====
             if task_type.startswith('form_mapper_'):
+                self.cancel_requested = False  # Reset cancel flag for new task
                 self.logger.info(f"🗺️ Form Mapper task: {task_type}")
                 result = self.form_mapper_handler.handle_task(task)
-                
+
                 # Report result back to Form Mapper endpoint
                 self._report_form_mapper_result(result)
-                
+
+                # Check if cancel was requested during execution
+                if self.cancel_requested:
+                    self.logger.info("⏹ Cancel requested - closing browser")
+                    self.cancel_requested = False
+                    if self.selenium_agent.driver:
+                        self.selenium_agent.close_browser()
+                    return
+
                 if result.get('success'):
                     self._update_task_status(task_id, 'completed', result=result)
                     self.logger.info(f"✅ Form Mapper task completed: {task_type}")
@@ -408,12 +425,22 @@ class FormDiscovererAgent:
                     self.logger.error(f"❌ Form Mapper task failed: {result.get('error')}")
                 return
             # ===== END FORM MAPPER TASKS =====
-            
+
             # ===== FORMS RUNNER TASKS =====
             if task_type.startswith('forms_runner_'):
+                self.cancel_requested = False  # Reset cancel flag for new task
                 self.logger.info(f"🏃 Forms Runner task: {task_type}")
                 result = self.form_mapper_handler.handle_task(task)
                 self._report_form_mapper_result(result)
+
+                # Check if cancel was requested during execution
+                if self.cancel_requested:
+                    self.logger.info("⏹ Cancel requested - closing browser")
+                    self.cancel_requested = False
+                    if self.selenium_agent.driver:
+                        self.selenium_agent.close_browser()
+                    return
+
                 if result.get('success'):
                     self._update_task_status(task_id, 'completed', result=result)
                     self.logger.info(f"✅ Forms Runner task completed: {task_type}")
@@ -422,7 +449,7 @@ class FormDiscovererAgent:
                     self.logger.error(f"❌ Forms Runner task failed: {result.get('error')}")
                 return
             # ===== END FORMS RUNNER TASKS =====
-            
+
             # Execute based on type
             if task_type == 'discover_form_pages':
                 result = self._handle_discover_form_pages(parameters)

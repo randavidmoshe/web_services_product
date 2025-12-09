@@ -768,50 +768,11 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json()
         setFormPages(data)
-        // Check for active mapping sessions after loading form pages
-        checkActiveMappingSessions(authToken)
       }
     } catch (err) {
       console.error('Failed to load form pages:', err)
     } finally {
       setLoadingFormPages(false)
-    }
-  }
-
-  // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
-    try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      })
-      
-      if (response.ok) {
-        const activeSessions = await response.json()
-        // activeSessions is array of { form_page_route_id, session_id, status }
-        
-        const newMappingIds = new Set<number>()
-        const newMappingStatus: Record<number, { status: string; sessionId?: number }> = {}
-        
-        for (const session of activeSessions) {
-          const activeStatuses = ['running', 'initializing', 'pending', 'logging_in', 'navigating', 'extracting_initial_dom', 'getting_initial_screenshot', 'ai_analyzing', 'executing_step', 'waiting_for_dom', 'waiting_for_screenshot']
-          if (activeStatuses.includes(session.status)) {
-            newMappingIds.add(session.form_page_route_id)
-            newMappingStatus[session.form_page_route_id] = {
-              status: 'mapping',
-              sessionId: session.session_id
-            }
-            // Resume polling for this session
-            startMappingStatusPolling(session.form_page_route_id, session.session_id)
-          }
-        }
-        
-        if (newMappingIds.size > 0) {
-          setMappingFormIds(newMappingIds)
-          setMappingStatus(prev => ({ ...prev, ...newMappingStatus }))
-        }
-      }
-    } catch (err) {
-      console.error('Failed to check active mapping sessions:', err)
     }
   }
 

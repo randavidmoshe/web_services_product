@@ -107,11 +107,18 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
     This chains Celery tasks together via the orchestrator.
     """
     from services.form_mapper_orchestrator import FormMapperOrchestrator
-    
+    from models.form_mapper_models import FormMapperSession
+
     db = _get_db_session()
     redis_client = _get_redis_client()
-    
+
     try:
+        # Check if session was cancelled while task was running
+        session = db.query(FormMapperSession).filter(FormMapperSession.id == int(session_id)).first()
+        if session and session.status in ['cancelled', 'cancelled_ack']:
+            logger.info(f"[FormMapperTask] Session {session_id} was cancelled, skipping {task_name} result")
+            return {"success": False, "cancelled": True}
+
         orchestrator = FormMapperOrchestrator(redis_client, db)
         response = orchestrator.process_celery_result(session_id, task_name, result)
         
@@ -138,7 +145,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "handle_alert_recovery": handle_alert_recovery,
         "verify_ui_visual": verify_ui_visual,
         "regenerate_steps": regenerate_steps,
-        "assign_test_cases": assign_test_cases,
+        "save_mapping_result": save_mapping_result,
     }
     
     task = task_map.get(task_name)
@@ -198,8 +205,10 @@ def analyze_form_page(
         ai_helper = helpers["form_mapper"]
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Entering AI for Generating steps ...")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! previous_paths: {previous_paths} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: previous_paths: {previous_paths} steps")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: test_cases: {test_cases}")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
             test_cases=test_cases,
@@ -260,7 +269,7 @@ def analyze_failure_and_recover(
     failed_step: Dict,
     executed_steps: List[Dict],
     fresh_dom: str,
-    screenshot_path: str,
+    screenshot_base64: str,
     test_cases: List[Dict],
     test_context: Dict,
     attempt_number: int = 1,
@@ -301,6 +310,8 @@ def analyze_failure_and_recover(
         }
 
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for analyze errors and recover ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps for errors: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps for errors: recovery_context: {recovery_context}")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! recovery_context: {recovery_context} steps")
         ai_result = ai_helper.regenerate_steps(
@@ -308,21 +319,21 @@ def analyze_failure_and_recover(
             executed_steps=executed_steps,
             test_cases=test_cases,
             test_context=recovery_context,
-            screenshot_base64=None,
+            screenshot_base64=screenshot_base64,
             critical_fields_checklist=None,
             field_requirements=None,
             previous_paths=None,
             current_path_junctions=None
         )
         print(
-            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (for analyze errors and recover) returned {ai_result.get('steps', [])} new steps")
+            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerated_steps (for analyze errors and recover) returned {ai_result.get('steps', [])} new steps")
         
         input_tokens = len(fresh_dom) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
         
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
-            AIOperationType.FORM_MAPPER_RECOVERY,
+            AIOperationType.FORM_MAPPER_REGENERATE,
             input_tokens, output_tokens, session_id
         )
         
@@ -361,7 +372,7 @@ def handle_alert_recovery(
     alert_info: Dict,
     executed_steps: List[Dict],
     dom_html: str,
-    screenshot_path: Optional[str],
+    screenshot_base64: Optional[str],
     test_cases: List[Dict],
     test_context: Dict,
     step_where_alert_appeared: int,
@@ -402,7 +413,7 @@ def handle_alert_recovery(
             alert_info=alert_info,
             executed_steps=executed_steps,
             dom_html=dom_html,
-            screenshot_path=screenshot_path,
+            screenshot_base64=screenshot_base64,
             test_cases=test_cases,
             test_context=test_context,
             step_where_alert_appeared=step_where_alert_appeared,
@@ -552,7 +563,8 @@ def regenerate_steps(
         helpers = create_ai_helpers(api_key)
         
         ai_helper = helpers["form_mapper"]
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for non analyze errors and recover ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps(regular) ...")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! critical_fields_checklist: {critical_fields_checklist} steps")
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!! field_requirements: {field_requirements} steps")
@@ -606,73 +618,97 @@ def regenerate_steps(
 
 
 @shared_task(bind=True, max_retries=2)
-def assign_test_cases(
-    self,
-    session_id: str,
-    stages: List[Dict],
-    test_cases: List[Dict]
+def save_mapping_result(
+        self,
+        session_id: str,
+        stages: List[Dict],
+        path_junctions: List[Dict]
 ) -> Dict:
-    """Celery task: Assign test cases to stages at end of mapping."""
+    """Celery task: Organize stages and save FormMapResult to database."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
-    
-    logger.info(f"[FormMapperTask] Assigning test cases for session {session_id}")
 
-    
+    logger.info(f"[FormMapperTask] Saving mapping result for session {session_id}")
+
     db = _get_db_session()
     redis_client = _get_redis_client()
-    
+
     try:
         ctx = _get_session_context(redis_client, session_id)
         if ctx.get("company_id") is None or ctx.get("company_id") == 0:
             result = {"success": False, "error": "Session not found"}
-            _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+            _continue_orchestrator_chain(session_id, "save_mapping_result", result)
             return result
-        
+
+        # Get test_cases from session context
+        test_cases = ctx.get("test_cases", [])
+        if isinstance(test_cases, str):
+            test_cases = json.loads(test_cases) if test_cases else []
+
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
-        
+
         if not api_key:
             result = {"success": False, "error": "No API key available"}
-            _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+            _continue_orchestrator_chain(session_id, "save_mapping_result", result)
             return result
-        
+
         from services.form_mapper_ai_helpers import create_ai_helpers
         helpers = create_ai_helpers(api_key)
-        
+
         ai_end = helpers["end_prompter"]
-        updated_stages = ai_end.assign_test_cases(
+        updated_stages = ai_end.organize_stages(
             stages=stages,
             test_cases=test_cases
         )
-        
+
         input_tokens = len(json.dumps(stages)) // 4 + len(json.dumps(test_cases)) // 4
         output_tokens = len(json.dumps(updated_stages)) // 4 if updated_stages else 0
-        
+
         _record_usage(
             db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
             AIOperationType.FORM_MAPPER_END_ASSIGN,
             input_tokens, output_tokens, session_id
         )
 
-        result = {"stages": updated_stages, "success": True}
-        
-        logger.info(f"[FormMapperTask] Test case assignment complete: {len(updated_stages)} stages")
-        for stage in updated_stages:
-            logger.info(f"  Stage {stage.get('step_number')}: {stage.get('action')} | {stage.get('description')}")
+        # Save FormMapResult to database
+        from models.form_mapper_models import FormMapResult
 
-        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+        # Check how many paths already exist for this form_page_route
+        form_page_route_id = ctx.get("form_route_id")
+        existing_paths = db.query(FormMapResult).filter(
+            FormMapResult.form_page_route_id == form_page_route_id
+        ).count()
+
+        form_map_result = FormMapResult(
+            form_mapper_session_id=int(session_id),
+            form_page_route_id=form_page_route_id,
+            network_id=ctx.get("network_id"),
+            company_id=ctx.get("company_id"),
+            path_number=existing_paths + 1,
+            path_junctions=path_junctions if path_junctions else [],
+            steps=updated_stages if updated_stages else stages
+        )
+
+        db.add(form_map_result)
+        db.commit()
+
+        logger.info(
+            f"[FormMapperTask] Saved FormMapResult id={form_map_result.id} for session {session_id}, path #{form_map_result.path_number}, {len(updated_stages or stages)} stages")
+
+        result = {"stages": updated_stages, "success": True, "form_map_result_id": form_map_result.id}
+        _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
-        
+
     except BudgetExceededError as e:
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
-        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+        _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
-        
+
     except Exception as e:
-        logger.error(f"[FormMapperTask] Test case assignment failed: {e}", exc_info=True)
+        logger.error(f"[FormMapperTask] Save mapping result failed: {e}", exc_info=True)
         result = {"success": False, "error": str(e)}
-        _continue_orchestrator_chain(session_id, "assign_test_cases", result)
+        _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
-        
+
     finally:
         db.close()
 
@@ -745,20 +781,24 @@ def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: 
     try:
         from models.form_mapper_models import FormMapperSession
         from datetime import datetime
+        import redis
 
         active_sessions = db.query(FormMapperSession).filter(
             FormMapperSession.form_page_route_id == form_page_route_id,
             FormMapperSession.id != new_session_id,
             FormMapperSession.status.in_(["initializing", "pending", "running"])
         ).all()
-
         count = len(active_sessions)
+        user_id = None
         for session in active_sessions:
-            session.status = "cancelled"
+            session.status = "cancelled_ack"
             session.last_error = f"Cancelled - new session {new_session_id} started"
             session.completed_at = datetime.utcnow()
-
+            user_id = session.user_id
         db.commit()
+
+
+
         return {"cancelled": count}
     except Exception as e:
         db.rollback()

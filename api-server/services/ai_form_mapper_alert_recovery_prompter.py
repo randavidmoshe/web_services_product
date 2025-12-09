@@ -165,7 +165,7 @@ class AIErrorRecovery:
         alert_info: Dict,
         executed_steps: List[Dict],
         dom_html: str,
-        screenshot_path: Optional[str],
+        screenshot_base64: Optional[str],
         test_cases: List[Dict],
         test_context,
         step_where_alert_appeared: int,
@@ -179,7 +179,7 @@ class AIErrorRecovery:
             alert_info: Dict with 'type' and 'text' of the alert (or validation error info)
             executed_steps: Steps completed before alert appeared
             dom_html: Current DOM HTML after alert was accepted
-            screenshot_path: Path to screenshot showing the alert
+            screenshot_base64: Base64 encoded screenshot showing the alert
             test_cases: Active test cases
             test_context: Test context
             step_where_alert_appeared: Step number that triggered the alert
@@ -214,15 +214,13 @@ class AIErrorRecovery:
             message_content = []
             
             # Add screenshot if available (not for JS alerts)
-            if screenshot_path:
-                with open(screenshot_path, 'rb') as f:
-                    screenshot_data = base64.standard_b64encode(f.read()).decode('utf-8')
+            if screenshot_base64:
                 message_content.append({
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": "image/png",
-                        "data": screenshot_data
+                        "data": screenshot_base64
                     }
                 })
             
@@ -233,7 +231,7 @@ class AIErrorRecovery:
             })
             
             # Use multimodal retry if we have image, otherwise use regular retry
-            if screenshot_path:
+            if screenshot_base64:
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
             else:
                 response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)

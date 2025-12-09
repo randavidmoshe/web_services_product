@@ -12,7 +12,7 @@ class AIFormPageEndPrompter:
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
     
-    def assign_test_cases(self, stages: List[Dict], test_cases: List[Dict]) -> List[Dict]:
+    def organize_stages(self, stages: List[Dict], test_cases: List[Dict]) -> List[Dict]:
         """
         Call AI to assign test_case field to each stage
         
