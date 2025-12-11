@@ -618,12 +618,7 @@ def regenerate_steps(
 
 
 @shared_task(bind=True, max_retries=2)
-def save_mapping_result(
-        self,
-        session_id: str,
-        stages: List[Dict],
-        path_junctions: List[Dict]
-) -> Dict:
+def save_mapping_result(session_id: str, stages: List[Dict], path_junctions: List[Dict], continue_to_next_path: bool = False):
     """Celery task: Organize stages and save FormMapResult to database."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
 
@@ -694,7 +689,7 @@ def save_mapping_result(
         logger.info(
             f"[FormMapperTask] Saved FormMapResult id={form_map_result.id} for session {session_id}, path #{form_map_result.path_number}, {len(updated_stages or stages)} stages")
 
-        result = {"stages": updated_stages, "success": True, "form_map_result_id": form_map_result.id}
+        result = {"stages": updated_stages, "success": True, "form_map_result_id": form_map_result.id, "continue_to_next_path": continue_to_next_path}
         _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
 

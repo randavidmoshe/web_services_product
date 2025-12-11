@@ -229,6 +229,16 @@ class AIErrorRecovery:
                 "type": "text",
                 "text": prompt
             })
+
+            #print("\n" + "!" * 80)
+            #print("!!!!!!!! REGENERATE_STEPS_AFTER_ALERT - FINAL PROMPT TO AI !!!!")
+            #print("!" * 80)
+            #import re as re_module
+            #prompt_no_dom = re_module.sub(r'=== CURRENT PAGE DOM ===.*?(?=\n\s*===|\n\s*\*\*|\Z)',
+            #                              '=== CURRENT PAGE DOM ===\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
+            #                              flags=re_module.DOTALL)
+            #print(prompt_no_dom)
+            #print("!" * 80 + "\n")
             
             # Use multimodal retry if we have image, otherwise use regular retry
             if screenshot_base64:

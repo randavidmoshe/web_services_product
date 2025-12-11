@@ -9,6 +9,9 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
+from services.path_evaluation_service import (
+    PathEvaluationService, JunctionsState, create_path_evaluation_service
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -128,8 +131,10 @@ class FormMapperOrchestrator:
             "form_route_id": form_route_id or 0, "form_page_url": form_page_url,
             "state": MapperState.INITIALIZING.value, "previous_state": "",
             "current_step_index": 0, "all_steps": "[]", "executed_steps": "[]",
-            "current_dom_hash": "", "current_path": 0, "previous_paths": "[]",
-            "current_path_junctions": "[]", "test_cases": json.dumps(test_cases),
+            "current_dom_hash": "", "current_path": 1, "previous_paths": "[]",
+            "current_path_junctions": "[]", "junctions_state": "{}",
+            "junction_instructions": "{}", "total_paths": 1,
+            "test_cases": json.dumps(test_cases),
             "test_context": json.dumps(test_context), "config": json.dumps(company_config),
             "consecutive_failures": 0, "recovery_failure_history": "[]",
             "critical_fields_checklist": "{}", "field_requirements_for_recovery": "",
@@ -681,17 +686,25 @@ class FormMapperOrchestrator:
             else:
                 print(
                     f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
-        # Track junction
-        if config.get("enable_junction_discovery", True):
-            action = step.get("action", "").lower()
-            if action in ["select", "check", "click"]:
-                junctions = session.get("current_path_junctions", [])
-                junctions.append({"field": step.get("description", "Unknown"),
-                                 "selector": step.get("selector", ""),
-                                 "value": step.get("value", ""), "action": action})
-                self.update_session(session_id, {"current_path_junctions": junctions})
-                print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Junction detected: {step.get('description')} = {step.get('value')}")
-                logger.info(f"[Orchestrator] Junction: {step.get('description')}")
+
+        # Track junction using new path evaluation service
+        if step.get("is_junction") and config.get("enable_junction_discovery", True):
+            from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
+            path_eval = create_path_evaluation_service()
+            junctions_state_json = session.get("junctions_state", "{}")
+            junctions_state = JunctionsState.from_dict(
+                json.loads(junctions_state_json) if junctions_state_json else {})
+
+            # Update junction based on fields_changed
+            fields_changed = result.get("fields_changed", False)
+            junctions_state = path_eval.update_junction_from_step(junctions_state, step, fields_changed)
+
+            # Save updated state
+            self.update_session(session_id, {"junctions_state": json.dumps(junctions_state.to_dict())})
+            print(
+                f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Junction updated: {step.get('description')} = {step.get('value')}, fields_changed={fields_changed}")
+            logger.info(
+                f"[Orchestrator] Junction updated: {step.get('description')}, status={junctions_state.to_dict()}")
         
         # Get screenshot for UI verification
         if config.get("enable_ui_verification", True):
@@ -823,8 +836,55 @@ class FormMapperOrchestrator:
     def _complete_all_paths(self, session_id: str) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
-        self.transition_to(session_id, MapperState.SAVING_RESULT)
+        config = session.get("config", {})
         executed_steps = session.get("executed_steps", [])
+
+        # Evaluate if more paths are needed using new junction system
+        if config.get("enable_junction_discovery", True):
+            from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
+            path_eval = create_path_evaluation_service()
+            junctions_state_json = session.get("junctions_state", "{}")
+            junctions_state = JunctionsState.from_dict(json.loads(junctions_state_json) if junctions_state_json else {})
+
+            # Build junction choices from executed steps
+            junction_choices = {}
+            for step in executed_steps:
+                if step.get("is_junction"):
+                    junction_info = step.get("junction_info", {})
+                    selector = step.get("selector", "")
+                    junction_id = f"junction_{selector.replace('#', '').replace('.', '_').replace('[', '_').replace(']', '')}"
+                    junction_choices[junction_id] = junction_info.get("chosen_option") or step.get("value")
+
+            # Record completed path (result_id will be set after save)
+            junctions_state = path_eval.complete_path(junctions_state, junction_choices, result_id=None)
+
+            # Evaluate if more paths needed
+            eval_result = path_eval.evaluate_paths(junctions_state)
+            logger.info(f"[Orchestrator] Path evaluation: {eval_result}")
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Path evaluation: {eval_result}")
+
+            if not eval_result["all_paths_complete"]:
+                # More paths needed - save current path first, then start next
+                self.update_session(session_id, {
+                    "junctions_state": json.dumps(junctions_state.to_dict()),
+                    "junction_instructions": json.dumps(eval_result["junction_instructions"]),
+                    "current_path": eval_result["next_path_number"],
+                    "total_paths": eval_result["total_paths_needed"]
+                })
+                logger.info(
+                    f"[Orchestrator] More paths needed. Starting path {eval_result['next_path_number']} of {eval_result['total_paths_needed']}")
+                # Save current path result first
+                self.transition_to(session_id, MapperState.SAVING_RESULT)
+                path_junctions = session.get("current_path_junctions", [])
+                return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
+                        "celery_args": {"session_id": session_id, "stages": executed_steps,
+                                        "path_junctions": path_junctions, "continue_to_next_path": True}}
+
+            # All paths complete - save final state
+            self.update_session(session_id, {"junctions_state": json.dumps(junctions_state.to_dict())})
+
+        # Save result and complete
+        self.transition_to(session_id, MapperState.SAVING_RESULT)
         path_junctions = session.get("current_path_junctions", [])
         return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
                 "celery_args": {"session_id": session_id, "stages": executed_steps,
@@ -833,12 +893,45 @@ class FormMapperOrchestrator:
     def handle_mapping_complete(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+
+        # Check if we need to continue to next path
+        if result.get("continue_to_next_path"):
+            logger.info(f"[Orchestrator] Path saved, starting next path...")
+            # Reset for next path
+            self.update_session(session_id, {
+                "executed_steps": "[]",
+                "all_steps": "[]",
+                "current_step_index": 0,
+                "current_path_junctions": "[]"
+            })
+            # Start new AI analysis with junction instructions
+            return self._restart_for_next_path(session_id)
+
         final_stages = result.get("stages", session.get("executed_steps", []))
         self.transition_to(session_id, MapperState.COMPLETED, final_steps=final_stages,
                            completed_at=datetime.utcnow().isoformat())
         self._sync_session_status_to_db(session_id, "completed")
         logger.info(f"[Orchestrator] Session {session_id} COMPLETED: {len(final_stages)} steps")
         return {"success": True, "state": "completed", "total_steps": len(final_stages)}
+
+    def _restart_for_next_path(self, session_id: str) -> Dict:
+        """Restart mapping for the next junction path"""
+        session = self.get_session(session_id)
+        if not session: return {"success": False, "error": "Session not found"}
+
+        # Navigate back to form and start fresh
+        self.transition_to(session_id, MapperState.NAVIGATING)
+        form_route_id = session.get("form_route_id")
+        nav_stages = self._load_navigation_stages(form_route_id) if form_route_id else []
+
+        if nav_stages:
+            self.update_session(session_id, {"all_steps": json.dumps(nav_stages)})
+            return self._execute_next_step(session_id)
+        else:
+            # No navigation needed, go straight to DOM extraction
+            self.transition_to(session_id, MapperState.EXTRACTING_INITIAL_DOM)
+            task = self._push_agent_task(session_id, "form_mapper_extract_dom", {})
+            return {"success": True, "state": "extracting_initial_dom", "agent_task": task}
 
     # ============================================================
     # DATABASE HELPERS

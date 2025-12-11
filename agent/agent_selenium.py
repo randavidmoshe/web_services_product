@@ -601,9 +601,39 @@ class AgentSelenium:
         try:
             from datetime import datetime
             import re
-            
-            # Get screenshot as PNG bytes
-            screenshot_png = self.driver.get_screenshot_as_png()
+
+            # Get FULL PAGE screenshot using CDP (Chrome DevTools Protocol)
+            import math
+            try:
+                # Get page dimensions
+                metrics = self.driver.execute_cdp_cmd('Page.getLayoutMetrics', {})
+                width = math.ceil(metrics['contentSize']['width'])
+                height = math.ceil(metrics['contentSize']['height'])
+
+                # Set viewport to full page size
+                self.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                    'width': width,
+                    'height': height,
+                    'deviceScaleFactor': 1,
+                    'mobile': False
+                })
+
+                # Capture full page screenshot
+                screenshot_data = self.driver.execute_cdp_cmd('Page.captureScreenshot', {
+                    'format': 'png',
+                    'fromSurface': True,
+                    'captureBeyondViewport': True
+                })
+
+                # Reset viewport
+                self.driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride', {})
+
+                screenshot_png = base64.b64decode(screenshot_data['data'])
+
+            except Exception as cdp_error:
+                # Fallback to regular screenshot if CDP fails
+                print(f"[Agent] CDP full page screenshot failed, using fallback: {cdp_error}")
+                screenshot_png = self.driver.get_screenshot_as_png()
             
             # Prepare response
             result = {
@@ -1079,6 +1109,10 @@ class AgentSelenium:
             
             # Check if fields changed
             fields_changed = self._compare_dom_fields(dom_before, dom_after)
+
+            # DEBUG: Save screenshot when fields change
+            #if fields_changed:
+            #    self.capture_screenshot("fields_changed_debug")
             
             self.results_logger.info(f"  ✅ Success")
             self.results_logger.info("-" * 70)

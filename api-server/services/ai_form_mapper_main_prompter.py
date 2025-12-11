@@ -164,72 +164,24 @@ class AIHelper:
             self,
             dom_html: str,
             test_cases: List[Dict[str, str]],
+            screenshot_base64: Optional[str] = None,
+            critical_fields_checklist: Optional[Dict[str, str]] = None,
+            field_requirements: Optional[str] = None,
+            junction_instructions: Optional[str] = None,
+            # Legacy params - kept for backward compatibility with callers
             previous_steps: Optional[List[Dict]] = None,
             step_where_dom_changed: Optional[int] = None,
             test_context=None,
             is_first_iteration: bool = False,
-            screenshot_base64: Optional[str] = None,
-            critical_fields_checklist: Optional[Dict[str, str]] = None,
-            field_requirements: Optional[str] = None,
             previous_paths: Optional[List[Dict]] = None,
             current_path_junctions: Optional[List[Dict]] = None
     ) -> Dict[str, Any]:
         """
         Generate Selenium test steps based on DOM and test cases.
-        If DOM changed, provide previous steps and which step caused the change.
-        
+
         Returns:
             Dict with 'steps' (list), 'ui_issue' (string), and 'no_more_paths' (bool)
         """
-        
-        # Build the prompt
-        if previous_steps and step_where_dom_changed is not None:
-            context = f"""
-DOM CHANGED after executing step {step_where_dom_changed}.
-
-Previous steps that were executed:
-{json.dumps(previous_steps[:step_where_dom_changed + 1], indent=2)}
-
-Please generate the REMAINING steps (starting from step {step_where_dom_changed + 1}) 
-based on this NEW DOM state.
-"""
-        else:
-            context = "This is the initial DOM. Please generate ALL test steps."
-
-        import random
-
-        if is_first_iteration and test_context:
-            # First iteration: generate NEW random credentials for registration if needed
-            timestamp = int(time.time())
-            test_email = f"testuser_{timestamp}@example.com"
-            test_password = f"TestPass{random.randint(1000, 9999)}"
-            test_name = f"TestUser{random.randint(100, 999)}"
-
-            credentials_instruction = f"""=== TEST CREDENTIALS (FOR REGISTRATION IF NEEDED) ===
-        If the form requires registration/login, use these NEW credentials:
-        - Name: {test_name}
-        - Email: {test_email}
-        - Password: {test_password}
-
-        Store these credentials as they may be used for login in subsequent steps.
-        """
-            # Save to context
-            test_context.registered_name = test_name
-            test_context.registered_email = test_email
-            test_context.registered_password = test_password
-        else:
-            # Subsequent iterations: use EXISTING credentials for login only
-            if test_context and test_context.has_credentials():
-                credentials_instruction = f"""=== TEST CREDENTIALS (LOGIN ONLY) ===
-        User is already registered. For any login tests, use these credentials:
-        - Name: {test_context.registered_name}
-        - Email: {test_context.registered_email}
-        - Password: {test_context.registered_password}
-
-        DO NOT perform registration again. Only do login if needed.
-        """
-            else:
-                credentials_instruction = "=== NO CREDENTIALS AVAILABLE ===\nSkip any login/registration tests.\n"
 
         # Build UI verification section - simplified intro without UI verification task
         ui_task_section = "You are a test automation expert. Your task is to generate Selenium WebDriver test steps for the form page.\n\n"
@@ -269,52 +221,37 @@ This checklist will remain active until the test completes successfully.
 
 """
 
-        # Build route planning section for junction discovery
+        # Junction instructions for multi-path discovery
         route_planning_section = ""
-        if previous_paths:
-            paths_summary = json.dumps(previous_paths, indent=2)
-            current_junctions_info = ""
-            if current_path_junctions:
-                current_junctions_info = f"""
-**CURRENT PATH JUNCTIONS (so far):**
-{json.dumps(current_path_junctions, indent=2)}
-"""
+        if junction_instructions:
             route_planning_section = f"""
-🔀🔀🔀 ROUTE PLANNING - JUNCTION DISCOVERY MODE 🔀🔀🔀
-================================================================================
-**GOAL:** Discover all form variations by taking DIFFERENT paths through junctions.
-
-**JUNCTIONS** are dropdowns, radio buttons, or other selectors where choosing different options reveals DIFFERENT fields.
-{current_junctions_info}
-**PREVIOUSLY COMPLETED PATHS:**
-{paths_summary}
-
-**YOUR TASK FOR THIS RUN:**
-1. Before filling the form, PLAN your route through the junctions
-2. Look at the junctions in previous paths and choose DIFFERENT values
-3. If you cannot find any new unexplored junction combinations, set "no_more_paths": true
-
-**IMPORTANT:** Choose different junction values than ALL previous paths to discover new form fields!
-================================================================================
+🔀 JUNCTION INSTRUCTIONS 🔀
+{junction_instructions}
+Follow these choices exactly.
 
 """
-        elif previous_paths is not None:  # Empty list = first path
-            route_planning_section = """
-🔀🔀🔀 ROUTE PLANNING - JUNCTION DISCOVERY MODE 🔀🔀🔀
-================================================================================
-**GOAL:** Discover all form variations by exploring different paths through junctions.
 
-**JUNCTIONS** are dropdowns, radio buttons, or other selectors where choosing different options reveals DIFFERENT fields.
+        # Screenshot emphasis section
+        screenshot_section = ""
+        if screenshot_base64:
+            screenshot_section = """
+            🖼️ SCREENSHOT PROVIDED - FOR VISUAL CONTEXT
+            ================================================================================
+            Use the screenshot to understand:
+            - Which tab/section is currently active
+            - Visual layout and what's currently visible
+            - Any modals, overlays, or popups shown
 
-**This is the FIRST PATH.** Fill the form normally and we will track which junctions you encounter.
+            **IMPORTANT:** The screenshot only shows the visible viewport - there may be MORE 
+            fields in scrollable areas that you can't see in the image but ARE in the DOM.
+            Always check the DOM for the complete list of fields - the screenshot is just 
+            a visual aid, not the complete picture!
+            ================================================================================
 
-⚠️ **IMPORTANT:** On the FIRST PATH, you MUST set "no_more_paths": false. 
-   This is just the beginning of discovery - there are always more paths to explore after path 1!
-================================================================================
-
-"""
+            """
 
         prompt = f"""{ui_task_section}
+{screenshot_section}
 {critical_fields_section}
 {route_planning_section}
         === SELECTOR GUIDELINES ===
@@ -562,18 +499,8 @@ This checklist will remain active until the test completes successfully.
         
         **DO NOT skip tabs! Every tab must be filled before moving forward!**
         
-        **Form Junctions - Random Selection:**
-        Forms have "junctions" where user choices affect what appears next:
-        - Dropdown selection → might show/hide fields
-        - Radio button choice → might reveal new sections
-        - Checkbox → might enable additional options
-        - Tab selection → shows different content
-        
-        **At EVERY junction, you must:**
-        1. Identify available options (e.g., dropdown has 5 options)
-        2. Make a RANDOM choice (don't always pick the first!)
-        3. Fill ALL fields and list items and dropdowns and anything else a user fills up that appear as a result
-        4. Continue to next junction
+        **Junctions (dropdowns, radios, checkbox groups):**
+        For fields with multiple options, add `"is_junction": true` and `"junction_info": {{"all_options": ["opt1", "opt2", ...], "chosen_option": "your_choice"}}`. Choose a non-default option.
                
         
         **Your Testing Path - Act Like a Real User:**
@@ -621,7 +548,6 @@ This checklist will remain active until the test completes successfully.
 
         === TEST CONTEXT & CREDENTIALS ===
 
-        {credentials_instruction}
 
         **Form Data Guidelines:**
         When generating test data for forms:
@@ -632,8 +558,8 @@ This checklist will remain active until the test completes successfully.
         - ONLY the main identifying field (e.g., Person Name, Company Name, Title) gets a random suffix like "_184093" (e.g., "John Doe_184093")
         - ALL OTHER FIELDS should have NORMAL realistic values WITHOUT any suffix!
         
-        - Name (main field): {test_context.registered_name if test_context and test_context.registered_name else 'Add unique suffix (e.g., TestUser_184093)'}
-        - Email: {test_context.registered_email if test_context and test_context.registered_email else 'Normal email like john@example.com (NO suffix!)'}
+        - Name (main field): {'Add unique suffix (e.g., TestUser_184093)'}
+        - Email: {'Normal email like john@example.com (NO suffix!)'}
         - Phone, Address, City, State, Zip, Country, Numbers: Normal realistic values (NO suffix!)
         - Dates: Look at screenshot/placeholder for required format
 
@@ -817,6 +743,8 @@ This checklist will remain active until the test completes successfully.
            - "value": string or null (value for fill/select actions)
            - "verification": string or null (what to verify after action)
            - "wait_seconds": number (seconds to wait after action)
+           - "is_junction": boolean (optional - for dropdowns/radios/checkbox groups)
+           - "junction_info": object (optional - {{"all_options": [...], "chosen_option": "..."}})
 
         3. **Selector Selection Process (follow this order):**
            Step 1: Look for data-qa, data-testid, data-test attributes → USE THESE FIRST
@@ -1023,8 +951,6 @@ This checklist will remain active until the test completes successfully.
         ☐ Following ONE path through the form
         ☐ Valid JSON format (no trailing commas, proper quotes)
 
-        {context}
-
         === RESPONSE FORMAT ===
         Return ONLY a JSON object with this structure:
 
@@ -1065,11 +991,27 @@ This checklist will remain active until the test completes successfully.
                         "text": prompt
                     }
                 ]
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!!!! GENERATE_TEST_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
             else:
                 # Text-only API (backward compatibility)
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!!!!!! GENERATE_TEST_STEPS - (NO IMAGE ..??) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
                 response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
-            
+
+
+
             if response_text is None:
                 print("[AIHelper] ❌ Failed to get response from API after retries")
                 logger.error("[AIHelper] Failed to get response from API after retries")
@@ -1133,7 +1075,8 @@ This checklist will remain active until the test completes successfully.
         critical_fields_checklist: Optional[Dict[str, str]] = None,
         field_requirements: Optional[str] = None,
         previous_paths: Optional[List[Dict]] = None,
-        current_path_junctions: Optional[List[Dict]] = None
+            current_path_junctions: Optional[List[Dict]] = None,
+            junction_instructions: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Regenerate remaining steps after DOM change
@@ -1208,50 +1151,33 @@ This checklist will remain active until the test completes successfully.
 
 """
 
-            # Build route planning section for junction discovery
+            # Junction instructions for multi-path discovery
             route_planning_section = ""
-            if previous_paths:
-                paths_summary = json.dumps(previous_paths, indent=2)
-                current_junctions_info = ""
-                if current_path_junctions:
-                    current_junctions_info = f"""
-**CURRENT PATH JUNCTIONS (already taken in this run):**
-{json.dumps(current_path_junctions, indent=2)}
-"""
+            if junction_instructions:
                 route_planning_section = f"""
-🔀🔀🔀 ROUTE PLANNING - JUNCTION DISCOVERY MODE 🔀🔀🔀
-================================================================================
-**GOAL:** Continue exploring a DIFFERENT path than previous runs.
-{current_junctions_info}
-**PREVIOUSLY COMPLETED PATHS:**
-{paths_summary}
-
-**YOUR TASK:** Continue with the planned route. For any remaining junctions, choose values DIFFERENT from previous paths.
-If no more unexplored combinations exist, set "no_more_paths": true.
-================================================================================
-
-"""
-            elif previous_paths is not None:  # Empty list = first path
-                current_junctions_info = ""
-                if current_path_junctions:
-                    current_junctions_info = f"""
-**CURRENT PATH JUNCTIONS (already taken in this run):**
-{json.dumps(current_path_junctions, indent=2)}
-"""
-                route_planning_section = f"""
-🔀🔀🔀 ROUTE PLANNING - JUNCTION DISCOVERY MODE 🔀🔀🔀
-================================================================================
-**GOAL:** This is the FIRST PATH. Continue filling the form normally.
-{current_junctions_info}
-⚠️ **IMPORTANT:** On the FIRST PATH, you MUST set "no_more_paths": false.
-   This is just the beginning of discovery - there are always more paths to explore after path 1!
-================================================================================
+🔀 JUNCTION INSTRUCTIONS 🔀
+{junction_instructions}
+Follow these choices exactly.
 
 """
             
-            # Build full prompt - simplified without UI verification task
+            # Screenshot emphasis section
+            screenshot_section = ""
+            if screenshot_base64:
+                screenshot_section = """
+                🖼️ SCREENSHOT PROVIDED - FOR VISUAL CONTEXT - ONLY FOR CREATE TESTS - NOT FOR VERIFY TESTS
+                ==========================================================================================
+                Use the screenshot to see the current state after DOM change.
+
+                **IMPORTANT:** The screenshot only shows the visible viewport - there may be MORE 
+                fields in scrollable areas. Always check the DOM for the complete list of fields!
+                ===========================================================================================
+
+                """
+
             prompt = f"""You are a web automation expert. Your task is to generate remaining Selenium WebDriver test steps after a DOM change.
 
+{screenshot_section}
 {critical_fields_section}
 {route_planning_section}
 The DOM has changed after executing some steps.
@@ -1298,6 +1224,10 @@ Generate steps to:
 4. Handle any dropdowns, checkboxes, or special inputs
 5. Submit the form
 6. Verify success
+
+**Junctions (dropdowns, radios, checkbox groups):**
+For fields with multiple options, add `"is_junction": true` and `"junction_info": {{"all_options": ["opt1", "opt2", ...], "chosen_option": "your_choice"}}`. Choose a non-default option.
+
 
 ## Response Format:
 Return ONLY a JSON object with this structure:
@@ -1559,11 +1489,26 @@ Return ONLY the JSON object, no other text.
                         "text": prompt
                     }
                 ]
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
             else:
                 # Text-only API
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!! REGENERATE_STEPS - (NO IMAGE ... ?) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
                 response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
-            
+
+
             if response_text is None:
                 print("[AIHelper] ❌ Failed to regenerate steps after retries")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
@@ -1759,7 +1704,16 @@ Return ONLY the JSON object, no other text.
                     "text": prompt
                 }
             ]
-            
+
+            #print("\n" + "!" * 80)
+            #print("!!!!!!!! ANALYZE_FAILURE_AND_RECOVER - FINAL PROMPT TO AI !!!!")
+            #print("!" * 80)
+            #import re
+            #prompt_no_dom = re.sub(r'=== CURRENT PAGE DOM ===.*?(?=\n\s*===)',
+            #                       '=== CURRENT PAGE DOM ===\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+            #print(prompt_no_dom)
+            #print("!" * 80 + "\n")
+
             response_text = self._call_api_with_retry_multimodal(content, max_tokens=16000, max_retries=3)
             
             if response_text is None:
