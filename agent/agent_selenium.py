@@ -1036,6 +1036,28 @@ class AgentSelenium:
         Returns:
             Dict with success status and any relevant data
         """
+
+        # Wait if page is loading from previous action
+        loading_result = self._wait_if_page_loading(timeout=60)
+        if loading_result.get('timeout'):
+            return {
+                "success": False,
+                "error": "Page loading timeout - waited 60 seconds but page still loading"
+            }
+
+        # Check if selector is unique (skip for actions that don't need selector)
+        action = step.get('action', 'unknown').lower()
+        selector = step.get('selector', '')
+
+        if selector and action not in ['wait', 'switch_to_default', 'accept_alert', 'dismiss_alert']:
+            unique_check = self._check_selector_unique(selector)
+            if not unique_check.get('unique'):
+                return {
+                    "success": False,
+                    "error": unique_check.get('error'),
+                    "selector_count": unique_check.get('count', 0)
+                }
+
         action = step.get('action', 'unknown')
         description = step.get('description', 'No description')
         step_number = step.get('step_number', '?')
@@ -1084,6 +1106,7 @@ class AgentSelenium:
                 # Get new DOM hash after alert is accepted
                 # Wait briefly for JavaScript to finish
                 time.sleep(0.5)
+                self.wait_for_stable_dom(timeout=3, stability_time=0.3)
                 dom_after = self.extract_dom()
                 new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
                 
@@ -1104,6 +1127,7 @@ class AgentSelenium:
             # No alert - get new DOM hash
             # Wait briefly for JavaScript to finish (especially for conditional field visibility changes)
             time.sleep(0.5)
+            self.wait_for_stable_dom(timeout=3, stability_time=0.3)
             dom_after = self.extract_dom()
             new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
             
@@ -1855,3 +1879,171 @@ class AgentSelenium:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def wait_for_stable_dom(self, timeout=3, stability_time=0.3):
+        """
+        Wait until DOM stops changing for stability_time seconds.
+        Returns True if stable, False if timeout.
+        """
+        script = """
+        return new Promise((resolve) => {
+            let lastChange = Date.now();
+            const stabilityMs = %d;
+            const timeoutMs = %d;
+
+            const observer = new MutationObserver(() => {
+                lastChange = Date.now();
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true
+            });
+
+            const startTime = Date.now();
+
+            const checkStable = setInterval(() => {
+                const now = Date.now();
+                // Stable: no changes for stabilityMs
+                if (now - lastChange >= stabilityMs) {
+                    clearInterval(checkStable);
+                    observer.disconnect();
+                    resolve(true);
+                }
+                // Timeout
+                if (now - startTime >= timeoutMs) {
+                    clearInterval(checkStable);
+                    observer.disconnect();
+                    resolve(false);
+                }
+            }, 50);
+        });
+        """ % (int(stability_time * 1000), int(timeout * 1000))
+
+        try:
+            result = self.driver.execute_script(script)
+            return result
+        except Exception as e:
+            print(f"[Agent] wait_for_stable_dom error: {e}")
+            return False
+
+    def _wait_if_page_loading(self, timeout=60):
+        """If page is loading, wait for it to finish. If not loading, return immediately."""
+
+        script = """
+        return new Promise((resolve) => {
+            const timeoutMs = arguments[0];
+            const startTime = Date.now();
+
+            function isLoading() {
+                // 1. aria-busy
+                if (document.querySelector('[aria-busy="true"]')) return true;
+
+                // 2. role="progressbar" visible
+                const prog = document.querySelector('[role="progressbar"]');
+                if (prog && prog.offsetParent !== null) return true;
+
+                // 3. CSS animation (spinner)
+                for (const el of document.querySelectorAll('*')) {
+                    if (el.offsetParent === null) continue;
+                    const style = getComputedStyle(el);
+                    if (style.animationName && style.animationName !== 'none') {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 10 && rect.width < 200 && rect.height > 10 && rect.height < 200) {
+                            return true;
+                        }
+                    }
+                }
+
+                // 4. Overlay covering screen
+                for (const el of document.querySelectorAll('*')) {
+                    if (el.offsetParent === null) continue;
+                    const style = getComputedStyle(el);
+                    if (style.position === 'fixed' && parseFloat(style.zIndex) > 100) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > window.innerWidth * 0.3 && rect.height > window.innerHeight * 0.3) {
+                            return true;
+                        }
+                    }
+                }
+
+                // 5. Loading text (short text only)
+                const loadingTexts = ['loading', 'processing', 'please wait', 'submitting', 'saving'];
+                for (const el of document.querySelectorAll('div, span, p')) {
+                    if (el.offsetParent === null) continue;
+                    const text = (el.innerText || '').toLowerCase().trim();
+                    if (text.length > 0 && text.length < 50 && loadingTexts.some(t => text.includes(t))) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            // If not loading, return immediately
+            if (!isLoading()) {
+                resolve({waited: 0, was_loading: false});
+                return;
+            }
+
+            console.log('[Agent] Page loading detected, waiting...');
+
+            const check = setInterval(() => {
+                if (!isLoading()) {
+                    clearInterval(check);
+                    resolve({waited: Date.now() - startTime, was_loading: true});
+                }
+                if (Date.now() - startTime > timeoutMs) {
+                    clearInterval(check);
+                    resolve({waited: timeoutMs, was_loading: true, timeout: true});
+                }
+            }, 200);
+        });
+        """
+
+        try:
+            result = self.driver.execute_script(script, timeout * 1000)
+            if result.get('was_loading'):
+                print(f"[Agent] ⏳ Waited {result.get('waited')}ms for loading to finish")
+            return result
+        except Exception as e:
+            print(f"[Agent] _wait_if_page_loading error: {e}")
+            return {'waited': 0, 'was_loading': False}
+
+
+    def _check_selector_unique(self, selector: str) -> Dict:
+        """Check if selector matches exactly one element. Returns error if not unique."""
+        if not selector:
+            return {"unique": True}  # No selector = skip check
+
+        try:
+            # Determine selector type
+            if selector.startswith("//") or selector.startswith("(//"):
+                elements = self.driver.find_elements(By.XPATH, selector)
+            else:
+                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+
+            count = len(elements)
+
+            if count == 0:
+                return {
+                    "unique": False,
+                    "error": f"Selector not found: {selector}",
+                    "count": 0
+                }
+            elif count > 1:
+                return {
+                    "unique": False,
+                    "error": f"Selector not unique - found {count} elements: {selector}",
+                    "count": count
+                }
+            else:
+                return {"unique": True, "count": 1}
+
+        except Exception as e:
+            return {
+                "unique": False,
+                "error": f"Invalid selector: {selector} - {str(e)}",
+                "count": 0
+            }
