@@ -82,6 +82,30 @@ class AIFormMapperHelper:
             current_path_junctions=current_path_junctions
         )
 
+    def analyze_failure_and_recover(
+            self,
+            failed_step: Dict,
+            executed_steps: List[Dict],
+            fresh_dom: str,
+            screenshot_base64: str,
+            test_cases: List[Dict],
+            test_context,
+            attempt_number: int,
+            recovery_failure_history: List[Dict] = None,
+            error_message: str = ""
+    ) -> List[Dict]:
+        """Analyze a failed step and generate recovery steps"""
+        return self.helper.analyze_failure_and_recover(
+            failed_step=failed_step,
+            executed_steps=executed_steps,
+            fresh_dom=fresh_dom,
+            screenshot_base64=screenshot_base64,
+            test_cases=test_cases,
+            test_context=test_context,
+            attempt_number=attempt_number,
+            recovery_failure_history=recovery_failure_history,
+            error_message=error_message
+        )
 
 class AIAlertRecoveryHelper:
     """

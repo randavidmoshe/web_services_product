@@ -955,27 +955,16 @@ Follow these choices exactly.
 
         === RESPONSE FORMAT ===
         Return ONLY a JSON object with this structure:
+
         ```json
         {{
           "steps": [
-            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false}},
-            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true}}
+            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field"}},
+            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form"}}
           ],
           "no_more_paths": false
         }}
         ```
-        
-        **full_xpath field (REQUIRED for all actions EXCEPT verify):**
-        - Fallback selector if primary selector fails
-        - Must be absolute XPath starting from `/html/body/...`
-        - Use element indices for uniqueness: `/html/body/div[1]/div[2]/form/div[3]/input`
-        - Trace path from body to target element in the DOM
-        - For `verify` action: use empty string `""`
-        
-        **force_regenerate field (REQUIRED):**
-        - Set to `true` for steps that change page context: Save, Submit, Edit, View, Delete,  etc.
-        - Set to `false` for regular interactions: fill, select, click tab, check, hover, next, continue, etc.
-        - This tells the system to regenerate steps after this action completes
 
         - **steps**: Array of step objects to execute
         - **no_more_paths**: Set to `true` ONLY if all junction combinations have been explored (no new paths possible). Otherwise `false`.
@@ -1156,10 +1145,10 @@ These fields caused the previous failure - pay special attention to them.
             screenshot_section = ""
             if screenshot_base64:
                 screenshot_section = """
-🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY VIEWING THE SCREENSHOT AND EXAMINING THE DOM:
-1. Extract ALL input fields and repeatable lists with "Add"/"+"/etc from DOM (input, select, textarea, checkbox, radio, list items(with add buttons), everything user can add/input)
-2. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
-3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
+🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY):
+1. FIRST: Extract ALL input fields from DOM (input, select, textarea, checkbox, radio)
+2. THEN: Check screenshot for any additional fields not visible in DOM
+3. Generate steps for EVERY field - do NOT skip any
 4. Screenshot shows active tab/section and visual layout
 5. BEFORE adding any navigation step (next tab, submit), re-check DOM and screenshot to ensure no field was skipped
 
@@ -1184,12 +1173,10 @@ Generate the REMAINING steps to complete the test. Include 2-4 steps from next t
 
 **Priority order:**
 1. If previous step was next/continue button AND you see a blocking overlay/modal (covers >30% of page), generate `wait_message_hidden` with selector from DOM.
-2. Complete current tab 100% before moving to next tab:
-   - Fill ALL input fields (text, date, email, etc.)
-   - Click EVERY "Add" button you find (each is a DIFFERENT list - Advertisements, Affiliates , Items, etc.)
-   - Handle special inputs (dropdowns, checkboxes, sliders, file uploads)
-3. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
-4. Submit form and verify success
+2. Fill all fields in current tab before navigating to next tab, including nested inner tabs
+3. For repeatable lists with "Add"/"+", etc buttons, add 1 item per list type
+4. Handle special inputs (dropdowns, checkboxes, file uploads)
+5. Submit form and verify success
 
 **For edit/update tests:** Navigate → Verify original value → Clear → Update → Navigate back
 
@@ -1197,23 +1184,11 @@ Generate the REMAINING steps to complete the test. Include 2-4 steps from next t
 ```json
 {{
   "steps": [
-    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false}}
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description"}}
   ],
   "no_more_paths": false
 }}
 ```
-
-**full_xpath field (REQUIRED, NOT for verify action):**
-- Fallback selector if primary selector fails
-- Must be absolute XPath starting from `/html/body/...`
-- Use element indices for uniqueness: `/html/body/div[1]/div[2]/form/div[3]/input`
-- Look at DOM structure and trace path from body to target element
-- Example: for `input#email` inside a form, full_xpath might be `/html/body/div[1]/form/div[4]/input`
-- For `verify` action: use empty string `""`
-
-**force_regenerate field (REQUIRED):**
-- Set to `true` for steps that change page context: Save, Submit, Edit, View, Delete, etc.
-- Set to `false` for regular interactions: fill, select, click tab, check, hover, continue, next, etc.
 
 ---
 
@@ -1359,15 +1334,15 @@ Return ONLY the JSON object.
                         "text": prompt
                     }
                 ]
-                print("\n" + "!" * 80)
-                print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
-                print("!" * 80)
-                import re
-                prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
-                                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
-                                       flags=re.DOTALL)
-                print(prompt_no_dom)
-                print("!" * 80 + "\n")
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
+                #                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
+                #                       flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
                 print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
@@ -1575,8 +1550,8 @@ Return ONLY the JSON object.
             print("!!!!!!!! ANALYZE_FAILURE_AND_RECOVER - FINAL PROMPT TO AI !!!!")
             print("!" * 80)
             import re
-            prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
-                                   flags=re.DOTALL)
+            prompt_no_dom = re.sub(r'=== CURRENT PAGE DOM ===.*?(?=\n\s*===)',
+                                   '=== CURRENT PAGE DOM ===\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
             print(prompt_no_dom)
             print("!" * 80 + "\n")
 
@@ -1620,36 +1595,39 @@ Return ONLY the JSON object.
             recovery_failure_history: List[Dict] = None,
             error_message: str = None
     ) -> str:
-        """Build the prompt for failure recovery analysis - ONLY fix steps, not remaining steps"""
+        """Build the prompt for failure recovery analysis"""
 
         action = failed_step.get('action', 'unknown')
         selector = failed_step.get('selector', '')
         description = failed_step.get('description', '')
 
-        # Build executed steps context (last 5 steps for context)
+        # Build executed steps context
         executed_context = ""
         if executed_steps:
-            recent_steps = executed_steps[-5:] if len(executed_steps) > 5 else executed_steps
             executed_context = f"""
-## Recent steps completed:
-{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector")} for i, s in enumerate(recent_steps)], indent=2)}
+Steps completed successfully so far:
+{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
 """
 
         # Build recovery failure history section
         failure_history_section = ""
         if recovery_failure_history and len(recovery_failure_history) > 0:
             failure_history_section = f"""
-## ⚠️ Previous recovery attempts failed:
+## ⚠️ ACCUMULATED RECOVERY FAILURE HISTORY:
+The following steps have failed during this recovery session:
 {json.dumps(recovery_failure_history, indent=2)}
 
-**If 4+ failures on same action, return EMPTY array [] to signal unrecoverable.**
+**CRITICAL: If you see 4 or more failures in a row that are about the same stage (same action trying to do the same thing), 
+this indicates an unrecoverable issue. In this case, return an EMPTY array [] to signal that recovery is not possible.**
 """
 
         prompt = f"""# STEP FAILURE RECOVERY
 
-🖼️ **Screenshot and DOM provided.** Use DOM as primary source, screenshot for visual context.
+🖼️ **LOOK AT DOM** to understand page state and fix failure. Use SCREENSHOT AS second source to get more info
 
-Fix the failed step. Return ONLY the fix steps (1-5 steps max). Do NOT generate remaining form steps.
+## Your Task:
+1. **FIX** the failed step (correct selector, close blocker, scroll, etc.)
+2. **GENERATE ALL REMAINING STEPS** to fill EVERY field in the entire form (all tabs, all sections) AND DO NOT MISS ANY FIELD
 
 ## Failed Step (Attempt {attempt_number}/2):
 - Action: {action}
@@ -1660,6 +1638,29 @@ Fix the failed step. Return ONLY the fix steps (1-5 steps max). Do NOT generate 
 {executed_context}
 {failure_history_section}
 
+## After Fixing STEPS - Priority Order:
+1. **COMPARE:** Look at "Steps completed" above vs DOM below - find ALL unfilled fields on current tab/section
+2. ADD STEPS TO Fill ALL remaining unfilled fields (inputs, textareas, selects, checkboxes) in present tab and all other tabs including nested tabs first
+3. For sections with "Add" buttons that were NOT clicked yet, click them and fill the modal
+5. Repeat for ALL tabs, then submit
+
+---
+
+## This is the General list of Test Cases:
+{json.dumps(test_cases, indent=2)}
+
+**For edit/update tests:** Navigate → Verify original → Clear → Update → Navigate back (use switch_to_default)
+
+---
+
+
+
+🖼️ **CRITICAL - AFTER THE RECOVERY STEPS ADD STEPS TO FILL ALL FIELDS (DO NOT SKIP ANY):**
+1. **USE DOM AS PRIMARY SOURCE** - extract ALL input fields (input, select, textarea, checkbox, radio)
+2. Screenshot is secondary - use only to discover fields NOT visible in DOM
+3. Generate steps for EVERY field in DOM - do NOT skip any
+4. After closing modals, continue with remaining fields in same section before navigating
+
 ## Current DOM:
 ```html
 {fresh_dom}
@@ -1667,24 +1668,42 @@ Fix the failed step. Return ONLY the fix steps (1-5 steps max). Do NOT generate 
 
 ---
 
-## Common Fixes:
-- **Element not found:** Check DOM for correct selector, element may have different id/class
-- **Element not visible:** Scroll to element, wait for visible, or close blocking overlay
-- **Selector not unique:** Use XPath scoped to parent: `//div[@id='modalId']//button[text()='Save']`
-- **Modal blocking:** Close with ESC or click X button
-- **Wrong iframe/shadow:** Switch context first with switch_to_frame/switch_to_shadow_root
+## Action Reference:
 
-## Selector Priority:
-1. ID `#fieldId` 2. Name `[name='x']` 3. XPath `//label[contains(text(),'X')]/..//input`
+**Available actions:** fill, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+
+**Context switching:**
+- `switch_to_default`: Exit iframe OR shadow DOM (ALWAYS use this to return)
+- `switch_to_parent_window`: Switch between browser windows only (NOT for iframe/shadow)
+
+**Slider:** value = 0-100 | **Drag/drop:** selector = drag, value = target | **File:** create_file then upload_file
+
+---
+
+## Selector Rules:
+
+**Prefer:** 1. ID `#fieldId` 2. Name `[name='x']` 3. Data attr `[data-testid='x']` 4. Class `.unique` 5. XPath `//label[contains(text(),'X')]/..//input`
+
+**If error says "Selector not unique":** MUST use XPath scoped to parent container:
+- `//div[@id='modalId']//button[contains(text(), 'Save')]`
+- `//div[contains(@class, 'modal')]//button[@type='submit']`
+- `//form[@id='formId']//button[contains(@class, 'save')]`
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
+---
+
+## Rules:
+- Never use CSS `:contains()` or `:has()` - not supported
+- Never `wait` > 10 seconds - use wait_for_ready
+- Fill ALL fields, complete current tab before next
+
 ## Response:
-Return ONLY JSON array with 1-5 fix steps:
+Return ONLY JSON array:
 ```json
 [
-  {{"step_number": 1, "action": "scroll", "selector": "#element", "value": "", "description": "Scroll to element"}},
-  {{"step_number": 2, "action": "click", "selector": "#correctSelector", "value": "", "description": "Click with fixed selector"}}
+  {{"step_number": 1, "action": "press_key", "selector": "body", "value": "ESC", "description": "Close overlay"}},
+  {{"step_number": 2, "action": "fill", "selector": "input#field1", "value": "test", "description": "Fill field"}}
 ]
 ```
 """

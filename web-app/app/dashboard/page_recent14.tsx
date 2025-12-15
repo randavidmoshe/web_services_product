@@ -580,48 +580,6 @@ export default function DashboardPage() {
       : `rgba(255, 255, 255, ${opacity * 0.3})`
   }
 
-  // Systematic background colors for consistency
-  const getBgColor = (level: 'card' | 'section' | 'input' | 'header' | 'hover' | 'muted') => {
-    if (isLightTheme()) {
-      switch (level) {
-        case 'card': return 'rgba(255, 255, 255, 0.95)'
-        case 'section': return 'rgba(0, 0, 0, 0.03)'
-        case 'input': return 'rgba(255, 255, 255, 0.9)'
-        case 'header': return 'rgba(0, 0, 0, 0.04)'
-        case 'hover': return 'rgba(0, 0, 0, 0.06)'
-        case 'muted': return 'rgba(0, 0, 0, 0.02)'
-        default: return 'rgba(255, 255, 255, 0.95)'
-      }
-    } else {
-      switch (level) {
-        case 'card': return 'rgba(255, 255, 255, 0.03)'
-        case 'section': return 'rgba(0, 0, 0, 0.1)'
-        case 'input': return 'rgba(255, 255, 255, 0.05)'
-        case 'header': return 'rgba(255, 255, 255, 0.05)'
-        case 'hover': return 'rgba(255, 255, 255, 0.08)'
-        case 'muted': return 'rgba(255, 255, 255, 0.02)'
-        default: return 'rgba(255, 255, 255, 0.03)'
-      }
-    }
-  }
-
-  // Systematic border colors
-  const getBorderColor = (emphasis: 'normal' | 'strong' | 'subtle' = 'normal') => {
-    if (isLightTheme()) {
-      switch (emphasis) {
-        case 'strong': return 'rgba(0, 0, 0, 0.15)'
-        case 'subtle': return 'rgba(0, 0, 0, 0.06)'
-        default: return 'rgba(0, 0, 0, 0.1)'
-      }
-    } else {
-      switch (emphasis) {
-        case 'strong': return 'rgba(255, 255, 255, 0.15)'
-        case 'subtle': return 'rgba(255, 255, 255, 0.06)'
-        default: return 'rgba(255, 255, 255, 0.1)'
-      }
-    }
-  }
-
   // Load theme from localStorage on mount and listen for changes
   useEffect(() => {
     const loadTheme = () => {
@@ -1637,126 +1595,18 @@ export default function DashboardPage() {
           boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`,
           animation: 'fadeIn 0.3s ease'
         }}>
-          {/* Header with buttons */}
+          {/* Header */}
           <div style={{
             padding: '32px 40px',
             borderBottom: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '10' : '12'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '08' : '08'})`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start'
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '10' : '12'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '08' : '08'})`
           }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '32px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px' }}>
-                <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
-              </h1>
-              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '18px' }}>
-                Editing: <strong style={{ color: getTheme().colors.textPrimary }}>{editingFormPage.form_name}</strong>
-              </p>
-            </div>
-            {/* Action Buttons - Top Right */}
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-              {editingFormPage && (
-                mappingFormIds.has(editingFormPage.id) ? (
-                  mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
-                    <button 
-                      disabled
-                      style={{
-                        background: 'linear-gradient(135deg, #9ca3af, #6b7280)',
-                        color: 'white',
-                        padding: '14px 28px',
-                        border: 'none',
-                        borderRadius: '12px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        cursor: 'not-allowed',
-                        boxShadow: '0 4px 15px rgba(156, 163, 175, 0.3)',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      ⏳ Stopping...
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => cancelMapping(editingFormPage.id)} 
-                      style={{
-                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                        color: 'white',
-                        padding: '14px 28px',
-                        border: 'none',
-                        borderRadius: '12px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      ⏹️ Stop Mapping
-                    </button>
-                  )
-                ) : (
-                  <button 
-                    onClick={() => {
-                      setShowEditPanel(false)
-                      openMapModal(editingFormPage)
-                    }} 
-                    style={{
-                      background: isLightTheme() 
-                        ? 'linear-gradient(135deg, #0ea5e9, #0284c7)'
-                        : 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-                      color: 'white',
-                      padding: '14px 28px',
-                      border: 'none',
-                      borderRadius: '12px',
-                      fontSize: '15px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: isLightTheme() ? '0 2px 8px rgba(14, 165, 233, 0.25)' : '0 4px 15px rgba(14, 165, 233, 0.3)',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    🗺️ Map Form
-                  </button>
-                )
-              )}
-              <button 
-                onClick={() => setShowEditPanel(false)} 
-                style={{
-                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
-                  color: isLightTheme() ? '#4b5563' : '#e2e8f0',
-                  padding: '14px 28px',
-                  border: isLightTheme() ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '12px',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={saveFormPage} 
-                style={{
-                  background: isLightTheme() 
-                    ? 'linear-gradient(135deg, #10b981, #059669)'
-                    : 'linear-gradient(135deg, #10b981, #059669)',
-                  color: 'white',
-                  padding: '14px 28px',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: isLightTheme() ? '0 2px 8px rgba(16, 185, 129, 0.25)' : '0 4px 15px rgba(16, 185, 129, 0.3)',
-                  transition: 'all 0.2s ease'
-                }}
-                disabled={savingFormPage}
-              >
-                {savingFormPage ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
+            <h1 style={{ margin: 0, fontSize: '32px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px' }}>
+              <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
+            </h1>
+            <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+              Editing: <strong style={{ color: getTheme().colors.textPrimary }}>{editingFormPage.form_name}</strong>
+            </p>
           </div>
 
           {/* Content - Two Column Layout */}
@@ -1860,8 +1710,8 @@ export default function DashboardPage() {
               <div style={{
                 display: 'flex',
                 gap: '20px',
-                background: isLightTheme() ? 'rgba(14, 165, 233, 0.08)' : 'rgba(0, 187, 249, 0.1)',
-                border: isLightTheme() ? '1px solid rgba(14, 165, 233, 0.2)' : '1px solid rgba(0, 187, 249, 0.2)',
+                background: 'rgba(0, 187, 249, 0.1)',
+                border: '1px solid rgba(0, 187, 249, 0.2)',
                 padding: '26px 30px',
                 borderRadius: '18px',
                 marginBottom: '32px',
@@ -2080,18 +1930,115 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Footer - minimal now that buttons are in header */}
+          {/* Footer */}
           <div style={{
-            padding: '20px 44px',
-            borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-            background: isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.15)',
+            padding: '28px 44px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(0,0,0,0.2)',
             display: 'flex',
-            justifyContent: 'center',
+            justifyContent: 'flex-end',
             gap: '18px'
           }}>
-            <p style={{ margin: 0, fontSize: '14px', color: getTheme().colors.textSecondary, opacity: 0.7 }}>
-              💡 Tip: Click on a step to expand and edit its details
-            </p>
+            {editingFormPage && (
+              mappingFormIds.has(editingFormPage.id) ? (
+                mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
+                  <button 
+                    disabled
+                    style={{
+                      background: 'linear-gradient(135deg, #9ca3af, #6b7280)',
+                      color: 'white',
+                      padding: '16px 32px',
+                      border: 'none',
+                      borderRadius: '14px',
+                      fontSize: '17px',
+                      fontWeight: 600,
+                      cursor: 'not-allowed',
+                      boxShadow: '0 4px 20px rgba(156, 163, 175, 0.3)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    ⏳ Stopping...
+                  </button>
+                ) : (
+                <button 
+                  onClick={() => cancelMapping(editingFormPage.id)} 
+                  style={{
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    color: 'white',
+                    padding: '16px 32px',
+                    border: 'none',
+                    borderRadius: '14px',
+                    fontSize: '17px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  ⏹️ Stop Mapping
+                </button>
+                )
+              ) : (
+                <button 
+                  onClick={() => {
+                    setShowEditPanel(false)
+                    openMapModal(editingFormPage)
+                  }} 
+                  style={{
+                    background: isLightTheme() 
+                      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                      : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    color: 'white',
+                    padding: '16px 32px',
+                    border: 'none',
+                    borderRadius: '14px',
+                    fontSize: '17px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: isLightTheme() ? '0 2px 8px rgba(245, 158, 11, 0.25)' : '0 4px 20px rgba(245, 158, 11, 0.3)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🗺️ Map Form
+                </button>
+              )
+            )}
+            <button 
+              onClick={() => setShowEditPanel(false)} 
+              style={{
+                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                color: isLightTheme() ? '#4b5563' : '#e2e8f0',
+                padding: '16px 32px',
+                border: isLightTheme() ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '14px',
+                fontSize: '17px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={saveFormPage} 
+              style={{
+                background: isLightTheme() 
+                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
+                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                color: 'white',
+                padding: '16px 32px',
+                border: 'none',
+                borderRadius: '14px',
+                fontSize: '17px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.25)' : '0 4px 20px rgba(99, 102, 241, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
+              disabled={savingFormPage}
+            >
+              {savingFormPage ? 'Saving...' : 'Save Changes'}
+            </button>
           </div>
         </div>
 
@@ -2689,8 +2636,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: getTheme().colors.textSecondary,
-                      background: getBgColor('header'),
+                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2717,8 +2664,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getBgColor('header'),
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2731,8 +2678,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getBgColor('header'),
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2746,8 +2693,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: getTheme().colors.textSecondary,
-                      background: getBgColor('header'),
+                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2773,8 +2720,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: getTheme().colors.textSecondary,
-                    background: getBgColor('header'),
+                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
+                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,

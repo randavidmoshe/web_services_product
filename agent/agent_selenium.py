@@ -870,6 +870,11 @@ class AgentSelenium:
             for tag_name in ['input', 'select', 'textarea']:
                 elements = soup.find_all(tag_name)
                 for elem in elements:
+
+                    # Skip elements inside open dropdown (role="listbox")
+                    if elem.find_parent(attrs={'role': ['listbox', 'menu']}):
+                        continue
+
                     # Get unique identifier
                     field_id = elem.get('id') or elem.get('name') or str(elem)
                     
@@ -1037,8 +1042,15 @@ class AgentSelenium:
             Dict with success status and any relevant data
         """
 
+        import time
+        step_start = time.time()
+
         # Wait if page is loading from previous action
+        print(f"[TIMING] Starting _wait_if_page_loading...")
+        loading_start = time.time()
         loading_result = self._wait_if_page_loading(timeout=60)
+        print(f"[TIMING] _wait_if_page_loading took {time.time() - loading_start:.2f}s")
+
         if loading_result.get('timeout'):
             return {
                 "success": False,
@@ -1049,8 +1061,13 @@ class AgentSelenium:
         action = step.get('action', 'unknown').lower()
         selector = step.get('selector', '')
 
-        if selector and action not in ['wait', 'switch_to_default', 'accept_alert', 'dismiss_alert']:
+
+        ### THE UNIQUE CHECK IS CURRENTLY DISABLED ######
+        if selector and action not in ['wait', 'switch_to_default', 'accept_alert', 'dismiss_alert', 'wait_for_hidden', 'wait_message_hidden', 'wait_spinner_hidden']:
+            print(f"[TIMING] Starting _check_selector_unique...")
+            unique_start = time.time()
             unique_check = self._check_selector_unique(selector)
+            print(f"[TIMING] _check_selector_unique took {time.time() - unique_start:.2f}s")
             if not unique_check.get('unique'):
                 return {
                     "success": False,
@@ -1134,9 +1151,10 @@ class AgentSelenium:
             # Check if fields changed
             fields_changed = self._compare_dom_fields(dom_before, dom_after)
 
+
             # DEBUG: Save screenshot when fields change
-            #if fields_changed:
-            #    self.capture_screenshot("fields_changed_debug")
+            if fields_changed:
+                self.capture_screenshot("fields_changed_debug")
             
             self.results_logger.info(f"  ✅ Success")
             self.results_logger.info("-" * 70)
@@ -1396,26 +1414,37 @@ class AgentSelenium:
             elif action == "wait_for_hidden":
                 if not selector:
                     return {"success": False, "error": "wait_for_hidden requires a selector"}
-                
+
                 try:
                     # Determine selector type
                     if selector.startswith('/') or selector.startswith('//'):
                         by_type = By.XPATH
                     else:
                         by_type = By.CSS_SELECTOR
-                    
-                    # Wait for element to be invisible (max 10 seconds)
-                    WebDriverWait(self.driver, 10).until(
+
+                    # First check if element exists at all
+                    elements = self.driver.find_elements(by_type, selector)
+                    if not elements:
+                        # Element already gone - success!
+                        return _finalize_success_result({
+                            "success": True,
+                            "action": "wait_for_hidden",
+                            "selector": selector,
+                            "note": "Element already hidden/not found"
+                        })
+
+                    # Element exists, wait for it to become invisible
+                    WebDriverWait(self.driver, 60).until(
                         EC.invisibility_of_element_located((by_type, selector))
                     )
-                    
+
                     return _finalize_success_result({
                         "success": True,
                         "action": "wait_for_hidden",
                         "selector": selector
                     })
                 except TimeoutException:
-                    return {"success": False, "error": f"Element still visible after 10s: {selector}"}
+                    return {"success": False, "error": f"Element still visible after 60s: {selector}"}
             
             # SWITCH TO WINDOW ACTION
             elif action == "switch_to_window":
@@ -1524,7 +1553,41 @@ class AgentSelenium:
                     wait_time = min(float(value) if value else 2.0, 10.0)
                     time.sleep(wait_time)
                     return _finalize_success_result({"success": True, "action": "wait", "duration": wait_time})
-            
+
+            elif action in ["wait_message_hidden", "wait_spinner_hidden"]:
+                """Wait until blocking overlay/message disappears"""
+
+                start_time = time.time()
+                max_wait = 420  # 7 minutes
+
+                # Use provided selector or default blocking selectors
+                #check_selector = selector if selector else '.modal-backdrop, .overlay, [class*="loading-overlay"], [class*="blocking"]'
+
+                if not self._is_page_blocked():
+                    return _finalize_success_result({
+                        "success": True,
+                        "action": action,
+                        "selector": selector,
+                        "note": "Page is not blocked"
+                    })
+
+                print(f"[Agent] ⏳ Page is blocked, waiting...")
+
+                while self._is_page_blocked():
+                    if time.time() - start_time > max_wait:
+                        return {"success": False, "error": "Page still blocked after 7 minutes"}
+                    time.sleep(0.5)
+
+                waited = int(time.time() - start_time)
+                print(f"[Agent] ✅ Page unblocked after {waited}s")
+
+                return _finalize_success_result({
+                    "success": True,
+                    "action": action,
+                    "selector": selector,
+                    "note": f"Page unblocked after {waited}s"
+                })
+
             # WAIT_FOR_READY ACTION (explicit AJAX waiting)
             elif action in ("wait_for_ready", "wait_dom_ready"):
                 if not selector:
@@ -1605,7 +1668,7 @@ class AgentSelenium:
                 self.driver.switch_to.frame(iframe)
                 return _finalize_success_result({"success": True, "action": "switch_to_frame", "selector": selector})
             
-            # SWITCH TO DEFAULT (exit iframe)
+            # SWITCH TO DEFAULT (exit iframe and shadow root)
             elif action == "switch_to_default":
                 self.driver.switch_to.default_content()
                 self.shadow_root_context = None  # Clear shadow root context too
@@ -1791,7 +1854,8 @@ class AgentSelenium:
             else:
                 self.info_logger.error(f"Unknown action: {action}")
                 return {"success": False, "error": f"Unknown action: {action}"}
-                
+
+
         except Exception as e:
             error_msg = f"Step execution failed: {str(e)}"
             self.info_logger.error(error_msg)
@@ -1930,120 +1994,139 @@ class AgentSelenium:
 
     def _wait_if_page_loading(self, timeout=60):
         """If page is loading, wait for it to finish. If not loading, return immediately."""
+        import time
 
-        script = """
-        return new Promise((resolve) => {
-            const timeoutMs = arguments[0];
-            const startTime = Date.now();
+        check_script = """
+        // 1. Document still loading
+        if (document.readyState !== 'complete') return 'document-loading';
 
-            function isLoading() {
-                // 1. aria-busy
-                if (document.querySelector('[aria-busy="true"]')) return true;
+        // 2. jQuery AJAX in progress
+        if (typeof jQuery !== 'undefined' && jQuery.active > 0) return 'jquery-ajax';
 
-                // 2. role="progressbar" visible
-                const prog = document.querySelector('[role="progressbar"]');
-                if (prog && prog.offsetParent !== null) return true;
+        // 3. Check for aria-busy (accessibility standard for loading)
+        if (document.querySelector('[aria-busy="true"]')) return 'aria-busy';
 
-                // 3. CSS animation (spinner)
-                for (const el of document.querySelectorAll('*')) {
-                    if (el.offsetParent === null) continue;
-                    const style = getComputedStyle(el);
-                    if (style.animationName && style.animationName !== 'none') {
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 10 && rect.width < 200 && rect.height > 10 && rect.height < 200) {
-                            return true;
-                        }
-                    }
-                }
+        // 4. Check for visible progressbar
+        var prog = document.querySelector('[role="progressbar"]');
+        if (prog && prog.offsetParent !== null) return 'progressbar';
 
-                // 4. Overlay covering screen
-                for (const el of document.querySelectorAll('*')) {
-                    if (el.offsetParent === null) continue;
-                    const style = getComputedStyle(el);
-                    if (style.position === 'fixed' && parseFloat(style.zIndex) > 100) {
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > window.innerWidth * 0.3 && rect.height > window.innerHeight * 0.3) {
-                            return true;
-                        }
-                    }
-                }
-
-                // 5. Loading text (short text only)
-                const loadingTexts = ['loading', 'processing', 'please wait', 'submitting', 'saving'];
-                for (const el of document.querySelectorAll('div, span, p')) {
-                    if (el.offsetParent === null) continue;
-                    const text = (el.innerText || '').toLowerCase().trim();
-                    if (text.length > 0 && text.length < 50 && loadingTexts.some(t => text.includes(t))) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            // If not loading, return immediately
-            if (!isLoading()) {
-                resolve({waited: 0, was_loading: false});
-                return;
-            }
-
-            console.log('[Agent] Page loading detected, waiting...');
-
-            const check = setInterval(() => {
-                if (!isLoading()) {
-                    clearInterval(check);
-                    resolve({waited: Date.now() - startTime, was_loading: true});
-                }
-                if (Date.now() - startTime > timeoutMs) {
-                    clearInterval(check);
-                    resolve({waited: timeoutMs, was_loading: true, timeout: true});
-                }
-            }, 200);
-        });
+        return false;
         """
 
         try:
-            result = self.driver.execute_script(script, timeout * 1000)
-            if result.get('was_loading'):
-                print(f"[Agent] ⏳ Waited {result.get('waited')}ms for loading to finish")
-            return result
+            start_time = time.time()
+
+            # Quick check - if not loading, return immediately
+            is_loading = self.driver.execute_script(check_script)
+            if not is_loading:
+                return {'waited': 0, 'was_loading': False}
+
+            print(f"[Agent] ⏳ Page loading detected ({is_loading}), waiting...")
+
+            # Poll until loading finishes
+            while is_loading and (time.time() - start_time) < timeout:
+                time.sleep(0.2)
+                is_loading = self.driver.execute_script(check_script)
+
+            waited = int((time.time() - start_time) * 1000)
+
+            if is_loading:
+                print(f"[Agent] ⚠️ Loading timeout after {waited}ms")
+                return {'waited': waited, 'was_loading': True, 'timeout': True}
+            else:
+                print(f"[Agent] ✅ Loading finished after {waited}ms")
+                return {'waited': waited, 'was_loading': True}
+
         except Exception as e:
             print(f"[Agent] _wait_if_page_loading error: {e}")
             return {'waited': 0, 'was_loading': False}
 
-
     def _check_selector_unique(self, selector: str) -> Dict:
-        """Check if selector matches exactly one element. Returns error if not unique."""
+        """Check if selector matches more than one element. Returns error only if not unique (>1)."""
         if not selector:
             return {"unique": True}  # No selector = skip check
 
         try:
-            # Determine selector type
-            if selector.startswith("//") or selector.startswith("(//"):
-                elements = self.driver.find_elements(By.XPATH, selector)
+            # If in shadow root context, search there
+            if self.shadow_root_context:
+                # Shadow DOM only supports CSS selectors
+                if selector.startswith("//") or selector.startswith("(//") or selector.startswith("xpath="):
+                    # XPath not supported in shadow DOM - skip check
+                    return {"unique": True, "count": -1}
+                elements = self.shadow_root_context.find_elements(By.CSS_SELECTOR, selector)
             else:
-                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                # Normal search in main document
+                if selector.startswith("//") or selector.startswith("(//"):
+                    elements = self.driver.find_elements(By.XPATH, selector)
+                elif selector.startswith("xpath="):
+                    xpath_selector = selector[6:]  # Remove "xpath=" prefix
+                    elements = self.driver.find_elements(By.XPATH, xpath_selector)
+                else:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
 
             count = len(elements)
 
-            if count == 0:
-                return {
-                    "unique": False,
-                    "error": f"Selector not found: {selector}",
-                    "count": 0
-                }
-            elif count > 1:
+            # Only error if MORE THAN ONE element found (not unique)
+            # count == 0 is OK - let the action handle "not found" errors
+            if count > 1:
                 return {
                     "unique": False,
                     "error": f"Selector not unique - found {count} elements: {selector}",
                     "count": count
                 }
             else:
-                return {"unique": True, "count": 1}
+                return {"unique": True, "count": count}
 
         except Exception as e:
-            return {
-                "unique": False,
-                "error": f"Invalid selector: {selector} - {str(e)}",
-                "count": 0
-            }
+            # On exception, skip the check - let the action handle errors
+            return {"unique": True, "count": -1}
+
+    def _is_page_blocked(self):
+        """
+        Check if page is blocked by trying to focus on a text input field.
+        Returns True if blocked, False if interactive.
+        Does not modify page state.
+        """
+        try:
+            result = self.driver.execute_script("""
+                // Find text inputs we can safely try to focus
+                var inputs = document.querySelectorAll(
+                    'input[type="text"]:not([disabled]):not([readonly]), ' +
+                    'input[type="email"]:not([disabled]):not([readonly]), ' +
+                    'input[type="tel"]:not([disabled]):not([readonly]), ' +
+                    'input[type="search"]:not([disabled]):not([readonly]), ' +
+                    'input:not([type]):not([disabled]):not([readonly]), ' +
+                    'textarea:not([disabled]):not([readonly])'
+                );
+
+                for (var i = 0; i < inputs.length; i++) {
+                    var input = inputs[i];
+                    var rect = input.getBoundingClientRect();
+
+                    // Skip if not visible
+                    if (rect.width <= 0 || rect.height <= 0) continue;
+                    if (rect.top < 0 || rect.bottom > window.innerHeight) continue;
+
+                    try {
+                        input.focus();
+                        if (document.activeElement === input) {
+                            input.blur();
+                            return {blocked: false};
+                        }
+                    } catch(e) {
+                        continue;
+                    }
+                }
+
+                // No inputs found = assume not blocked
+                if (inputs.length === 0) {
+                    return {blocked: false, reason: 'no_inputs'};
+                }
+
+                return {blocked: true, reason: 'focus_failed'};
+            """)
+
+            return result.get('blocked', False)
+        except Exception as e:
+            print(f"[Agent] _is_page_blocked error: {e}")
+            return False

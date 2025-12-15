@@ -40,21 +40,21 @@ class AIFormPageRunError:
             failed_stage, dom_html, all_stages, error_message
         )
         
-        # Build message with screenshot
-        message_content = [
-            {
+        # Build message with screenshot (if available)
+        message_content = []
+        if screenshot_base64:
+            message_content.append({
                 "type": "image",
                 "source": {
                     "type": "base64",
                     "media_type": "image/png",
                     "data": screenshot_base64
                 }
-            },
-            {
-                "type": "text",
-                "text": prompt
-            }
-        ]
+            })
+        message_content.append({
+            "type": "text",
+            "text": prompt
+        })
         
         try:
             message = self.client.messages.create(
@@ -65,7 +65,13 @@ class AIFormPageRunError:
             
             response_text = message.content[0].text
             
-            # Parse JSON response
+            # Parse JSON response - try code fence first, then raw JSON
+            code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', response_text)
+            if code_block_match:
+                result = json.loads(code_block_match.group(1))
+                return result
+            
+            # Fallback: try to find raw JSON
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
                 result = json.loads(json_match.group())
@@ -101,6 +107,32 @@ You are analyzing an error that occurred during automated execution of form page
 ```
 {error_message}
 ```
+
+⚠️⚠️⚠️ CRITICAL: READ THE ERROR MESSAGE AND LOOK AT THE SCREENSHOT! ⚠️⚠️⚠️
+================================================================================
+Before doing ANYTHING else, you MUST:
+1. READ the error message above word by word
+2. LOOK at the SCREENSHOT - it shows the current page state
+3. UNDERSTAND exactly what went wrong
+4. Your response MUST directly address the specific error
+
+USE THE SCREENSHOT TO:
+- See if the element is visible on screen
+- Check if there's an overlay/modal blocking the element
+- Verify the page loaded correctly (no errors, no blank page)
+- Identify the current state of the form
+- Look for visual clues about what went wrong
+
+Common errors and what they mean:
+- "Selector not found" → Element doesn't exist, find correct selector in DOM
+- "Selector not unique - found X elements" → Multiple matches, make selector more specific
+- "Element not interactable" → Element exists but hidden/disabled/covered
+- "Timeout" → Element didn't appear in time
+- "Stale element" → Page changed, element reference is old
+
+The error message tells you EXACTLY what failed. Do NOT ignore it!
+Your decision and fix must directly solve the error mentioned above.
+================================================================================
 
 ## Current DOM (at failure point)
 ```html

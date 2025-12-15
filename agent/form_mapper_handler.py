@@ -254,11 +254,14 @@ class FormMapperTaskHandler:
             try:
                 # Capture DOM
                 dom_html = self.selenium.extract_dom() or ""
-                
-                # Capture screenshot
+
+                # Capture full page screenshot
                 screenshot_b64 = ""
                 try:
-                    screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
+                    screenshot_result = self.selenium.capture_screenshot(scenario_description="error_context",
+                                                                         save_to_folder=False)
+                    if screenshot_result.get("success"):
+                        screenshot_b64 = screenshot_result.get("screenshot", "")
                 except:
                     pass
                 
@@ -290,6 +293,23 @@ class FormMapperTaskHandler:
         # Execute the step using agent_selenium (returns full result with fields_changed)
         result = self.selenium.execute_step(step)
         print(f"[DEBUG] execute_step result: {result}")
+
+        # If failed and full_xpath exists and action is not verify - try fallback
+        if not result.get("success") and step.get("full_xpath") and step.get("action", "").lower() != "verify":
+            full_xpath = step.get("full_xpath")
+            print(f"[Handler] Primary selector failed, trying full_xpath fallback: {full_xpath[:80]}...")
+
+            fallback_step = step.copy()
+            fallback_step["selector"] = full_xpath
+
+            result = self.selenium.execute_step(fallback_step)
+
+            if result.get("success"):
+                print(f"[Handler] ✅ Full XPath fallback succeeded!")
+                result["used_full_xpath"] = True
+                result["effective_selector"] = full_xpath
+            else:
+                print(f"[Handler] ❌ Full XPath fallback also failed")
 
         # Wait as specified
         if wait_seconds:
@@ -729,14 +749,20 @@ class FormMapperTaskHandler:
             scenario: Description of when screenshot was taken
         """
         scenario = payload.get("scenario", "")
-        
+
         try:
-            screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
-            
+            screenshot_result = self.selenium.capture_screenshot(scenario_description=scenario, save_to_folder=False)
+
+            #### FOR DEBUG ####
+            self.selenium.capture_screenshot("_handle_get_screenshot_debug")
+
+            if not screenshot_result.get("success"):
+                raise Exception(screenshot_result.get("error", "Screenshot failed"))
+
             return {
                 "success": True,
                 "scenario": scenario,
-                "screenshot_base64": screenshot_b64
+                "screenshot_base64": screenshot_result.get("screenshot", "")
             }
             
         except Exception as e:
@@ -773,7 +799,13 @@ class FormMapperTaskHandler:
             # Capture screenshot if requested
             if capture_screenshot:
                 try:
-                    screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
+                    screenshot_result = self.selenium.capture_screenshot(scenario_description=scenario_description,
+                                                                         save_to_folder=False)
+
+                    #### FOR DEBUG ####
+                    self.selenium.capture_screenshot("_handle_extract_dom_for_recovery_debug")
+
+                    screenshot_b64 = screenshot_result.get("screenshot", "") if screenshot_result.get("success") else ""
                     result["screenshot_base64"] = screenshot_b64
                     
                     # Save to file if requested
@@ -829,7 +861,9 @@ class FormMapperTaskHandler:
             # Also capture screenshot for context
             screenshot_b64 = None
             try:
-                screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
+                screenshot_result = self.selenium.capture_screenshot(scenario_description="alert_context",
+                                                                     save_to_folder=False)
+                screenshot_b64 = screenshot_result.get("screenshot", "") if screenshot_result.get("success") else None
             except:
                 pass
             
@@ -867,7 +901,10 @@ class FormMapperTaskHandler:
         
         try:
             # Capture screenshot
-            screenshot_b64 = self.selenium.driver.get_screenshot_as_base64()
+            screenshot_result = self.selenium.capture_screenshot(scenario_description=scenario, save_to_folder=False)
+            if not screenshot_result.get("success"):
+                raise Exception(screenshot_result.get("error", "Screenshot failed"))
+            screenshot_b64 = screenshot_result.get("screenshot", "")
             screenshot_bytes = base64.b64decode(screenshot_b64)
             
             # Save to file

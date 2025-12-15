@@ -696,24 +696,19 @@ class FormMapperOrchestrator:
             return self._handle_validation_errors(session_id, validation_errors)
         
         config = session.get("config", {})
-
-        # Check force_regenerate flag OR fields_changed
-        force_regenerate = step.get("force_regenerate", False)
-
-        if force_regenerate:
-            print(f"!!!!!!!!!! 🔄 Step has force_regenerate=True - proceeding with AI regeneration")
-            logger.info(f"[Orchestrator] Step has force_regenerate=True, triggering regeneration")
-        elif config.get("use_detect_fields_change", True):
+        
+        # Check fields_changed
+        if config.get("use_detect_fields_change", True):
             if not result.get("fields_changed", True):
                 print(
-                    f"!!!!!!!!! ℹ️  DOM changed. We are using Fields Detection and Fields did not change - skipping AI regeneration")
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ℹ️  DOM changed. We are using Fields Detection and Fields did not change - skipping AI regeneration")
                 logger.info(f"[Orchestrator] Fields unchanged, skipping regeneration")
                 current_index = session.get("current_step_index", 0)
                 self.update_session(session_id, {"current_step_index": current_index + 1})
                 return self._execute_next_step(session_id)
             else:
                 print(
-                    f"!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
 
         # Track junction using new path evaluation service
         if step.get("is_junction") and config.get("enable_junction_discovery", True):

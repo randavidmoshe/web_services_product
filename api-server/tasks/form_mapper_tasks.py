@@ -204,11 +204,11 @@ def analyze_form_page(
         
         ai_helper = helpers["form_mapper"]
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Entering AI for Generating steps ...")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: previous_paths: {previous_paths} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Generating steps: test_cases: {test_cases}")
+        print(f"!!!! 🤖 Entering AI for Generating steps ...")
+        print(f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!! Generating steps: previous_paths: {previous_paths} steps")
+        print(f"!!!! Generating steps: test_cases: {test_cases}")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
             test_cases=test_cases,
@@ -219,6 +219,10 @@ def analyze_form_page(
             field_requirements=field_requirements or "",
             is_first_iteration=True
         )
+
+        print(f"!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
+        for s in ai_result.get('steps', []):
+            print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
         
         input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -309,24 +313,35 @@ def analyze_failure_and_recover(
             **(test_context or {})
         }
 
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for analyze errors and recover ...")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps for errors: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps for errors: recovery_context: {recovery_context}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! recovery_context: {recovery_context} steps")
-        ai_result = ai_helper.regenerate_steps(
-            dom_html=fresh_dom,
+        print(f"!!!! 🤖 Regen remain steps errors and recover ...")
+        print(f"!!!! ❌ FAILED STEP: {failed_step.get('step_number', '?')}: {failed_step.get('action', '?')} | {failed_step.get('selector', '')[:50]} | {failed_step.get('description', '')[:40]}")
+        print(f"!!!! ❌ FAILED STEP ERROR: {recovery_failure_history[-1].get('error') if recovery_failure_history else 'Unknown'}")
+        print(f"!!!! Regen remain steps errors and recover: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!! Regen remain steps errors and recover, Already executed: {len(executed_steps)} steps:")
+        for s in executed_steps:
+            print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
+        print(f"!!!! Regen remain steps errors and recover, recovery_context: {recovery_context} steps")
+        error_message = ""
+        if recovery_failure_history:
+            error_message = recovery_failure_history[-1].get('error', '')
+
+        recovery_steps = ai_helper.analyze_failure_and_recover(
+            failed_step=failed_step,
             executed_steps=executed_steps,
-            test_cases=test_cases,
-            test_context=recovery_context,
+            fresh_dom=fresh_dom,
             screenshot_base64=screenshot_base64,
-            critical_fields_checklist=None,
-            field_requirements=None,
-            previous_paths=None,
-            current_path_junctions=None
+            test_cases=test_cases,
+            test_context=test_context,
+            attempt_number=attempt_number,
+            recovery_failure_history=recovery_failure_history,
+            error_message=error_message
         )
+        ai_result = {"steps": recovery_steps, "no_more_paths": False}
+
         print(
-            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerated_steps (for analyze errors and recover) returned {ai_result.get('steps', [])} new steps")
+            f"!!!! ✅ Regenerated steps (errors and recover) : {len(ai_result.get('steps', []))} new steps:")
+        for s in ai_result.get('steps', []):
+            print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
         
         input_tokens = len(fresh_dom) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -405,9 +420,11 @@ def handle_alert_recovery(
         helpers = create_ai_helpers(api_key)
         
         ai_recovery = helpers["alert_recovery"]
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps for alert ...")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! gathered_error_info: {gathered_error_info} steps")
+        print(f"!!!! 🤖 Regen remain steps for alert ...")
+        last_step = executed_steps[-1] if executed_steps else {}
+        print(f"!!!! ⚠️ Regen remain steps for alert, TRIGGERED AFTER STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        print(f"!!!! Regen remain steps for alert, Already executed: {executed_steps} steps")
+        print(f"!!!! Regen remain steps for alert, gathered_error_info: {gathered_error_info} steps")
 
         ai_result = ai_recovery.regenerate_steps_after_alert(
             alert_info=alert_info,
@@ -421,7 +438,7 @@ def handle_alert_recovery(
             gathered_error_info=gathered_error_info
         )
         print(
-            f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (alert) returned {ai_result} new steps")
+            f"!!!! ✅ AI regenerate_steps (alert) returned {ai_result} new steps")
 
 
         input_tokens = len(dom_html) // 4 + 500
@@ -563,11 +580,16 @@ def regenerate_steps(
         helpers = create_ai_helpers(api_key)
         
         ai_helper = helpers["form_mapper"]
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🤖 Regenerating remaining steps(regular) ...")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Regenerating remaining steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! Already executed: {executed_steps} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! field_requirements: {field_requirements} steps")
+        print(f"!!!! 🤖 Regen remain steps(regular)...")
+        last_step = executed_steps[-1] if executed_steps else {}
+        print(f"!!!! 🔄 Regen remain steps(regular), TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        print(f"!!!! Regen remain steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!! Regen remain steps(regular), Already executed: {len(executed_steps)} steps")
+        for step in executed_steps:
+            print(
+                f"    Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}")
+        print(f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps")
         ai_result = ai_helper.regenerate_steps(
             dom_html=dom_html,
             executed_steps=executed_steps,
@@ -579,7 +601,10 @@ def regenerate_steps(
             previous_paths=previous_paths if enable_junction_discovery else None,
             current_path_junctions=current_path_junctions
         )
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ AI regenerate_steps (non error analysis) returned {ai_result.get('steps', [])} new steps")
+        print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
+        for s in ai_result.get('steps', []):
+            print(
+                f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
         
         input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0

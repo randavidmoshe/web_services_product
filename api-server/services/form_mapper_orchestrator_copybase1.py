@@ -404,26 +404,14 @@ class FormMapperOrchestrator:
     # ============================================================
     # STEP EXECUTION LOOP
     # ============================================================
-
+    
     def _execute_next_step(self, session_id: str) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
-
         if current_index >= len(all_steps):
-            # Check if we just finished recovery fix steps
-            if session.get("in_recovery_mode"):
-                logger.info(f"[Orchestrator] Recovery fix steps complete, getting DOM for regenerate_steps")
-                self.update_session(session_id, {"in_recovery_mode": False})
-                # Get fresh DOM and screenshot, then regenerate
-                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
-                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
-                                             {"encode_base64": True, "save_to_folder": False,
-                                              "scenario_description": "after_recovery"})
-                return {"success": True, "agent_task": task}
             return self._handle_path_complete(session_id)
-
         step = all_steps[current_index]
 
         self.transition_to(session_id, MapperState.EXECUTING_STEP)
@@ -529,14 +517,10 @@ class FormMapperOrchestrator:
         recovery_steps = result.get("recovery_steps", []) or result.get("steps", [])
         if not recovery_steps:
             return self._fail_session(session_id, "AI failed to generate recovery steps")
-        logger.info(f"[Orchestrator] AI generated {len(recovery_steps)} recovery FIX steps")
+        logger.info(f"[Orchestrator] AI generated {len(recovery_steps)} recovery steps")
         executed_steps = session.get("executed_steps", [])
-        # Mark that we're in recovery mode - after these steps, go to regenerate (not path_complete)
-        self.update_session(session_id, {
-            "all_steps": executed_steps + recovery_steps,
-            "current_step_index": len(executed_steps),
-            "in_recovery_mode": True
-        })
+        self.update_session(session_id, {"all_steps": executed_steps + recovery_steps,
+                                         "current_step_index": len(executed_steps)})
         return self._execute_next_step(session_id)
 
     # ============================================================
@@ -552,14 +536,7 @@ class FormMapperOrchestrator:
         
         # Reset failures, add to executed
         executed_steps = session.get("executed_steps", [])
-
-        # Clean step for storage: update selector if fallback used, remove full_xpath
-        clean_step = step.copy()
-        if result.get("used_full_xpath") and result.get("effective_selector"):
-            clean_step["selector"] = result.get("effective_selector")
-        clean_step.pop("full_xpath", None)
-
-        executed_steps.append(clean_step)
+        executed_steps.append(step)
         self.update_session(session_id, {"executed_steps": executed_steps, "consecutive_failures": 0})
         
         # Check for alert
@@ -696,24 +673,19 @@ class FormMapperOrchestrator:
             return self._handle_validation_errors(session_id, validation_errors)
         
         config = session.get("config", {})
-
-        # Check force_regenerate flag OR fields_changed
-        force_regenerate = step.get("force_regenerate", False)
-
-        if force_regenerate:
-            print(f"!!!!!!!!!! 🔄 Step has force_regenerate=True - proceeding with AI regeneration")
-            logger.info(f"[Orchestrator] Step has force_regenerate=True, triggering regeneration")
-        elif config.get("use_detect_fields_change", True):
+        
+        # Check fields_changed
+        if config.get("use_detect_fields_change", True):
             if not result.get("fields_changed", True):
                 print(
-                    f"!!!!!!!!! ℹ️  DOM changed. We are using Fields Detection and Fields did not change - skipping AI regeneration")
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ℹ️  DOM changed. We are using Fields Detection and Fields did not change - skipping AI regeneration")
                 logger.info(f"[Orchestrator] Fields unchanged, skipping regeneration")
                 current_index = session.get("current_step_index", 0)
                 self.update_session(session_id, {"current_step_index": current_index + 1})
                 return self._execute_next_step(session_id)
             else:
                 print(
-                    f"!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
+                    f"!!!!!!!!!!!!!!!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
 
         # Track junction using new path evaluation service
         if step.get("is_junction") and config.get("enable_junction_discovery", True):
