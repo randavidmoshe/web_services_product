@@ -643,7 +643,7 @@ def regenerate_steps(
 
 
 @shared_task(bind=True, max_retries=2)
-def save_mapping_result(session_id: str, stages: List[Dict], path_junctions: List[Dict], continue_to_next_path: bool = False):
+def save_mapping_result(self, session_id: str, stages: List[Dict], path_junctions: List[Dict], continue_to_next_path: bool = False):
     """Celery task: Organize stages and save FormMapResult to database."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
 

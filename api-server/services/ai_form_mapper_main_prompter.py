@@ -965,11 +965,16 @@ Follow these choices exactly.
         }}
         ```
         
-        **full_xpath field (REQUIRED for all actions EXCEPT verify):**
+        **full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
         - Fallback selector if primary selector fails
-        - Must be absolute XPath starting from `/html/body/...`
-        - Use element indices for uniqueness: `/html/body/div[1]/div[2]/form/div[3]/input`
-        - Trace path from body to target element in the DOM
+        - Must start from `/html/body/...`
+        - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
+        - Double-check your count
+        - **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+          - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
+          - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
+        - Only use indices `[n]` when no ID exists on that element
+        - Trace the path carefully from body → target element using the DOM
         - For `verify` action: use empty string `""`
         
         **force_regenerate field (REQUIRED):**
@@ -1183,13 +1188,14 @@ These fields caused the previous failure - pay special attention to them.
 Generate the REMAINING steps to complete the test. Include 2-4 steps from next test case to ensure continuity.
 
 **Priority order:**
-1. If previous step was next/continue button AND you see a blocking overlay/modal (covers >30% of page), generate `wait_message_hidden` with selector from DOM.
-2. Complete current tab 100% before moving to next tab:
+1. **CHECK CURRENT PAGE FIRST:** Look at DOM/screenshot - if you see a list/table, you're on list page. If you see read-only values, you're on detail page. Do NOT generate navigation to a page you're already on.
+2. If previous step was next/continue button AND you see a blocking overlay...
+3. Complete current tab 100% before moving to next tab:
    - Fill ALL input fields (text, date, email, etc.)
    - Click EVERY "Add" button you find (each is a DIFFERENT list - Advertisements, Affiliates , Items, etc.)
    - Handle special inputs (dropdowns, checkboxes, sliders, file uploads)
-3. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
-4. Submit form and verify success
+4. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
+5. Submit form and verify success
 
 **For edit/update tests:** Navigate → Verify original value → Clear → Update → Navigate back
 
@@ -1203,17 +1209,21 @@ Generate the REMAINING steps to complete the test. Include 2-4 steps from next t
 }}
 ```
 
-**full_xpath field (REQUIRED, NOT for verify action):**
+**full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
 - Fallback selector if primary selector fails
-- Must be absolute XPath starting from `/html/body/...`
-- Use element indices for uniqueness: `/html/body/div[1]/div[2]/form/div[3]/input`
-- Look at DOM structure and trace path from body to target element
-- Example: for `input#email` inside a form, full_xpath might be `/html/body/div[1]/form/div[4]/input`
+- Must start from `/html/body/...`
+- **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
+- Double-check your count
+- **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+  - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
+  - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
+- Only use indices `[n]` when no ID exists on that element
+- Trace the path carefully from body → target element using the DOM
 - For `verify` action: use empty string `""`
 
 **force_regenerate field (REQUIRED):**
-- Set to `true` for steps that change page context: Save, Submit, Edit, View, Delete, etc.
-- Set to `false` for regular interactions: fill, select, click tab, check, hover, continue, next, etc.
+- Set to `true` for actions that change page context: Save, Submit, Edit, View, Delete buttons
+- Set to `false` for everything else: fill, select, click tab, check, hover, verify, scroll, ALL wait actions (wait, wait_for_ready, wait_message_hidden, wait_spinner_hidden), switch_to_frame, switch_to_default
 
 ---
 
@@ -1274,61 +1284,44 @@ Supported types: pdf, txt, csv, xlsx, docx, json, png, jpg
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
+
 ---
 ## VERIFICATION RULES
+
+**⚠️ CRITICAL - VIEW/DETAIL PAGE ≠ FORM PAGE:**
+After clicking View/Edit/Details button, you are on a READ-ONLY display page:
+- ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
+- ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
+- ALWAYS examine the CURRENT DOM structure before generating verify selectors
+
 **VERIFY ALL FIELDS ON VIEW/DETAIL PAGES:**
-When on a view/detail page after form submission, you MUST verify ALL fields that were filled during the test:
-1. Look through ALL FILL/SELECT steps in "Steps Already Completed" section
-2. Generate a VERIFY step for EACH field that was filled
-3. Do NOT skip any fields - every field that was filled must be verified
-4. This includes fields in iframes, modals, shadow DOM, and all tabs/sections
+When on a view/detail page, verify ALL fields that were filled during TEST_1:
+1. Look through "Steps Already Completed" for ALL FILL/SELECT steps
+2. Generate a VERIFY step for EACH field found - count them and verify count matches
+3. Get expected values from the `value` field of those FILL/SELECT steps
+4. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At")
 
-**USE ROBUST SELECTORS:**
-- ✅ GOOD: `contains(@class, 'field-value')` - works if class has multiple values
-- ❌ BAD: `@class='field-value'` - fails if class is 'field-value other-class'
-- ✅ GOOD: `//div[contains(@class, 'field')]//span` (find by structure, not content)
-- ❌ BAD: `//div[@class='field-label']/following-sibling::div[@class='field-value']` - too fragile
+**⚠️ COMMON FIELDS OFTEN MISSED - DO NOT SKIP:**
+- Date of Birth / Date fields
+- Phone numbers
+- Checkboxes (Newsletter, Terms)
+- File upload filenames
+- Dropdown selections
 
-**Correct Verify Step Format:**
-```json
-{{
-  "step_number": N,
-  "action": "verify",
-  "selector": "//label[contains(text(), 'Field Name')]/..//div[contains(@class, 'value')]",
-  "value": "expected text",
-  "description": "Verify expected text is displayed"
-}}
-```
+**How verify works:** Selector finds element by LOCATION. The `value` field contains expected text.
 
-**XPATH PATTERNS FOR VERIFICATION:**
+**BUILD SELECTOR FROM THE DOM - Common patterns:**
+- By data attribute: `//div[@data-field='email']`
+- By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
+- By label proximity: `//label[contains(text(), 'Email')]/../div`
+- Table structure: `//tr[contains(., 'Email')]//td[2]`
 
-Selector finds element by LOCATION. The `value` field has what to verify.
-- ✅ GOOD: `//label[contains(text(), 'Name')]/..//span` (by label)
-- ✅ GOOD: `//th[contains(text(), 'Email')]/following-sibling::td[1]` (table row)
-- ✅ GOOD: `(//div[contains(@class, 'field-value')])[1]` (by position)
-- ❌ BAD: `//div[contains(text(), 'John')]` (expected value in selector!)
-- ❌ BAD: `.field:contains('Email')` (CSS :contains doesn't work)
+**❌ WRONG:**
+- `//div[contains(text(), 'john@email.com')]` - expected value in selector!
+- `input#email` on view page - form elements don't exist on view pages!
+- Inventing class names not in DOM
 
-For checking element existence:
-- ✅ GOOD: `//div[contains(@class, 'success-message')]`
-- ✅ GOOD: `div.success-message` (CSS is fine when not checking text)
-
-**Example Verification Steps:**
-```json
-{{
-  "step_number": 50,
-  "action": "verify",
-  "selector": "//div[contains(@class, 'success-message')]",
-  "value": "Form created successfully",
-  "description": "Verify form submission success"
-}},
-{{
-  "step_number": 51,
-  "action": "verify",
-  "selector": "//label[contains(text(), 'Person Name')]/..//div[contains(@class, 'value')]",
-  "value": "TestUser123",
-  "description": "Verify person name field"
-}}
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
 ---
 
@@ -1359,16 +1352,16 @@ Return ONLY the JSON object.
                         "text": prompt
                     }
                 ]
-                print("\n" + "!" * 80)
-                print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
-                print("!" * 80)
-                import re
-                prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
-                                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
-                                       flags=re.DOTALL)
-                print(prompt_no_dom)
-                print("!" * 80 + "\n")
-                print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
+                #                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
+                #                       flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
+                #print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
             else:
@@ -1571,18 +1564,18 @@ Return ONLY the JSON object.
                 }
             ]
 
-            print("\n" + "!" * 80)
-            print("!!!!!!!! ANALYZE_FAILURE_AND_RECOVER - FINAL PROMPT TO AI !!!!")
-            print("!" * 80)
-            import re
-            prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
-                                   flags=re.DOTALL)
-            print(prompt_no_dom)
-            print("!" * 80 + "\n")
+            #print("\n" + "!" * 80)
+            #print("!!!!!!!! ANALYZE_FAILURE_AND_RECOVER - FINAL PROMPT TO AI !!!!")
+            #print("!" * 80)
+            #import re
+            #prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
+            #                       flags=re.DOTALL)
+            #print(prompt_no_dom)
+            #print("!" * 80 + "\n")
 
             print("!*!*!*!*!*!*!*! Entering the AI func for analyze failures and recover")
             response_text = self._call_api_with_retry_multimodal(content, max_tokens=16000, max_retries=3)
-            print(f"[DEBUG] Raw AI response: {response_text[:500]}...")
+            #print(f"[DEBUG] Raw AI response: {response_text[:500]}...")
             
             if response_text is None:
                 print("[AIHelper] ❌ Failed to get recovery response after retries")

@@ -800,8 +800,7 @@ class FormMapperTaskHandler:
         
         try:
             # Extract DOM
-            dom_result = self.selenium.extract_dom()
-            dom_html = dom_result.get("dom_html", "") if dom_result.get("success") else ""
+            dom_html = self.selenium.driver.page_source
             
             result = {
                 "success": True,
@@ -869,8 +868,7 @@ class FormMapperTaskHandler:
         
         try:
             # Extract DOM
-            dom_result = self.selenium.extract_dom()
-            dom_html = dom_result.get("dom_html", "") if dom_result.get("success") else ""
+            dom_html = self.selenium.driver.page_source
             
             # Also capture screenshot for context
             screenshot_b64 = None

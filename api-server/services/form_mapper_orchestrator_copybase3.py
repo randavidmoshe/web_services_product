@@ -39,7 +39,6 @@ class MapperState(str, Enum):
     ALERT_NAVIGATING_BACK = "alert_navigating_back"
     DOM_CHANGE_GETTING_SCREENSHOT = "dom_change_getting_screenshot"
     DOM_CHANGE_UI_VERIFICATION = "dom_change_ui_verification"
-    DOM_CHANGE_GETTING_DOM = "dom_change_getting_dom"
     DOM_CHANGE_REGENERATING_STEPS = "dom_change_regenerating_steps"
     DOM_CHANGE_NAVIGATING_BACK = "dom_change_navigating_back"
     HANDLING_VALIDATION_ERROR = "handling_validation_error"
@@ -772,27 +771,8 @@ class FormMapperOrchestrator:
             self._push_agent_task(session_id, "form_mapper_save_screenshot_and_log",
                                  {"scenario_description": "ui_issue",
                                   "log_message": f"UI ISSUE (after DOM change): {ui_issue}", "log_level": "warning"})
-        #return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
-
-        # Get fresh DOM before regeneration
-        self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_DOM)
-        task = self._push_agent_task(session_id, "form_mapper_extract_dom", {})
-        return {"success": True, "state": "dom_change_getting_dom", "agent_task": task}
-
-
-    def handle_dom_change_dom_result(self, session_id: str, result: Dict) -> Dict:
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-
-        # Store fresh DOM in Redis
-        dom_html = result.get("dom_html", "")
-        if dom_html:
-            self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
-            logger.info(f"[Orchestrator] Fresh DOM stored for regeneration: {len(dom_html)} chars")
-
         return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
-
-
+    
     def _trigger_regenerate_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
@@ -1064,8 +1044,6 @@ class FormMapperOrchestrator:
             if validation_errors.get("has_errors"):
                 return self.handle_validation_error_screenshot_result(session_id, result)
             return self.handle_dom_change_screenshot_result(session_id, result)
-        elif state == MapperState.DOM_CHANGE_GETTING_DOM.value:
-            return self.handle_dom_change_dom_result(session_id, result)
         else:
             logger.warning(f"[Orchestrator] Unhandled state {state} for task {task_type}")
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
