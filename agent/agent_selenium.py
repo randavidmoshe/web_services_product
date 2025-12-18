@@ -524,7 +524,8 @@ class AgentSelenium:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
+
     def extract_form_dom_with_js(self) -> Dict:
         """
         Extract optimized DOM (forms + external JS inlined)
@@ -1030,7 +1031,68 @@ class AgentSelenium:
             print("[Agent] ℹ️  No field changes detected")
         
         return has_changes
-    
+
+    def _get_fields_visibility_js(self) -> Dict[str, bool]:
+        """Get all form fields with their actual rendered visibility using JavaScript"""
+        js_code = """
+        const fields = {};
+        const elements = document.querySelectorAll('input, select, textarea');
+
+        elements.forEach(elem => {
+            // Skip elements inside open dropdowns
+            if (elem.closest('[role="listbox"], [role="menu"]')) return;
+
+            const id = elem.id || elem.name || elem.getAttribute('data-field') || 
+                       elem.outerHTML.substring(0, 80);
+            const style = window.getComputedStyle(elem);
+
+            const isHidden = (
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                style.opacity === '0' ||
+                elem.offsetParent === null ||
+                elem.offsetWidth === 0 ||
+                elem.offsetHeight === 0
+            );
+
+            fields[id] = isHidden;
+        });
+
+        return fields;
+        """
+        try:
+            return self.driver.execute_script(js_code)
+        except Exception as e:
+            print(f"[Agent] ⚠️ JS visibility check failed: {e}")
+            return {}
+
+    def _compare_fields_visibility_js(self, fields_before: Dict[str, bool], fields_after: Dict[str, bool]) -> bool:
+        """Compare field visibility using JS computed styles - returns True if any field changed visibility"""
+
+        if not fields_before or not fields_after:
+            return False
+
+        # Check for new fields
+        new_fields = set(fields_after.keys()) - set(fields_before.keys())
+        if new_fields:
+            print(f"\n[Agent] 🔍 JS Check - New fields appeared: {len(new_fields)}")
+            for f in list(new_fields)[:5]:
+                print(f"   ➕ {f[:60]}")
+            return True
+
+        # Check for visibility changes
+        for field_id, was_hidden in fields_before.items():
+            if field_id in fields_after:
+                is_hidden = fields_after[field_id]
+                if was_hidden and not is_hidden:
+                    print(f"\n[Agent] 🔍 JS Check - Field became VISIBLE: {field_id[:60]}")
+                    return True
+                if not was_hidden and is_hidden:
+                    print(f"\n[Agent] 🔍 JS Check - Field became HIDDEN: {field_id[:60]}")
+                    return True
+
+        return False
+
     def execute_step(self, step: Dict) -> Dict:
         """
         Execute a single test step
@@ -1092,6 +1154,9 @@ class AgentSelenium:
         # STEP 1: Capture old DOM hash BEFORE action
         dom_before = self.extract_dom()
         old_dom_hash = dom_before.get("dom_hash", "") if dom_before.get("success") else ""
+
+        # Capture field visibility via JS BEFORE action (for parallel check)
+        fields_visibility_before = self._get_fields_visibility_js()
         
         def _finalize_success_result(base_result: Dict) -> Dict:
             """
@@ -1127,8 +1192,12 @@ class AgentSelenium:
                 dom_after = self.extract_dom()
                 new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
                 
-                # Check if fields changed
-                fields_changed = self._compare_dom_fields(dom_before, dom_after)
+                # Check if fields changed (both methods in parallel)
+                fields_changed_dom = self._compare_dom_fields(dom_before, dom_after)
+                fields_visibility_after = self._get_fields_visibility_js()
+                fields_changed_js = self._compare_fields_visibility_js(fields_visibility_before,
+                                                                       fields_visibility_after)
+                fields_changed = fields_changed_dom or fields_changed_js
                 
                 # Return with alert info
                 return {
@@ -1149,7 +1218,11 @@ class AgentSelenium:
             new_dom_hash = dom_after.get("dom_hash", "") if dom_after.get("success") else ""
             
             # Check if fields changed
-            fields_changed = self._compare_dom_fields(dom_before, dom_after)
+            # Check if fields changed (both methods in parallel)
+            fields_changed_dom = self._compare_dom_fields(dom_before, dom_after)
+            fields_visibility_after = self._get_fields_visibility_js()
+            fields_changed_js = self._compare_fields_visibility_js(fields_visibility_before, fields_visibility_after)
+            fields_changed = fields_changed_dom or fields_changed_js
 
 
             # DEBUG: Save screenshot when fields change

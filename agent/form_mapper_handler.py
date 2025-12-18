@@ -301,20 +301,24 @@ class FormMapperTaskHandler:
 
         # If failed and full_xpath exists and action is not verify - try fallback
         if not result.get("success") and step.get("full_xpath") and step.get("action", "").lower() != "verify":
+            original_error = result.get("error", "unknown")
             full_xpath = step.get("full_xpath")
-            print(f"[Handler] Primary selector failed, trying full_xpath fallback: {full_xpath[:80]}...")
+            print(f"[Handler] Primary selector failed, trying full_xpath fallback: {full_xpath}...")
 
             fallback_step = step.copy()
             fallback_step["selector"] = full_xpath
 
-            result = self.selenium.execute_step(fallback_step)
+            fallback_result = self.selenium.execute_step(fallback_step)
 
-            if result.get("success"):
+            if fallback_result.get("success"):
+                result = fallback_result
                 print(f"[Handler] ✅ Full XPath fallback succeeded!")
                 result["used_full_xpath"] = True
                 result["effective_selector"] = full_xpath
             else:
-                print(f"[Handler] ❌ Full XPath fallback also failed: {result.get('error', 'unknown')}")
+                print(f"[Handler] ❌ Full XPath fallback also failed: {fallback_result.get('error', 'unknown')}")
+                # Keep original error as it's usually more meaningful
+                result["error"] = f"Primary selector failed: {original_error} | Retry with full_xpath also failed: {fallback_result.get('error', 'unknown')}"
         else:
             # DEBUG: Why fallback wasn't tried
             if not result.get("success"):

@@ -39,8 +39,7 @@ class AIFormMapperHelper:
         screenshot_base64: Optional[str] = None,
         critical_fields_checklist: Optional[Dict[str, str]] = None,
         field_requirements: Optional[str] = None,
-        previous_paths: Optional[List[Dict]] = None,
-        current_path_junctions: Optional[List[Dict]] = None
+        junction_instructions: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate test steps from DOM and test cases"""
         return self.helper.generate_test_steps(
@@ -53,8 +52,7 @@ class AIFormMapperHelper:
             screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
-            previous_paths=previous_paths,
-            current_path_junctions=current_path_junctions
+            junction_instructions=junction_instructions
         )
     
     def regenerate_steps(
@@ -66,8 +64,7 @@ class AIFormMapperHelper:
         screenshot_base64: Optional[str] = None,
         critical_fields_checklist: Optional[Dict[str, str]] = None,
         field_requirements: Optional[str] = None,
-        previous_paths: Optional[List[Dict]] = None,
-        current_path_junctions: Optional[List[Dict]] = None
+        junction_instructions: Optional[str] = None
     ) -> Dict[str, Any]:
         """Regenerate remaining steps after DOM change"""
         return self.helper.regenerate_steps(
@@ -78,8 +75,7 @@ class AIFormMapperHelper:
             screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
-            previous_paths=previous_paths,
-            current_path_junctions=current_path_junctions
+            junction_instructions=junction_instructions
         )
 
     def analyze_failure_and_recover(

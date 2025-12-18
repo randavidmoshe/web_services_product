@@ -159,6 +159,27 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
 # CELERY TASKS
 # ============================================================================
 
+def _build_junction_instructions_text(junction_instructions) -> str:
+    """Build junction instructions text for AI prompt"""
+    if not junction_instructions:
+        return ""
+
+    # Handle string (JSON) input
+    if isinstance(junction_instructions, str):
+        try:
+            junction_instructions = json.loads(junction_instructions)
+        except:
+            return ""
+
+    if not junction_instructions or not isinstance(junction_instructions, dict):
+        return ""
+
+    lines = ["For this path, you MUST select these specific options:"]
+    for selector, value in junction_instructions.items():
+        lines.append(f"- For field '{selector}': select '{value}'")
+    lines.append("\nThese are required junction choices for this path.")
+    return "\n".join(lines)
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10, 
              autoretry_for=(Exception,), retry_backoff=True)
 def analyze_form_page(
@@ -167,15 +188,14 @@ def analyze_form_page(
     dom_html: str,
     screenshot_base64: str,
     test_cases: list,
-    previous_paths: list = None,
     current_path: int = 1,
-    current_path_junctions: list = None,
     enable_junction_discovery: bool = True,
     max_junction_paths: int = 5,
     use_detect_fields_change: bool = True,
     enable_ui_verification: bool = True,
     critical_fields_checklist: dict = None,
-    field_requirements: str = ""
+    field_requirements: str = "",
+    junction_instructions: dict = None
 ) -> Dict:
     """Celery task: Analyze form page with AI (initial step generation)."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -207,16 +227,15 @@ def analyze_form_page(
         print(f"!!!! 🤖 Entering AI for Generating steps ...")
         print(f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!! Generating steps: previous_paths: {previous_paths} steps")
         print(f"!!!! Generating steps: test_cases: {test_cases}")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
             test_cases=test_cases,
             screenshot_base64=screenshot_base64,
-            previous_paths=previous_paths if enable_junction_discovery else None,
-            current_path_junctions=current_path_junctions or [],
             critical_fields_checklist=critical_fields_checklist or {},
             field_requirements=field_requirements or "",
+            junction_instructions=_build_junction_instructions_text(
+                junction_instructions) if junction_instructions else None,
             is_first_iteration=True
         )
 
@@ -550,9 +569,8 @@ def regenerate_steps(
     screenshot_base64: Optional[str] = None,
     critical_fields_checklist: Optional[Dict] = None,
     field_requirements: Optional[str] = None,
-    previous_paths: Optional[List[Dict]] = None,
-    current_path_junctions: Optional[List[Dict]] = None,
-    enable_junction_discovery: bool = True
+    enable_junction_discovery: bool = True,
+    junction_instructions: str = None
 ) -> Dict:
     """Celery task: Regenerate remaining steps after DOM change."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -598,8 +616,7 @@ def regenerate_steps(
             screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
-            previous_paths=previous_paths if enable_junction_discovery else None,
-            current_path_junctions=current_path_junctions
+            junction_instructions=_build_junction_instructions_text(junction_instructions)
         )
         print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         for s in ai_result.get('steps', []):
@@ -641,6 +658,89 @@ def regenerate_steps(
     finally:
         db.close()
 
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10,
+             autoretry_for=(Exception,), retry_backoff=True)
+def regenerate_verify_steps(
+        self,
+        session_id: str,
+        dom_html: str,
+        executed_steps: List[Dict],
+        test_cases: List[Dict],
+        test_context: Dict,
+        screenshot_base64: Optional[str] = None
+) -> Dict:
+    """Celery task: Regenerate verification steps after Save/Submit."""
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+
+    logger.info(f"[FormMapperTask] Regenerating VERIFY steps for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+            return result
+
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+
+        ai_helper = helpers["form_mapper"]
+        print(f"!!!! 🔍 Regen VERIFY steps...")
+        last_step = executed_steps[-1] if executed_steps else {}
+        print(
+            f"!!!! 🔍 Regen VERIFY steps, TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        print(f"!!!! Regen VERIFY steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        print(f"!!!! Regen VERIFY steps, Already executed: {len(executed_steps)} steps")
+
+        ai_result = ai_helper.regenerate_verify_steps(
+            dom_html=dom_html,
+            executed_steps=executed_steps,
+            test_cases=test_cases,
+            test_context=test_context,
+            screenshot_base64=screenshot_base64
+        )
+
+        new_steps = ai_result.get("steps", [])
+        no_more_paths = ai_result.get("no_more_paths", False)
+
+        # Log steps
+        logger.warning(f"!!!! ✅ AI regenerated_verify_steps: {len(new_steps)} new steps:")
+        for step in new_steps[:15]:
+            desc = step.get('description', '')[:40]
+            sel = step.get('selector', '')[:50]
+            logger.warning(f"    Step {step.get('step_number')}: {step.get('action')} | {sel} | {desc}")
+
+        logger.info(f"[FormMapperTask] Verify regeneration complete: {len(new_steps)} new steps")
+
+        result = {"success": True, "new_steps": new_steps, "no_more_paths": no_more_paths}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
+    except BudgetExceededError as e:
+        logger.warning(f"[FormMapperTask] Budget exceeded for verify regeneration: {e}")
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Verify regeneration error: {e}", exc_info=True)
+        result = {"success": False, "error": str(e)}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
+    finally:
+        db.close()
 
 @shared_task(bind=True, max_retries=2)
 def save_mapping_result(self, session_id: str, stages: List[Dict], path_junctions: List[Dict], continue_to_next_path: bool = False):
