@@ -1184,7 +1184,12 @@ These fields caused the previous failure - pay special attention to them.
 {test_cases_context}
 
 ## Your Task:
-Generate the REMAINING steps to complete the test. Include 2-4 steps from next test case to ensure continuity.
+Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cases" section above.
+
+**⚠️ STOP WHEN COMPLETE:**
+- Generate steps ONLY for test cases in the list - NEVER invent new ones (no TEST_4 if not listed)
+- When all listed test cases are done, return empty steps array
+- Ignore Edit/Delete/other buttons if no matching test case exists
 
 **⚠️ DO NOT RE-FILL ALREADY COMPLETED FIELDS:**
 - Check "Steps Already Completed" above - these fields are DONE

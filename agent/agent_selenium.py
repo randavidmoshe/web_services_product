@@ -1026,7 +1026,63 @@ class AgentSelenium:
                     print(f"\n[Agent] 🔍 DOM Structure Change Detected:")
                     print(f"   📊 Element count: {old_element_count} → {new_element_count} ({change_percent:.1f}% change)")
                     has_changes = True
-        
+
+        # Check 3: Look for conditional sections that may have toggled
+        # (Generic detection - if any element with conditional-related attributes exists)
+        if not has_changes:
+            conditional_indicators = [
+                'data-conditional', 'data-visible', 'data-hidden', 'data-show', 'data-hide',
+                'ng-show', 'ng-hide', 'ng-if', 'v-show', 'v-if', '*ngIf',
+                'data-bind', 'data-toggle'
+            ]
+
+            old_soup = BeautifulSoup(dom_before.get("dom_html", ""), 'html.parser')
+            new_soup = BeautifulSoup(dom_after.get("dom_html", ""), 'html.parser')
+
+            for attr in conditional_indicators:
+                old_conditionals = old_soup.find_all(attrs={attr: True})
+                new_conditionals = new_soup.find_all(attrs={attr: True})
+
+                # Check if any conditional element's attribute value changed
+                for old_elem in old_conditionals:
+                    old_id = old_elem.get('id') or old_elem.get('name') or old_elem.get('class', [''])[
+                        0] if old_elem.get('class') else ''
+                    if not old_id:
+                        continue
+
+                    # Find matching element in new DOM
+                    for new_elem in new_conditionals:
+                        new_id = new_elem.get('id') or new_elem.get('name') or new_elem.get('class', [''])[
+                            0] if new_elem.get('class') else ''
+                        if old_id == new_id:
+                            # Check if the conditional attribute value changed
+                            if old_elem.get(attr) != new_elem.get(attr):
+                                print(f"\n[Agent] 🔍 Conditional Change Detected:")
+                                print(
+                                    f"   📊 Element '{old_id}' attribute '{attr}': '{old_elem.get(attr)}' → '{new_elem.get(attr)}'")
+                                has_changes = True
+                                break
+
+                            # Check if 'show'/'hide' class toggled
+                            old_classes = set(old_elem.get('class', []))
+                            new_classes = set(new_elem.get('class', []))
+                            toggle_classes = {'show', 'hide', 'hidden', 'visible', 'active', 'open', 'closed',
+                                              'collapsed', 'expanded', 'd-none', 'd-block'}
+
+                            old_toggle = old_classes & toggle_classes
+                            new_toggle = new_classes & toggle_classes
+
+                            if old_toggle != new_toggle:
+                                print(f"\n[Agent] 🔍 Visibility Class Change Detected:")
+                                print(f"   📊 Element '{old_id}': {old_toggle} → {new_toggle}")
+                                has_changes = True
+                                break
+
+                    if has_changes:
+                        break
+
+                if has_changes:
+                    break
         if not has_changes:
             print("[Agent] ℹ️  No field changes detected")
         

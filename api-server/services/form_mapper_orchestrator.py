@@ -43,6 +43,7 @@ class MapperState(str, Enum):
     DOM_CHANGE_REGENERATING_STEPS = "dom_change_regenerating_steps"
     DOM_CHANGE_REGENERATING_VERIFY_STEPS = "dom_change_regenerating_verify_steps"
     DOM_CHANGE_NAVIGATING_BACK = "dom_change_navigating_back"
+    NEXT_PATH_NAVIGATING = "next_path_navigating"
     HANDLING_VALIDATION_ERROR = "handling_validation_error"
     PATH_COMPLETE = "path_complete"
     ALL_PATHS_COMPLETE = "all_paths_complete"
@@ -695,6 +696,25 @@ class FormMapperOrchestrator:
         logger.info(f"[Orchestrator] Navigated back, starting fresh with {len(new_steps)} steps")
         return self._execute_next_step(session_id)
 
+    def handle_next_path_navigate_result(self, session_id: str, result: Dict) -> Dict:
+        """Handle navigation result for next junction path - then extract DOM"""
+        session = self.get_session(session_id)
+        if not session: return {"success": False, "error": "Session not found"}
+        if not result.get("success"):
+            return self._fail_session(session_id, f"Failed to navigate for next path: {result.get('error', '')}")
+
+        logger.info(f"[Orchestrator] Navigated to form URL for next path, now extracting DOM")
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Navigated to form URL, extracting DOM for next path")
+
+        # Step 2: Extract DOM (reuses existing flow)
+        config = session.get("config", {})
+        self.transition_to(session_id, MapperState.EXTRACTING_INITIAL_DOM)
+        task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
+            "use_full_dom": config.get("use_full_dom", True),
+            "capture_screenshot": config.get("enable_ui_verification", True)
+        })
+        return {"success": True, "state": "extracting_initial_dom", "agent_task": task}
+
     # ============================================================
     # DOM CHANGE HANDLING
     # ============================================================
@@ -978,9 +998,10 @@ class FormMapperOrchestrator:
             junctions_state = path_eval.complete_path(junctions_state, junction_choices, result_id=None)
 
             # Evaluate if more paths needed
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 BEFORE path evaluation - junctions_state: {junctions_state.to_dict()}")
             eval_result = path_eval.evaluate_paths(junctions_state)
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 AFTER path evaluation - result: {eval_result}")
             logger.info(f"[Orchestrator] Path evaluation: {eval_result}")
-            print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Path evaluation: {eval_result}")
 
             if not eval_result["all_paths_complete"]:
                 # More paths needed - save current path first, then start next
@@ -1048,11 +1069,12 @@ class FormMapperOrchestrator:
             return self._fail_session(session_id, "No form_page_url for next path")
 
         logger.info(f"[Orchestrator] Starting next path - navigating to {form_page_url}")
+        print(f"!!!!!!!!!!!!!!!!!! 🔀 Starting next path - navigating to {form_page_url}")
 
-        # Navigate directly to the form URL and extract DOM
-        self.transition_to(session_id, MapperState.INITIAL_EXTRACTING_DOM)
-        task = self._push_agent_task(session_id, "form_mapper_navigate_and_extract_dom", {"url": form_page_url})
-        return {"success": True, "state": "initial_extracting_dom", "agent_task": task}
+        # Step 1: Navigate to form URL
+        self.transition_to(session_id, MapperState.NEXT_PATH_NAVIGATING)
+        task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": form_page_url})
+        return {"success": True, "state": "next_path_navigating", "agent_task": task}
 
     # ============================================================
     # DATABASE HELPERS
@@ -1133,6 +1155,8 @@ class FormMapperOrchestrator:
             return self.handle_alert_dom_result(session_id, result)
         elif state in [MapperState.ALERT_NAVIGATING_BACK.value, MapperState.DOM_CHANGE_NAVIGATING_BACK.value]:
             return self.handle_navigate_back_result(session_id, result)
+        elif state == MapperState.NEXT_PATH_NAVIGATING.value:
+            return self.handle_next_path_navigate_result(session_id, result)
         elif state == MapperState.DOM_CHANGE_GETTING_SCREENSHOT.value:
             validation_errors = session.get("pending_validation_errors", {})
             if validation_errors.get("has_errors"):
