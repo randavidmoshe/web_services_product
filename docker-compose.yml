@@ -143,6 +143,7 @@ services:
       - redis
     volumes:
       - ./api-server:/app
+      - ./debug_screenshots:/tmp/debug_screenshots
 
 volumes:
   postgres_data:

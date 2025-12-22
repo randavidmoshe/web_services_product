@@ -64,7 +64,21 @@ class FormMapperConfig(BaseModel):
         le=50,
         description="Maximum number of junction paths to explore"
     )
-    
+
+    max_options_for_junction: int = Field(
+        default=8,
+        ge=1,
+        le=50,
+        description="Skip junction if it has more than this many options"
+    )
+
+    max_options_to_test: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description="Maximum number of options to test per junction"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -77,7 +91,9 @@ class FormMapperConfig(BaseModel):
                 "use_forms_dom": False,
                 "include_js_in_dom": True,
                 "enable_junction_discovery": True,
-                "max_junction_paths": 5
+                "max_junction_paths": 7,
+                "max_options_for_junction": 8,
+                "max_options_to_test": 4
             }
         }
 
@@ -94,6 +110,8 @@ class FormMapperConfigUpdate(BaseModel):
     include_js_in_dom: Optional[bool] = None
     enable_junction_discovery: Optional[bool] = None
     max_junction_paths: Optional[int] = Field(default=None, ge=1, le=50)
+    max_options_for_junction: Optional[int] = Field(default=None, ge=1, le=50)
+    max_options_to_test: Optional[int] = Field(default=None, ge=1, le=20)
 
 
 # Default config as dict
@@ -107,7 +125,9 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "use_forms_dom": False,
     "include_js_in_dom": True,
     "enable_junction_discovery": True,
-    "max_junction_paths": 5
+    "max_junction_paths": 7,
+    "max_options_for_junction": 8,
+    "max_options_to_test": 4
 }
 
 

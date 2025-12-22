@@ -482,6 +482,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         handle_alert_recovery,
         verify_ui_visual,
         regenerate_steps,
+        regenerate_verify_steps,
         save_mapping_result
     )
     
@@ -491,6 +492,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "handle_alert_recovery": handle_alert_recovery,
         "verify_ui_visual": verify_ui_visual,
         "regenerate_steps": regenerate_steps,
+        "regenerate_verify_steps": regenerate_verify_steps,
         "save_mapping_result": save_mapping_result
     }
     

@@ -227,6 +227,7 @@ def analyze_form_page(
         print(f"!!!! 🤖 Entering AI for Generating steps ...")
         print(f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!! Generating steps: junction instructions: {junction_instructions}")
         print(f"!!!! Generating steps: test_cases: {test_cases}")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
@@ -607,6 +608,7 @@ def regenerate_steps(
             print(
                 f"    Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}")
         print(f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!! Regen: junction instructions: {junction_instructions}")
         print(f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps")
         ai_result = ai_helper.regenerate_steps(
             dom_html=dom_html,
@@ -895,6 +897,25 @@ def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
         db.close()
 
 
+def _cleanup_previous_mapping_results(db, form_page_route_id: int) -> int:
+    """
+    Delete all previous FormMapResult records for a form page route.
+    This ensures a fresh start for junction discovery.
+
+    Returns:
+        Number of deleted records
+    """
+    from models.form_mapper_models import FormMapResult
+
+    deleted_count = db.query(FormMapResult).filter(
+        FormMapResult.form_page_route_id == form_page_route_id
+    ).delete()
+
+    logger.info(
+        f"[FormMapperTask] Deleted {deleted_count} previous FormMapResult records for route {form_page_route_id}")
+    return deleted_count
+
+
 @shared_task(name="tasks.cancel_previous_sessions_for_route")
 def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: int):
     db = _get_db_session()
@@ -915,11 +936,15 @@ def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: 
             session.last_error = f"Cancelled - new session {new_session_id} started"
             session.completed_at = datetime.utcnow()
             user_id = session.user_id
+
+        # Delete previous mapping results for fresh junction discovery
+        deleted_paths = _cleanup_previous_mapping_results(db, form_page_route_id)
+
         db.commit()
 
 
 
-        return {"cancelled": count}
+        return {"cancelled": count, "deleted_paths": deleted_paths}
     except Exception as e:
         db.rollback()
         return {"error": str(e)}

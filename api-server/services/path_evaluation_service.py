@@ -15,9 +15,11 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 # Configuration
-MAX_PATHS = 10
+MAX_PATHS = 7
 LARGE_DROPDOWN_THRESHOLD = 10
 HEURISTIC_TESTS_BEFORE_SKIP = 3
+MAX_OPTIONS_FOR_JUNCTION = 8      # Skip junction if more than this many options
+MAX_OPTIONS_TO_TEST = 4           # Test max this many options per junction
 
 
 class JunctionStatus(Enum):
@@ -71,6 +73,7 @@ class PathResult:
     """Represents a completed path through the form."""
     path_number: int
     junction_choices: Dict[str, str]  # junction_id -> chosen_option
+    junction_steps: List[Dict[str, Any]] = field(default_factory=list)  # Ordered junction steps
     result_id: Optional[int] = None  # FormMapResult ID
 
 
@@ -108,6 +111,7 @@ class JunctionsState:
                 {
                     "path_number": p.path_number,
                     "junction_choices": p.junction_choices,
+                    "junction_steps": p.junction_steps,
                     "result_id": p.result_id
                 }
                 for p in self.paths_completed
@@ -137,23 +141,78 @@ class JunctionsState:
                     revealed_fields=opt_data["revealed_fields"]
                 )
             state.junctions[jid] = junction
-        
+
         for pdata in data.get("paths_completed", []):
             state.paths_completed.append(PathResult(
                 path_number=pdata["path_number"],
                 junction_choices=pdata["junction_choices"],
+                junction_steps=pdata.get("junction_steps", []),
                 result_id=pdata.get("result_id")
             ))
         
         state.current_path = data.get("current_path", 1)
         return state
 
+    @classmethod
+    def load_paths_from_db(cls, db, form_page_route_id: int) -> List['PathResult']:
+        """
+        Load completed paths from FormMapResult table.
+        Extracts junction steps from full steps for each path.
+
+        This is the SCALABLE approach - single source of truth in DB.
+        """
+        from models.form_mapper_models import FormMapResult
+
+        results = db.query(FormMapResult).filter(
+            FormMapResult.form_page_route_id == form_page_route_id
+        ).order_by(FormMapResult.path_number).all()
+
+        paths = []
+        for result in results:
+            steps = result.steps or []
+
+            # Extract junction steps from full steps
+            junction_steps = []
+            junction_choices = {}
+
+            for step in steps:
+                if step.get("is_junction"):
+                    junction_info = step.get("junction_info", {})
+                    junction_name = junction_info.get("junction_name", "unknown")
+                    junction_id = f"junction_{junction_name}"
+                    chosen_option = junction_info.get("chosen_option") or step.get("value")
+
+                    junction_choices[junction_id] = chosen_option
+                    junction_steps.append({
+                        "step_index": step.get("step_number", 0),
+                        "junction_id": junction_id,
+                        "junction_name": junction_name,
+                        "option": chosen_option,
+                        "selector": step.get("selector", "")
+                    })
+
+            paths.append(PathResult(
+                path_number=result.path_number,
+                junction_choices=junction_choices,
+                junction_steps=junction_steps,
+                result_id=result.id
+            ))
+
+        logger.info(f"[PathEval] Loaded {len(paths)} paths from DB for form_page_route_id={form_page_route_id}")
+        return paths
 
 class PathEvaluationService:
     """Service for evaluating paths and determining next actions."""
     
-    def __init__(self, max_paths: int = MAX_PATHS):
+    def __init__(
+        self,
+        max_paths: int = MAX_PATHS,
+        max_options_for_junction: int = MAX_OPTIONS_FOR_JUNCTION,
+        max_options_to_test: int = MAX_OPTIONS_TO_TEST
+    ):
         self.max_paths = max_paths
+        self.max_options_for_junction = max_options_for_junction
+        self.max_options_to_test = max_options_to_test
     
     def update_junction_from_step(
         self,
@@ -179,10 +238,18 @@ class PathEvaluationService:
         selector = step.get("selector", "")
         
         # Generate junction ID from selector
-        junction_id = f"junction_{selector.replace('#', '').replace('.', '_').replace('[', '_').replace(']', '')}"
+        junction_id = f"junction_{junction_info.get('junction_name', 'unknown')}"
         
         # Get or create junction
         if junction_id not in state.junctions:
+
+            # Check if too many options - skip if exceeds threshold
+            all_options = [opt for opt in junction_info.get("all_options", []) if opt and str(opt).strip()]
+            if len(all_options) > self.max_options_for_junction:
+                logger.info(
+                    f"[PathEval] !!!!!!!!! Skipping junction {junction_id} - too many options ({len(all_options)} > {self.max_options_for_junction})")
+                return state
+
             # New junction discovered
             junction = Junction(
                 id=junction_id,
@@ -190,9 +257,10 @@ class PathEvaluationService:
                 junction_type=junction_info.get("junction_type", "dropdown"),
                 step_index=step.get("step_number", 0)
             )
-            # Add all options
+            # Add all options (skip empty values - placeholder options)
             for opt_name in junction_info.get("all_options", []):
-                junction.options[opt_name] = JunctionOption(name=opt_name)
+                if opt_name and str(opt_name).strip():
+                    junction.options[opt_name] = JunctionOption(name=opt_name)
             state.junctions[junction_id] = junction
             logger.info(f"[PathEval] New junction discovered: {junction_id} with {len(junction.options)} options")
         
@@ -246,33 +314,38 @@ class PathEvaluationService:
             junction.status = JunctionStatus.UNCERTAIN
         else:
             junction.status = JunctionStatus.NOT_JUNCTION
-    
+
     def complete_path(
-        self,
-        state: JunctionsState,
-        junction_choices: Dict[str, str],
-        result_id: Optional[int] = None
+            self,
+            state: JunctionsState,
+            junction_choices: Dict[str, str],
+            junction_steps: List[Dict[str, Any]] = None,
+            result_id: Optional[int] = None
     ) -> JunctionsState:
         """
         Record a completed path.
-        
+
         Args:
             state: Current state
             junction_choices: Dict of junction_id -> chosen_option for this path
+            junction_steps: Ordered list of junction steps (for in-memory tracking before DB save)
             result_id: Database ID of the FormMapResult
-        
+
         Returns:
             Updated state
         """
         path_result = PathResult(
             path_number=state.current_path,
             junction_choices=junction_choices,
+            junction_steps=junction_steps or [],
             result_id=result_id
         )
         state.paths_completed.append(path_result)
         state.current_path += 1
-        
+
         logger.info(f"[PathEval] Path {path_result.path_number} completed with choices: {junction_choices}")
+        if junction_steps:
+            logger.info(f"[PathEval] Path {path_result.path_number} junction_steps: {junction_steps}")
         return state
     
     def evaluate_paths(self, state: JunctionsState) -> Dict[str, Any]:
@@ -301,6 +374,8 @@ class PathEvaluationService:
         ]
         
         logger.info(f"[PathEval] Evaluating: {len(confirmed_junctions)} confirmed, {len(uncertain_junctions)} uncertain junctions")
+        # Detect nesting patterns from completed paths
+        self.detect_nesting(state)
         
         # If no confirmed or uncertain junctions, we're done
         if not confirmed_junctions and not uncertain_junctions:
@@ -362,6 +437,10 @@ class PathEvaluationService:
         
         # First, handle uncertain junctions - test their untested options
         for junction in uncertain_junctions:
+            if junction.get_tested_count() >= self.max_options_to_test:
+                logger.info(
+                    f"[PathEval] !!!!! Junction {junction.id} reached max options to test ({self.max_options_to_test}), skipping")
+                continue
             untested = junction.get_untested_options()
             if untested:
                 instructions[junction.selector] = untested[0]
@@ -371,10 +450,30 @@ class PathEvaluationService:
         
         # Then, handle confirmed junctions - find untested option combinations
         for junction in confirmed_junctions:
+            if junction.get_tested_count() >= self.max_options_to_test:
+                logger.info(
+                    f"[PathEval] !!!!!!  Junction {junction.id} reached max options to test ({self.max_options_to_test}), skipping")
+                continue
             untested = junction.get_untested_options()
             if untested:
                 instructions[junction.selector] = untested[0]
                 logger.info(f"[PathEval] Testing confirmed junction {junction.id} option: {untested[0]}")
+
+                # Walk up the parent chain and add all parent junction instructions
+                current = junction
+                visited = set()
+                while current.parent_junction_id and current.parent_option:
+                    if current.parent_junction_id in visited:
+                        break  # Prevent infinite loop
+                    visited.add(current.parent_junction_id)
+                    parent_junction = state.junctions.get(current.parent_junction_id)
+                    if parent_junction:
+                        instructions[parent_junction.selector] = current.parent_option
+                        logger.info(
+                            f"[PathEval] Adding parent junction {parent_junction.id} option: {current.parent_option}")
+                        current = parent_junction
+                    else:
+                        break
         
         return instructions
     
@@ -408,17 +507,20 @@ class PathEvaluationService:
             total += len(junction.get_untested_options())
         
         return max(1, total)
-    
+
     def detect_nesting(self, state: JunctionsState) -> None:
         """
-        Analyze paths to detect nested junctions.
-        
-        A junction B is nested under junction A if B only appears in paths
-        where A has a specific option selected.
+        Analyze paths to detect nested junctions using junction_steps order.
+
+        A junction B is nested under junction A if:
+        1. B only appears in paths where A has a specific option selected
+        2. B appears AFTER A in the step order
+
+        This uses junction_steps from completed paths for accurate detection.
         """
         if len(state.paths_completed) < 2:
             return
-        
+
         # Build map: junction_id -> set of paths where it was used
         junction_paths: Dict[str, set] = {}
         for path in state.paths_completed:
@@ -426,30 +528,60 @@ class PathEvaluationService:
                 if jid not in junction_paths:
                     junction_paths[jid] = set()
                 junction_paths[jid].add(path.path_number)
-        
+
         # Check for nesting patterns
         for jid_b, paths_b in junction_paths.items():
             if jid_b not in state.junctions:
                 continue
             junction_b = state.junctions[jid_b]
-            
+
+            # Skip if already has parent assigned
+            if junction_b.parent_junction_id:
+                continue
+
             for jid_a, paths_a in junction_paths.items():
                 if jid_a == jid_b or jid_a not in state.junctions:
                     continue
-                
+
                 # If B only appears in a subset of A's paths, B might be nested
                 if paths_b < paths_a:  # B's paths are strict subset of A's
-                    # Find which option of A reveals B
+                    # Use junction_steps to verify order and find parent option
                     for path in state.paths_completed:
-                        if path.path_number in paths_b and jid_a in path.junction_choices:
-                            parent_option = path.junction_choices[jid_a]
-                            junction_b.parent_junction_id = jid_a
-                            junction_b.parent_option = parent_option
-                            logger.info(f"[PathEval] Detected nesting: {jid_b} nested under {jid_a} option '{parent_option}'")
-                            break
+                        if path.path_number not in paths_b:
+                            continue
+
+                        # Find both junctions in the steps
+                        step_a = None
+                        step_b = None
+                        for js in path.junction_steps:
+                            if js.get("junction_id") == jid_a:
+                                step_a = js
+                            elif js.get("junction_id") == jid_b:
+                                step_b = js
+
+                        # Verify A comes before B in step order
+                        if step_a and step_b:
+                            if step_a.get("step_index", 0) < step_b.get("step_index", 0):
+                                parent_option = step_a.get("option")
+                                junction_b.parent_junction_id = jid_a
+                                junction_b.parent_option = parent_option
+                                logger.info(
+                                    f"[PathEval] Detected nesting: {jid_b} (step {step_b.get('step_index')}) "
+                                    f"nested under {jid_a} (step {step_a.get('step_index')}) option '{parent_option}'"
+                                )
+                                break
+
+                    # Exit inner loop if parent found
+                    if junction_b.parent_junction_id:
+                        break
 
 
 # Helper function for easy import
-def create_path_evaluation_service(max_paths: int = MAX_PATHS) -> PathEvaluationService:
-    """Create a new PathEvaluationService instance."""
-    return PathEvaluationService(max_paths=max_paths)
+def create_path_evaluation_service(config: Dict = None) -> PathEvaluationService:
+    """Factory function to create PathEvaluationService instance."""
+    config = config or {}
+    return PathEvaluationService(
+        max_paths=config.get("max_junction_paths", MAX_PATHS),
+        max_options_for_junction=config.get("max_options_for_junction", MAX_OPTIONS_FOR_JUNCTION),
+        max_options_to_test=config.get("max_options_to_test", MAX_OPTIONS_TO_TEST)
+    )

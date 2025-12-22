@@ -79,19 +79,68 @@ class FormMapperOrchestrator:
             self.db = db_session
         self.max_retries = 3
         self.max_paths = 50
-    
+
+        # Cache TTL for company config (5 minutes)
+        COMPANY_CONFIG_CACHE_TTL = 300
+
     def _load_company_config(self, company_id: int) -> dict:
         if not self.db:
             return self._get_default_config()
+
+        # Try Redis cache first
+        cached_config = self._get_cached_company_config(company_id)
+        if cached_config:
+            return cached_config
+
+        # Load from DB
         try:
             from models.form_mapper_config_models import get_company_config
-            return get_company_config(self.db, company_id).dict()
+            config = get_company_config(self.db, company_id).dict()
+            # Cache for next time
+            self._cache_company_config(company_id, config)
+            return config
         except:
             return self._get_default_config()
+
+    def _get_cached_company_config(self, company_id: int) -> dict:
+        """Get company config from Redis cache."""
+        if not self.redis:
+            return None
+        try:
+            import json
+            key = f"company_config:{company_id}"
+            data = self.redis.get(key)
+            if data:
+                return json.loads(data.decode('utf-8') if isinstance(data, bytes) else data)
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Failed to get cached config: {e}")
+        return None
+
+    def _cache_company_config(self, company_id: int, config: dict) -> None:
+        """Cache company config in Redis."""
+        if not self.redis:
+            return
+        try:
+            import json
+            key = f"company_config:{company_id}"
+            self.redis.set(key, json.dumps(config), ex=self.COMPANY_CONFIG_CACHE_TTL)
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Failed to cache config: {e}")
+
+    def invalidate_company_config_cache(self, company_id: int) -> None:
+        """Invalidate cached company config (call when admin updates config)."""
+        if not self.redis:
+            return
+        try:
+            key = f"company_config:{company_id}"
+            self.redis.delete(key)
+            logger.info(f"[Orchestrator] Invalidated config cache for company {company_id}")
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Failed to invalidate config cache: {e}")
     
     def _get_default_config(self) -> dict:
-        return {"enable_ui_verification": True, "max_retries": 3, "use_detect_fields_change": True,
-                "use_full_dom": True, "enable_junction_discovery": True, "max_junction_paths": 5}
+        from models.form_mapper_config_models import DEFAULT_FORM_MAPPER_CONFIG
+        return DEFAULT_FORM_MAPPER_CONFIG.copy()
     
     def _get_session_key(self, session_id: str) -> str:
         return f"mapper_session:{session_id}"
@@ -444,8 +493,11 @@ class FormMapperOrchestrator:
         selector = step.get('selector') or ''
         description = step.get('description') or ''
         effective_selector = result.get('effective_selector') if result.get('used_full_xpath') else step.get('selector')
+        junction_info_str = f", junction_info={step.get('junction_info')}" if step.get('is_junction') else ""
         print(
-            f"!!!!!!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}")
+            f"!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}")
+
+
 
         if not result.get("success"):
             return self._handle_step_failure(session_id, result)
@@ -755,7 +807,7 @@ class FormMapperOrchestrator:
         # Track junction using new path evaluation service
         if step.get("is_junction") and config.get("enable_junction_discovery", True):
             from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
-            path_eval = create_path_evaluation_service()
+            path_eval = create_path_evaluation_service(config)
             junctions_state_json = session.get("junctions_state", "{}")
             junctions_state = JunctionsState.from_dict(
                 json.loads(junctions_state_json) if junctions_state_json else {})
@@ -830,7 +882,7 @@ class FormMapperOrchestrator:
         # Check if this is a verify regeneration
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
-        step = all_steps[current_index - 1] if current_index > 0 and current_index <= len(all_steps) else {}
+        step = all_steps[current_index] if current_index < len(all_steps) else {}
 
         if step.get("force_regenerate_verify"):
             return self._trigger_regenerate_verify_steps(session_id, session.get("pending_screenshot_base64", ""))
@@ -980,22 +1032,54 @@ class FormMapperOrchestrator:
 
         # Evaluate if more paths are needed using new junction system
         if config.get("enable_junction_discovery", True):
-            from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
-            path_eval = create_path_evaluation_service()
+            from services.path_evaluation_service import JunctionsState, PathResult, create_path_evaluation_service
+            from models.database import SessionLocal
+
+            path_eval = create_path_evaluation_service(config)
             junctions_state_json = session.get("junctions_state", "{}")
             junctions_state = JunctionsState.from_dict(json.loads(junctions_state_json) if junctions_state_json else {})
 
-            # Build junction choices from executed steps
+            # SCALABLE: Load completed paths from DB (single source of truth)
+            form_page_route_id = session.get("form_route_id")
+            if form_page_route_id:
+                db = SessionLocal()
+                try:
+                    db_paths = JunctionsState.load_paths_from_db(db, form_page_route_id)
+                    # Replace in-memory paths with DB paths (authoritative source)
+                    junctions_state.paths_completed = db_paths
+                    logger.info(f"[Orchestrator] Loaded {len(db_paths)} completed paths from DB")
+                finally:
+                    db.close()
+
+            # Build junction choices AND junction_steps from current executed steps
             junction_choices = {}
+            junction_steps = []
             for step in executed_steps:
                 if step.get("is_junction"):
                     junction_info = step.get("junction_info", {})
-                    selector = step.get("selector", "")
-                    junction_id = f"junction_{selector.replace('#', '').replace('.', '_').replace('[', '_').replace(']', '')}"
-                    junction_choices[junction_id] = junction_info.get("chosen_option") or step.get("value")
+                    junction_name = junction_info.get("junction_name", "unknown")
+                    junction_id = f"junction_{junction_name}"
+                    chosen_option = junction_info.get("chosen_option") or step.get("value")
 
-            # Record completed path (result_id will be set after save)
-            junctions_state = path_eval.complete_path(junctions_state, junction_choices, result_id=None)
+                    junction_choices[junction_id] = chosen_option
+                    junction_steps.append({
+                        "step_index": step.get("step_number", 0),
+                        "junction_id": junction_id,
+                        "junction_name": junction_name,
+                        "option": chosen_option,
+                        "selector": step.get("selector", "")
+                    })
+
+            # Record current path (will be saved to DB shortly)
+            junctions_state = path_eval.complete_path(
+                junctions_state,
+                junction_choices,
+                junction_steps=junction_steps,
+                result_id=None
+            )
+
+            # Update current_path counter based on DB paths + current
+            junctions_state.current_path = len(junctions_state.paths_completed) + 1
 
             # Evaluate if more paths needed
             print(f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 BEFORE path evaluation - junctions_state: {junctions_state.to_dict()}")

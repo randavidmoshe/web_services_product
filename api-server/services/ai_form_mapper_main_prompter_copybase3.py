@@ -413,27 +413,6 @@ Follow these choices exactly.
         - Data/Spreadsheet fields → create CSV or XLSX
         - Generic "file" upload → create PDF
         
-        **force_regenerate field (REQUIRED):**
-        - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
-        - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
-        
-        **force_regenerate_verify field (for Save/Submit only):**
-        - Set to `true` ONLY for Save and Submit buttons
-        - This triggers verification-focused AI after form submission
-        
-        **full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
-        - Fallback selector if primary selector fails
-        - Must start from `/html/body/...`
-        - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
-        - Double-check your count
-        - **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
-          - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
-          - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
-        - Only use indices `[n]` when no ID exists on that element
-        - Trace the path carefully from body → target element using the DOM
-        - For `verify` action: use empty string `""`
-        
-        
         **Example 1: Resume Upload**
         ```json
         {{
@@ -444,18 +423,14 @@ Follow these choices exactly.
           "content": "John Doe\\nSoftware Engineer\\n5 years experience\\nPython, Selenium, Testing",
           "selector": "",
           "value": "",
-          "description": "Create test resume PDF",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Create test resume PDF"
         }},
         {{
           "step_number": 16,
           "action": "upload_file",
           "selector": "input[name='resumeUpload']",
           "value": "test_resume.pdf",
-          "description": "Upload resume file",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Upload resume file"
         }}
         ```
         
@@ -469,18 +444,14 @@ Follow these choices exactly.
           "content": "Test Profile Photo\\nJohn Doe\\nID: 12345",
           "selector": "",
           "value": "",
-          "description": "Create test profile image",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Create test profile image"
         }},
         {{
           "step_number": 9,
           "action": "upload_file",
           "selector": "input[type='file'][name='profileImage']",
           "value": "profile_photo.png",
-          "description": "Upload profile photo",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Upload profile photo"
         }}
         ```
         
@@ -494,23 +465,17 @@ Follow these choices exactly.
           "content": "Test Document\\nDate: 2024\\nReference: TEST-001\\nApproved by QA Team",
           "selector": "",
           "value": "",
-          "description": "Create test document PDF",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Create test document PDF"
         }},
         {{
           "step_number": 23,
           "action": "upload_file",
           "selector": "input#documentUpload",
           "value": "test_document.pdf",
-          "description": "Upload test document",
-          "full_xpath": "/html/body/.../element",
-          "force_regenerate": false
+          "description": "Upload test document"
         }}
         ```
         
-                        
-
         **IMPORTANT Rules:**
         - ALWAYS create files with simple, relevant content (3-5 lines)
         - Use descriptive filenames that match the field purpose
@@ -546,7 +511,7 @@ Follow these choices exactly.
         
         **Junction format:**
         ```json
-        {{"action": "select", "selector": "...", "value": "...", "is_junction": true, "junction_info": {{"junction_name": "fieldName", "all_options": ["option1", "option2"], "chosen_option": "option1"}}, "description": "...", "full_xpath": "/html/body/.../element", "force_regenerate": false}}
+        {{"action": "select", "selector": "...", "value": "...", "is_junction": true, "junction_info": {{"junction_name": "fieldName", "all_options": ["option1", "option2"], "chosen_option": "option1"}}, "description": "..."}}
         ```
         
         **junction_info fields (ALL REQUIRED):**
@@ -1018,7 +983,19 @@ Follow these choices exactly.
           "no_more_paths": false
         }}
         ```
-                        
+        
+        **full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
+        - Fallback selector if primary selector fails
+        - Must start from `/html/body/...`
+        - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
+        - Double-check your count
+        - **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+          - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
+          - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
+        - Only use indices `[n]` when no ID exists on that element
+        - Trace the path carefully from body → target element using the DOM
+        - For `verify` action: use empty string `""`
+        
         **force_regenerate field (REQUIRED):**
         - Set to `true` for steps that change page context: Save, Submit, Edit, View, Delete,  etc.
         - Set to `false` for regular interactions: fill, select, click tab, check, hover, next, continue, etc.
@@ -1155,7 +1132,6 @@ Follow these choices exactly.
             print(f"[AIHelper] Already executed: {len(executed_steps)} steps")
 
             ##   DEBUG ###
-            '''
             if screenshot_base64:
                 try:
                     import base64 as b64_module
@@ -1170,7 +1146,6 @@ Follow these choices exactly.
                     print(f"\n{'!' * 80}\n!!! SCREENSHOT SAVED: {screenshot_path}\n{'!' * 80}\n")
                 except Exception as e:
                     print(f"[AIHelper] Warning: Failed to save debug screenshot: {e}")
-            '''
             ### END DEBUG ####
 
             # Build context of what's been done
@@ -1252,13 +1227,12 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 **⚠️ DO NOT RE-FILL ALREADY COMPLETED FIELDS:**
 - Check "Steps Already Completed" above - these fields are DONE
 - NEVER generate fill/select/check steps for fields that already appear in completed steps
-- A field is "completed" ONLY if its EXACT selector appears in completed steps - do NOT assume
+- Even if you see empty fields in DOM, if they were filled in completed steps, SKIP them
 
 **Priority order:**
 1. **CHECK CURRENT PAGE FIRST:** Look at DOM/SCREENSHOT - if you see a list/table, you're on list page. If you see read-only values, you're on detail page. Do NOT generate navigation to a page you're already on.
 2. If previous step was next/continue button AND you see a blocking overlay... your first step should be wait_message_hidden
 3. Complete current tab 100% before moving to next tab:
-   - Fill ALL visible fields - check horizontally (side-by-side fields) and vertically
    - Fill ALL input fields - both required AND optional (text, date, email, textarea, comments, notes, etc.)
    - Fill ALL textareas (comments, notes, descriptions, instructions - do NOT skip these!)
    - Click EVERY "Add" button you find (each may open a different sub-form or list)
@@ -1437,64 +1411,26 @@ When on a view/detail page, verify ALL fields that were filled during TEST_1:
 ---
 
 
-## ⚠️ MANDATORY FINAL REVIEW - FULL SCREENSHOT SCAN
+## ⚠️ MANDATORY FINAL REVIEW STAGE
 
-Before returning your response, you MUST perform this review:
+After generating all steps, you MUST perform this review before returning your response:
 
-1. **SCAN THE ENTIRE SCREENSHOT** - Every area: top, bottom, left, right, center. Do NOT focus only on one area.
+1. **Identify the trigger step:** Look at "Steps Already Completed" - the LAST step in that list triggered this regeneration.
 
-2. **LIST EVERY USER ACTION** visible on screen - any field a user can fill, select, check, or click.
+2. **Locate in screenshot:** Find where that last completed step occurred in the screenshot (the field/button that was just interacted with).
 
-3. **FOR EACH ACTION - VERIFY IT HAS A STEP:**
-   - Is it in "Steps Already Completed"?
-   - Is it in YOUR generated steps array?
-   - If NEITHER → **ADD A STEP FOR IT NOW**
+3. **Scan screenshot for ALL remaining actions in CURRENT TAB:** Starting from the trigger step location, visually scan the ENTIRE visible screenshot from top to bottom and identify EVERY field, button, dropdown, checkbox, textarea, and interactive element that a user would need to interact with before navigating to another tab or submitting.
 
 4. **Cross-check your steps:** For EACH element you identified in step 3:
-   - Confirm you have a corresponding step in your generated steps list OR in "Steps Already Completed"
-   - If ANY element is missing from BOTH, find it in the DOM and ADD a step for it at the correct position (before tab navigation)
+   - Confirm you have a corresponding step in your generated steps list BEFORE any tab navigation step
+   - If ANY element is missing, find it in the DOM and ADD a step for it at the correct position (before tab navigation)
 
-5. **Check junctions:** Go over the screenshot again. Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
+5. **Check junctions:** Go over the screenshot again from the trigger step onward. Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
 
 6. **Do NOT remove steps:** This review is ONLY for adding missing steps and junction info. Never remove a step just because you don't see it in the screenshot (it may be below the fold or in another tab).
-
-**CRITICAL:**
-- Scan horizontally AND vertically - fields may be side-by-side, not just stacked
-- A field is "already completed" ONLY if you find it in "Steps Already Completed"
-- NEVER assume a field was filled - PROVE IT or ADD A STEP
-- When in doubt, ADD THE STEP. Duplicates are filtered out, missing steps cause failures.
 ---
 
-Return ONLY the following JSON object (no other text):
-```json
-{{
-  "steps": [...],
-  "no_more_paths": false,
-  "screenshot_self_check": {{
-    "fields_seen_in_screenshot": [
-      {{
-        "field_name": "field label as seen",
-        "field_type": "input/textarea/select/checkbox/radio/button",
-        "was_added_to_steps": true,
-        "found_in_completed_steps": false,
-        "reason_if_not_added": ""
-      }}
-    ],
-    "missed_fields": []
-  }}
-}}
-```
-
-The "screenshot_self_check" field is MANDATORY.
-
-⚠️ "found_in_completed_steps" must be TRUE only if you can identify the EXACT field selector (like textarea#comments, input#email) in the "Steps Already Completed" list above.
-⚠️ "was_added_to_steps" must be TRUE only if you can find the EXACT field selector (like select#city, textarea#comments) in YOUR generated "steps" array above.
-Do NOT infer or assume. Do NOT say true if you cannot point to the exact step.
-
-⚠️ If was_added_to_steps=false AND found_in_completed_steps=false → you MUST:
-1. Add the field to "missed_fields" array
-2. Add a step for it in your "steps" array above
-NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
+Return the JSON object.
 """
 
             # Call Claude API with retry (with or without screenshot)
@@ -1515,16 +1451,16 @@ NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
                         "text": prompt
                     }
                 ]
-                #print("\n" + "!" * 80)
-                #print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
-                #print("!" * 80)
-                #import re
-                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
-                #                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
-                #                       flags=re.DOTALL)
-                #print(prompt)
-                #print("!" * 80 + "\n")
-                #print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
+                print("\n" + "!" * 80)
+                print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                print("!" * 80)
+                import re
+                prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
+                                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
+                                       flags=re.DOTALL)
+                print(prompt)
+                print("!" * 80 + "\n")
+                print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
             else:
@@ -1572,24 +1508,30 @@ NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
                     print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
 
                 #### DEBUG ####
-                # Print screenshot self-check if present
-                self_check = response_data.get("screenshot_self_check")
-                if self_check:
-                    print("\n" + "!" * 80)
-                    print("!!!!!!!!! SCREENSHOT SELF-CHECK !!!!!!!!!")
-                    print("!" * 80)
-                    print(json.dumps(self_check, indent=2))
-                    missed = self_check.get("missed_fields", [])
-                    if missed:
-                        print("!" * 80)
-                        if isinstance(missed[0], dict):
-                            missed_names = [m.get('field_name', str(m)) for m in missed]
+                # Extract and print second JSON (screenshot analysis) if present
+                try:
+                    parts = re.split(r'\}\s*\{', response_text)
+                    print(f"!!!!!!!!! DEBUG: Found {len(parts)} JSON parts !!!!!!!!!")
+                    if len(parts) > 1:
+                        second_json_str = '{' + parts[1]
+                        second_match = re.search(r'\{[\s\S]*\}', second_json_str)
+                        if second_match:
+                            analysis_data = json.loads(second_match.group())
+                            print("\n" + "!" * 80)
+                            print("!!!!!!!!! SCREENSHOT FIELD ANALYSIS !!!!!!!!!")
+                            print("!" * 80)
+                            print(json.dumps(analysis_data, indent=2))
+                            missed = analysis_data.get("missed_fields_summary", [])
+                            if missed:
+                                print("!" * 80)
+                                print("!!!!!!!!! ⚠️ MISSED FIELDS: " + ", ".join(missed) + " !!!!!!!!!")
+                            print("!" * 80 + "\n")
                         else:
-                            missed_names = missed
-                        print("!!!!!!!!! ⚠️ MISSED FIELDS: " + ", ".join(missed_names) + " !!!!!!!!!")
-                    print("!" * 80 + "\n")
-                else:
-                    print("!!!!!!!!! DEBUG: No screenshot_self_check in response !!!!!!!!!")
+                            print("!!!!!!!!! DEBUG: No JSON match in second part !!!!!!!!!")
+                    else:
+                        print("!!!!!!!!! DEBUG: AI returned only 1 JSON (no analysis) !!!!!!!!!")
+                except Exception as e:
+                    print(f"!!!!!!!!! DEBUG: Could not parse analysis JSON: {e} !!!!!!!!!")
                 ### END DEBUG #####
 
                 return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
@@ -1725,21 +1667,12 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
 - By label proximity: `//label[contains(text(), 'Email')]/../div`
 - By parent with label: `//div[@class='field-group'][.//div[@class='field-label'][contains(text(), 'Email')]]//div[@class='field-value']`
-
-**TABLE/LIST verification - use POSITIONAL selectors:**
-- First data row, column 1: `//table//tbody//tr[1]//td[1]`
-- First data row, column 2: `//table//tbody//tr[1]//td[2]`
-- Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
-- By row with unique class: `//tr[contains(@class,'highlight')]//td[1]`
+- Table structure: `//tr[contains(., 'Email')]//td[2]`
 
 **❌ WRONG selectors:**
-- `//div[contains(text(), 'john@email.com')]` - value in selector!
-- `//td[text()='TestValue']` - value in selector won't work with different test data!
-- `//tr[td[text()='SomeValue']]//td[2]` - finding row by value won't work for reusable tests!
+- `//div[contains(text(), 'john@email.com')]` - expected value in selector!
 - `input#email` on view page - form elements don't exist on view pages!
 - Inventing class names not in DOM
-
-**⚠️ TABLE SELECTOR RULE:** Selectors must work with ANY test data. Use POSITION (row/column index) or STRUCTURE (classes, data-attributes), NEVER the actual field VALUES.
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
@@ -1760,12 +1693,8 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - `//div[contains(@class, 'modal')]//button[contains(text(), 'View')]`
 
 **force_regenerate_verify field (stay in verification mode):**
-- Set to `true` for ANY navigation step that leads to a page with MORE fields to verify:
-  * Click "View" button to see detail page → `force_regenerate_verify: true`
-  * Click "Back to List" to verify list columns → `force_regenerate_verify: true`
-  * Click row in table to see details → `force_regenerate_verify: true`
-- Set to `false` for verify steps, wait steps, and final navigation (no more verification needed)
-- ⚠️ IMPORTANT: If clicking a button will show NEW fields to verify, use `force_regenerate_verify: true`, NOT `force_regenerate: true`
+- Set to `true` for navigation within verification different pages: View button, Back to List (to verify list columns)
+- Set to `false` for verify steps and wait steps
 
 **force_regenerate field (exit verification mode):**
 - Set to `true` ONLY when ALL verification is complete and ALL verification pages are complete AND next test case requires Edit/Update

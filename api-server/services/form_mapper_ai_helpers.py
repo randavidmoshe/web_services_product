@@ -78,6 +78,24 @@ class AIFormMapperHelper:
             junction_instructions=junction_instructions
         )
 
+    def regenerate_verify_steps(
+            self,
+            dom_html: str,
+            executed_steps: list,
+            test_cases: list,
+            test_context,
+            screenshot_base64: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Regenerate verification steps after Save/Submit"""
+        return self.helper.regenerate_verify_steps(
+            dom_html=dom_html,
+            executed_steps=executed_steps,
+            test_cases=test_cases,
+            test_context=test_context,
+            screenshot_base64=screenshot_base64,
+        )
+
+
     def analyze_failure_and_recover(
             self,
             failed_step: Dict,
