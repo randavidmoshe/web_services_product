@@ -102,6 +102,30 @@ class FormMapperOrchestrator:
         except:
             return self._get_default_config()
 
+    def _load_project_config(self, project_id: int) -> dict:
+        """Load project-specific config overrides"""
+        if not self.db or not project_id:
+            return {}
+        try:
+            from models.database import Project
+            project = self.db.query(Project).filter(Project.id == project_id).first()
+            if project and project.form_mapper_config:
+                return project.form_mapper_config
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Failed to load project config: {e}")
+        return {}
+
+    def _load_full_config(self, company_id: int, project_id: int = None) -> dict:
+        """Load config with hierarchy: global -> company -> project"""
+        config = self._get_default_config()
+        if company_id:
+            company_config = self._load_company_config(company_id)
+            config.update(company_config)
+        if project_id:
+            project_config = self._load_project_config(project_id)
+            config.update(project_config)
+        return config
+
     def _get_cached_company_config(self, company_id: int) -> dict:
         """Get company config from Redis cache."""
         if not self.redis:
@@ -147,7 +171,7 @@ class FormMapperOrchestrator:
     
     def create_session(self, session_id=None, user_id=None, company_id=None, network_id=None,
                       form_route_id=None, form_page_route_id=None, test_cases=None, 
-                      product_id=1, config=None, base_url=None):
+                      product_id=1, config=None, base_url=None, project_id=None):
 
         import uuid
         if form_route_id is None and form_page_route_id is not None:
@@ -162,6 +186,7 @@ class FormMapperOrchestrator:
                 route = self.db.query(FormPageRoute).filter(FormPageRoute.id == form_route_id).first()
                 if route:
                     form_page_url = route.url or ""
+                    project_id = route.project_id
             except Exception as e:
                 logger.warning(f"[Orchestrator] Failed to get form page URL: {e}")
 
@@ -170,9 +195,9 @@ class FormMapperOrchestrator:
         if test_cases is None:
             test_cases = []
         
-        company_config = self._load_company_config(company_id) if company_id else self._get_default_config()
+        final_config = self._load_full_config(company_id, project_id)
         if config:
-            company_config.update(config)
+            final_config.update(config)
         
         test_context = {"filled_fields": {}, "clicked_elements": [], "selected_options": {},
                        "credentials": {}, "reported_ui_issues": []}
@@ -187,7 +212,7 @@ class FormMapperOrchestrator:
             "junctions_state": "{}",
             "junction_instructions": "{}", "total_paths": 1,
             "test_cases": json.dumps(test_cases),
-            "test_context": json.dumps(test_context), "config": json.dumps(company_config),
+            "test_context": json.dumps(test_context), "config": json.dumps(final_config),
             "consecutive_failures": 0, "recovery_failure_history": "[]",
             "critical_fields_checklist": "{}", "field_requirements_for_recovery": "",
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
@@ -493,9 +518,18 @@ class FormMapperOrchestrator:
         selector = step.get('selector') or ''
         description = step.get('description') or ''
         effective_selector = result.get('effective_selector') if result.get('used_full_xpath') else step.get('selector')
-        junction_info_str = f", junction_info={step.get('junction_info')}" if step.get('is_junction') else ""
+        junction_info_str = f", junction_info={step.get('junction_info')}" if step.get('is_junction') or step.get(
+            'junction_info') else ""
+        # Add extra info for verify actions
+        verify_info_str = ""
+        if step.get('action') == 'verify':
+            expected = result.get('expected', step.get('value', ''))
+            actual = result.get('actual', '')
+            verify_info_str = f", expected='{expected}', actual='{actual}'"
+            if not result.get('success') and result.get('error'):
+                verify_info_str += f", error='{result.get('error')}'"
         print(
-            f"!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}")
+            f"!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}{verify_info_str}")
 
 
 
@@ -793,19 +827,36 @@ class FormMapperOrchestrator:
             print(f"!!!!!!!!!! 🔄 Step has force_regenerate=True - proceeding with AI regeneration")
             logger.info(f"[Orchestrator] Step has force_regenerate=True, triggering regeneration")
         elif config.get("use_detect_fields_change", True):
-            if not result.get("fields_changed", True):
+            should_regen, trigger_reason = self._should_regenerate(step, result, config)
+            if not should_regen:
                 print(
-                    f"!!!!!!!!! ℹ️  DOM changed. We are using Fields Detection and Fields did not change - skipping AI regeneration")
-                logger.info(f"[Orchestrator] Fields unchanged, skipping regeneration")
+                    f"!!!!!!!!! ℹ️  DOM changed. Fields detection says no regeneration needed - skipping AI regeneration")
+                print(f"!!!!!!!!! 📊 Trigger info: {trigger_reason}")
+                logger.info(f"[Orchestrator] Fields detection: skipping regeneration. Reason: {trigger_reason}")
+                # Track junction even when skipping regeneration
+                if (step.get("is_junction") or step.get("junction_info")) and config.get("enable_junction_discovery", True):
+                    from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
+                    path_eval = create_path_evaluation_service(config)
+                    junctions_state_json = session.get("junctions_state", "{}")
+                    junctions_state = JunctionsState.from_dict(
+                        json.loads(junctions_state_json) if junctions_state_json else {})
+                    fields_changed = result.get("fields_changed", False)
+                    junctions_state = path_eval.update_junction_from_step(junctions_state, step, fields_changed)
+                    self.update_session(session_id, {"junctions_state": json.dumps(junctions_state.to_dict())})
+                    print(
+                        f"!!!!!!!!!!!!!!!!!!!!!!!!! 🔀 Junction updated (skip regen): {step.get('description')} = {step.get('value')}, fields_changed={fields_changed}")
+                    logger.info(
+                        f"[Orchestrator] Junction updated (skip regen): {step.get('description')}, status={junctions_state.to_dict()}")
                 current_index = session.get("current_step_index", 0)
                 self.update_session(session_id, {"current_step_index": current_index + 1})
                 return self._execute_next_step(session_id)
             else:
                 print(
-                    f"!!!!!!!!!!! ✅ Dom changed. We are using Fields Detection and Fields changed - proceeding with AI regeneration")
+                    f"!!!!!!!!!!! ✅ Dom changed. Fields detection says regeneration needed - proceeding with AI regeneration")
+                print(f"!!!!!!!!!!! 📊 Trigger info: {trigger_reason}")
 
         # Track junction using new path evaluation service
-        if step.get("is_junction") and config.get("enable_junction_discovery", True):
+        if (step.get("is_junction") or step.get("junction_info")) and config.get("enable_junction_discovery", True):
             from services.path_evaluation_service import JunctionsState, create_path_evaluation_service
             path_eval = create_path_evaluation_service(config)
             junctions_state_json = session.get("junctions_state", "{}")
@@ -830,7 +881,53 @@ class FormMapperOrchestrator:
                                         {"encode_base64": True, "save_to_folder": False})
             return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
         return self._trigger_regenerate_steps(session_id, None)
-    
+
+    def _should_regenerate(self, step: Dict, result: Dict, config: Dict) -> tuple:
+        """
+        Decide if regeneration is needed based on agent detection and AI hint.
+
+        Logic:
+        1. If fields_changed_dom (method 1) → always regenerate
+        2. If fields_changed_js (method 2) → regenerate UNLESS AI said dont_regenerate
+        3. Otherwise → don't regenerate
+
+        Returns:
+            tuple: (should_regenerate: bool, reason: str)
+        """
+        fields_changed_dom = result.get("fields_changed_dom", False)
+        fields_changed_js = result.get("fields_changed_js", False)
+        dont_regenerate = step.get("dont_regenerate", False)
+        use_ai_hint = config.get("use_ai_dont_regenerate", True)
+
+        # Backward compatibility: if new fields not present, use old field
+        if "fields_changed_dom" not in result and "fields_changed_js" not in result:
+            fields_changed = result.get("fields_changed", True)
+            return (fields_changed, f"legacy mode: fields_changed={fields_changed}")
+
+        # Build status string
+        status = f"dom={fields_changed_dom}, js={fields_changed_js}, ai_dont_regen={dont_regenerate}, use_ai_hint={use_ai_hint}"
+
+        # Method 1 (DOM structure change) always triggers regeneration
+        if fields_changed_dom:
+            reason = f"DOM structure changed → regenerate ({status})"
+            logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+            return (True, reason)
+
+        # Method 2 (JS visibility change) - check AI hint
+        if fields_changed_js:
+            if use_ai_hint and dont_regenerate:
+                reason = f"JS visibility changed but AI said dont_regenerate → skip ({status})"
+                logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+                return (False, reason)
+            reason = f"JS visibility changed → regenerate ({status})"
+            logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+            return (True, reason)
+
+        reason = f"No field changes detected → skip ({status})"
+        logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+        return (False, reason)
+
+
     def handle_dom_change_screenshot_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}

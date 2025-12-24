@@ -1263,7 +1263,9 @@ class AgentSelenium:
                     "alert_type": alert_info.get("alert_type"),
                     "alert_text": alert_info.get("alert_text"),
                     "new_dom_hash": new_dom_hash,
-                    "fields_changed": fields_changed
+                    "fields_changed": fields_changed,
+                    "fields_changed_dom": fields_changed_dom,
+                    "fields_changed_js": fields_changed_js
                 }
             
             # No alert - get new DOM hash
@@ -1294,7 +1296,9 @@ class AgentSelenium:
                 "old_dom_hash": old_dom_hash,
                 "alert_present": False,
                 "new_dom_hash": new_dom_hash,
-                "fields_changed": fields_changed
+                "fields_changed": fields_changed,
+                "fields_changed_dom": fields_changed_dom,
+                "fields_changed_js": fields_changed_js
             }
         
         try:

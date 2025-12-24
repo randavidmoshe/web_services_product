@@ -20,7 +20,8 @@ class AIHelper:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+        #self.model = "claude-sonnet-4-5-20250929"
+        self.model = "claude-haiku-4-5-20251001"
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
         """
@@ -223,9 +224,11 @@ This checklist will remain active until the test completes successfully.
         route_planning_section = ""
         if junction_instructions:
             route_planning_section = f"""
-🔀 JUNCTION INSTRUCTIONS: MUST FOLLOW:
+🔀 JUNCTION INSTRUCTIONS:
 {junction_instructions}
-Follow these choices exactly.
+
+When you have a step for these junctions, use the specified option. If a junction doesn't exist in the current form state, skip it.
+
 
 """
 
@@ -416,6 +419,14 @@ Follow these choices exactly.
         **force_regenerate field (REQUIRED):**
         - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
         - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+        
+        **dont_regenerate field (optional):**
+        - Set to `true` ONLY for:
+          * Opening/closing modals or dialogs
+          * Adding/removing items in a list or table
+          * Expanding/collapsing accordion sections
+          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+        - Set to `false` (or omit) for all other actions
         
         **force_regenerate_verify field (for Save/Submit only):**
         - Set to `true` ONLY for Save and Submit buttons
@@ -1012,20 +1023,27 @@ Follow these choices exactly.
         ```json
         {{
           "steps": [
-            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false}},
-            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true}}
-          ],
-          "no_more_paths": false
+            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false, "dont_regenerate": false}},
+            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true, "dont_regenerate": false}}
+          ]
         }}
         ```
                         
         **force_regenerate field (REQUIRED):**
-        - Set to `true` for steps that change page context: Save, Submit, Edit, View, Delete,  etc.
-        - Set to `false` for regular interactions: fill, select, click tab, check, hover, next, continue, etc.
+        - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
+        - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+        
+        **dont_regenerate field (optional):**
+        - Set to `true` ONLY for:
+          * Opening/closing modals or dialogs
+          * Adding/removing items in a list or table
+          * Expanding/collapsing accordion sections
+          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+        - Set to `false` (or omit) for all other actions
+        
         - This tells the system to regenerate steps after this action completes
 
         - **steps**: Array of step objects to execute
-        - **no_more_paths**: Set to `true` ONLY if all junction combinations have been explored (no new paths possible). Otherwise `false`.
 
         Return ONLY the JSON object, no other text.
         """
@@ -1097,14 +1115,12 @@ Follow these choices exactly.
                 if isinstance(result, dict) and "steps" in result:
                     # New format: {"steps": [...], "no_more_paths": bool}
                     steps = result.get("steps", [])
-                    no_more_paths = result.get("no_more_paths", False)
-                    
+
                     logger.info(f"[AIHelper] Successfully parsed {len(steps)} steps")
                     print(f"[AIHelper] Successfully parsed {len(steps)} steps")
-                    if no_more_paths:
-                        print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
+
                     
-                    return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
+                    return {"steps": steps, "ui_issue": "", "no_more_paths": False}
                 elif isinstance(result, list):
                     # Old format: just array of steps (backward compatibility)
                     logger.info(f"[AIHelper] Successfully parsed {len(result)} steps (legacy format)")
@@ -1212,13 +1228,14 @@ These fields caused the previous failure - pay special attention to them.
 🔀 JUNCTION INSTRUCTIONS:
 {junction_instructions}
 
+When you have a step for these junctions instructions, use the specified option. If a junction doesn't exist in the current form state, skip it.
 """
 
             # Screenshot section
             screenshot_section = ""
             if screenshot_base64:
                 screenshot_section = """
-🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY VIEWING THE SCREENSHOT AND EXAMINING THE DOM:
+🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY EXAMINING THE DOM AND ALSO VIEWING THE SCREENSHOT:
 1. Extract ALL input fields and repeatable lists with "Add"/"+"/etc from DOM (input, select, textarea, checkbox, radio, list items(with add buttons), everything user can add/input)
 2. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
 3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
@@ -1254,15 +1271,20 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 - NEVER generate fill/select/check steps for fields that already appear in completed steps
 - A field is "completed" ONLY if its EXACT selector appears in completed steps - do NOT assume
 
+** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
+- Locate the trigger step in SCREENSHOT
+- Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
+- Make sure you create steps for all of them
+- The SCREENSHOT may show only part of whats needed so its in Addition to what you find in DOM
+
 **Priority order:**
 1. **CHECK CURRENT PAGE FIRST:** Look at DOM/SCREENSHOT - if you see a list/table, you're on list page. If you see read-only values, you're on detail page. Do NOT generate navigation to a page you're already on.
 2. If previous step was next/continue button AND you see a blocking overlay... your first step should be wait_message_hidden
 3. Complete current tab 100% before moving to next tab:
    - Fill ALL visible fields - check horizontally (side-by-side fields) and vertically
    - Fill ALL input fields - both required AND optional (text, date, email, textarea, comments, notes, etc.)
-   - Fill ALL textareas (comments, notes, descriptions, instructions - do NOT skip these!)
    - Click EVERY "Add" button you find (each may open a different sub-form or list)
-   - Handle special inputs (dropdowns, checkboxes, sliders, file uploads)
+   - Handle special inputs (dropdowns, checkboxes, sliders, file uploads, drag and drop)
    - Do NOT skip fields because they appear optional - fill EVERY visible field
 4. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
 5. Submit form and verify success
@@ -1273,9 +1295,8 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 ```json
 {{
   "steps": [
-    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false}}
-  ],
-  "no_more_paths": false
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false, "dont_regenerate": false}}
+  ]
 }}
 ```
 
@@ -1298,6 +1319,15 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 **force_regenerate field (REQUIRED):**
 - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
 - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+
+**dont_regenerate field (optional):**
+- Set to `true` ONLY for:
+  * Opening/closing modals or dialogs
+  * Adding/removing items in a list or table
+  * Expanding/collapsing accordion sections
+  * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+- Set to `false` (or omit) for all other actions
+
 
 **force_regenerate_verify field (for Save/Submit only):**
 - Set to `true` ONLY for Save and Submit buttons
@@ -1441,9 +1471,10 @@ When on a view/detail page, verify ALL fields that were filled during TEST_1:
 
 Before returning your response, you MUST perform this review:
 
-1. **SCAN THE ENTIRE SCREENSHOT** - Every area: top, bottom, left, right, center. Do NOT focus only on one area.
+1. **SCAN THE ENTIRE SCREENSHOT** - Every area: top, bottom, left, right, center. Do NOT focus only on one area. Scan horizontally AND vertically - fields may be side-by-side, not just stacked.
 
-2. **LIST EVERY USER ACTION** visible on screen - any field a user can fill, select, check, or click.
+2. **LIST EVERY USER ACTION** visible on screen - any field or sub field a user can fill, select, check, or click - optional fields like Comments are also mandatory.
+   - Your LIST MUST INCLUDE EVERY ACTION/SUB ACTION USER CAN PERFORM - NO EXCEPTIONS 
 
 3. **FOR EACH ACTION - VERIFY IT HAS A STEP:**
    - Is it in "Steps Already Completed"?
@@ -1454,47 +1485,42 @@ Before returning your response, you MUST perform this review:
    - Confirm you have a corresponding step in your generated steps list OR in "Steps Already Completed"
    - If ANY element is missing from BOTH, find it in the DOM and ADD a step for it at the correct position (before tab navigation)
 
-5. **Check junctions:** Go over the screenshot again. Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
+    FOR EACH FIELD YOU SEE IN THE SCREENSHOT:
+    1. Is there a step for this field in "Steps Already Completed"? → found_in_completed_steps = true
+    2. Is there a step for this field in YOUR "steps" array? → was_added_to_steps = true
+    
+    🚨🚨🚨 CRITICAL - READ THIS 🚨🚨🚨
+    If was_added_to_steps=false AND found_in_completed_steps=false:
+    → YOU MUST ADD A STEP FOR THIS FIELD TO THE "steps" ARRAY RIGHT NOW!
+    → DUPLICATES ARE OK - IT IS BETTER TO ADD A FIELD TWICE THAN TO MISS IT!
+    → IF YOU DO NOT ADD IT, THE ENTIRE TEST WILL FAIL!
+    → NO EXCUSES, NO EXCEPTIONS!
+    🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+
+5. **Check junctions:** Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
 
 6. **Do NOT remove steps:** This review is ONLY for adding missing steps and junction info. Never remove a step just because you don't see it in the screenshot (it may be below the fold or in another tab).
 
-**CRITICAL:**
-- Scan horizontally AND vertically - fields may be side-by-side, not just stacked
-- A field is "already completed" ONLY if you find it in "Steps Already Completed"
-- NEVER assume a field was filled - PROVE IT or ADD A STEP
-- When in doubt, ADD THE STEP. Duplicates are filtered out, missing steps cause failures.
 ---
 
 Return ONLY the following JSON object (no other text):
 ```json
 {{
   "steps": [...],
-  "no_more_paths": false,
   "screenshot_self_check": {{
     "fields_seen_in_screenshot": [
       {{
         "field_name": "field label as seen",
         "field_type": "input/textarea/select/checkbox/radio/button",
         "was_added_to_steps": true,
-        "found_in_completed_steps": false,
-        "reason_if_not_added": ""
+        "found_in_completed_steps": false
       }}
-    ],
-    "missed_fields": []
+    ]
   }}
 }}
 ```
 
 The "screenshot_self_check" field is MANDATORY.
-
-⚠️ "found_in_completed_steps" must be TRUE only if you can identify the EXACT field selector (like textarea#comments, input#email) in the "Steps Already Completed" list above.
-⚠️ "was_added_to_steps" must be TRUE only if you can find the EXACT field selector (like select#city, textarea#comments) in YOUR generated "steps" array above.
-Do NOT infer or assume. Do NOT say true if you cannot point to the exact step.
-
-⚠️ If was_added_to_steps=false AND found_in_completed_steps=false → you MUST:
-1. Add the field to "missed_fields" array
-2. Add a step for it in your "steps" array above
-NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
 """
 
             # Call Claude API with retry (with or without screenshot)
@@ -1565,11 +1591,9 @@ NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
             if json_match:
                 response_data = json.loads(json_match.group())
                 steps = response_data.get("steps", [])
-                no_more_paths = response_data.get("no_more_paths", False)
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
-                if no_more_paths:
-                    print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
+
 
                 #### DEBUG ####
                 # Print screenshot self-check if present
@@ -1592,7 +1616,7 @@ NO EXCEPTIONS. Any visible field with both=false is an error you must fix.
                     print("!!!!!!!!! DEBUG: No screenshot_self_check in response !!!!!!!!!")
                 ### END DEBUG #####
 
-                return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
+                return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
                 print("[AIHelper] No JSON object found in regeneration response")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
@@ -1689,9 +1713,8 @@ Generate steps to VERIFY all fields that were filled during the test, plus any n
 ```json
 {{
   "steps": [
-    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "xpath", "force_regenerate": false}}
-  ],
-  "no_more_paths": false
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "xpath", "force_regenerate": false, "force_regenerate_verify": false, "dont_regenerate": false}}
+  ]
 }}
 ```
 
@@ -1724,7 +1747,7 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - By data attribute: `//div[@data-field='email']`
 - By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
 - By label proximity: `//label[contains(text(), 'Email')]/../div`
-- By parent with label: `//div[@class='field-group'][.//div[@class='field-label'][contains(text(), 'Email')]]//div[@class='field-value']`
+- By parent with label: `//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Email')]]//div[contains(@class, 'field-value')]`
 
 **TABLE/LIST verification - use POSITIONAL selectors:**
 - First data row, column 1: `//table//tbody//tr[1]//td[1]`
@@ -1774,7 +1797,6 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 **How to decide:**
 1. If more fields to verify on another page → use `force_regenerate_verify: true`
 2. If ALL fields verified and all Verification pages are done AND next test is Edit/Update → use `force_regenerate: true` on Edit button
-3. If ALL fields verified AND no more tests → set `no_more_paths: true`
 
 
 **full_xpath field:**
@@ -1829,13 +1851,11 @@ Return ONLY the JSON object.
             if json_match:
                 response_data = json.loads(json_match.group())
                 steps = response_data.get("steps", [])
-                no_more_paths = response_data.get("no_more_paths", False)
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} verify steps")
-                if no_more_paths:
-                    print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
 
-                return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
+
+                return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
                 print("[AIHelper] No JSON object found in verify regeneration response")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}

@@ -22,6 +22,21 @@ MAX_OPTIONS_FOR_JUNCTION = 8      # Skip junction if more than this many options
 MAX_OPTIONS_TO_TEST = 4           # Test max this many options per junction
 
 
+def normalize_junction_name(name: str) -> str:
+    """Normalize junction name to consistent camelCase format.
+
+    Examples:
+        'work-type' -> 'workType'
+        'work_type' -> 'workType'
+        'workType' -> 'workType'
+        'Work-Type' -> 'workType'
+        'applicationType' -> 'applicationType'
+    """
+    if not name:
+        return "unknown"
+    # Convert to lowercase and remove dashes/underscores for consistent ID
+    return name.replace('-', '').replace('_', '').lower()
+
 class JunctionStatus(Enum):
     UNKNOWN = "unknown"      # Just detected, not tested yet
     UNCERTAIN = "uncertain"  # Tested but no field change yet, need more tests
@@ -179,7 +194,7 @@ class JunctionsState:
                 if step.get("is_junction"):
                     junction_info = step.get("junction_info", {})
                     junction_name = junction_info.get("junction_name", "unknown")
-                    junction_id = f"junction_{junction_name}"
+                    junction_id = f"junction_{normalize_junction_name(junction_name)}"
                     chosen_option = junction_info.get("chosen_option") or step.get("value")
 
                     junction_choices[junction_id] = chosen_option
@@ -238,7 +253,7 @@ class PathEvaluationService:
         selector = step.get("selector", "")
         
         # Generate junction ID from selector
-        junction_id = f"junction_{junction_info.get('junction_name', 'unknown')}"
+        junction_id = f"junction_{normalize_junction_name(junction_info.get('junction_name', 'unknown'))}"
         
         # Get or create junction
         if junction_id not in state.junctions:
@@ -454,6 +469,17 @@ class PathEvaluationService:
                 logger.info(
                     f"[PathEval] !!!!!!  Junction {junction.id} reached max options to test ({self.max_options_to_test}), skipping")
                 continue
+
+            # Skip nested junctions if parent is being tested with different option
+            if junction.parent_junction_id and junction.parent_option:
+                parent_junction = state.junctions.get(junction.parent_junction_id)
+                if parent_junction:
+                    parent_instruction = instructions.get(parent_junction.selector)
+                    if parent_instruction is not None and parent_instruction != junction.parent_option:
+                        logger.info(
+                            f"[PathEval] Skipping nested junction {junction.id} - parent going to '{parent_instruction}', not '{junction.parent_option}'")
+                        continue
+
             untested = junction.get_untested_options()
             if untested:
                 instructions[junction.selector] = untested[0]

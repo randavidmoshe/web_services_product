@@ -79,6 +79,11 @@ class FormMapperConfig(BaseModel):
         description="Maximum number of options to test per junction"
     )
 
+    use_ai_dont_regenerate: bool = Field(
+        default=True,
+        description="Use AI hint (dont_regenerate) to skip regeneration for non-field-changing actions"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -93,7 +98,8 @@ class FormMapperConfig(BaseModel):
                 "enable_junction_discovery": True,
                 "max_junction_paths": 7,
                 "max_options_for_junction": 8,
-                "max_options_to_test": 4
+                "max_options_to_test": 4,
+                "use_ai_dont_regenerate": True
             }
         }
 
@@ -112,6 +118,7 @@ class FormMapperConfigUpdate(BaseModel):
     max_junction_paths: Optional[int] = Field(default=None, ge=1, le=50)
     max_options_for_junction: Optional[int] = Field(default=None, ge=1, le=50)
     max_options_to_test: Optional[int] = Field(default=None, ge=1, le=20)
+    use_ai_dont_regenerate: Optional[bool] = None
 
 
 # Default config as dict
@@ -127,7 +134,8 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "enable_junction_discovery": True,
     "max_junction_paths": 7,
     "max_options_for_junction": 8,
-    "max_options_to_test": 4
+    "max_options_to_test": 4,
+    "use_ai_dont_regenerate": True
 }
 
 

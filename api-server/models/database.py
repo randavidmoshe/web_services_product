@@ -49,6 +49,7 @@ class Company(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # 2FA enforcement setting
     require_2fa = Column(Boolean, default=False)
+    form_mapper_config = Column(JSON, default=dict)  # Per-company config overrides
 
 class CompanyProductSubscription(Base):
     __tablename__ = "company_product_subscriptions"
@@ -98,6 +99,7 @@ class Project(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    form_mapper_config = Column(JSON, default=dict)  # Per-project config overrides
 
 class Network(Base):
     __tablename__ = "networks"
