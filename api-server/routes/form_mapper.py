@@ -483,6 +483,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         verify_ui_visual,
         regenerate_steps,
         regenerate_verify_steps,
+        evaluate_paths_with_ai,
         save_mapping_result
     )
     
@@ -493,6 +494,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "verify_ui_visual": verify_ui_visual,
         "regenerate_steps": regenerate_steps,
         "regenerate_verify_steps": regenerate_verify_steps,
+        "evaluate_paths_with_ai": evaluate_paths_with_ai,
         "save_mapping_result": save_mapping_result
     }
     

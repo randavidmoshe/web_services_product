@@ -145,7 +145,6 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "handle_alert_recovery": handle_alert_recovery,
         "verify_ui_visual": verify_ui_visual,
         "regenerate_steps": regenerate_steps,
-        "evaluate_paths_with_ai": evaluate_paths_with_ai,
         "save_mapping_result": save_mapping_result,
     }
     
@@ -241,11 +240,9 @@ def analyze_form_page(
             is_first_iteration=True
         )
 
-        print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
+        print(f"!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
         for s in ai_result.get('steps', []):
             print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
-            if s.get('is_junction') or s.get('junction_info'):
-                print(f"      -> is_junction: {s.get('is_junction')}, junction_info: {s.get('junction_info')}")
         
         input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -263,7 +260,13 @@ def analyze_form_page(
             "form_fields": ai_result.get("form_fields", [])
         }
         
-
+        logger.info(f"[FormMapperTask] Analysis complete: {len(result.get('steps', []))} steps")
+        for step in result.get('steps', []):
+            logger.info(f"  Step {step.get('step_number')}: {step.get('action')} | {step.get('description')}")
+            logger.info(f"    selector: {step.get('selector')}")
+            if step.get('value'):
+                val = str(step.get('value'))[:60]
+                logger.info(f"    value: {val}")
 
         _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
@@ -466,12 +469,8 @@ def handle_alert_recovery(
             AIOperationType.FORM_MAPPER_ALERT_RECOVERY,
             input_tokens, output_tokens, session_id
         )
-
-        if isinstance(ai_result, dict):
-            result = {"success": True, **ai_result}
-        else:
-            # ai_result is a list or None - wrap it
-            result = {"success": True, "steps": ai_result if ai_result else [], "scenario": "alert_recovery"}
+        
+        result = {"success": True, **ai_result}
         
         logger.info(f"[FormMapperTask] Alert recovery complete: scenario={ai_result.get('scenario', 'unknown')}")
         _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
@@ -625,9 +624,7 @@ def regenerate_steps(
         for s in ai_result.get('steps', []):
             print(
                 f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
-            if s.get('is_junction') or s.get('junction_info'):
-                print(f"      -> is_junction: {s.get('is_junction')}, junction_info: {s.get('junction_info')}")
-
+        
         input_tokens = len(dom_html) // 4 + (len(screenshot_base64) // 100 if screenshot_base64 else 0)
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
         
@@ -643,6 +640,10 @@ def regenerate_steps(
             "no_more_paths": ai_result.get("no_more_paths", False)
         }
         
+        logger.info(f"[FormMapperTask] Regeneration complete: {len(result.get('new_steps', []))} new steps")
+        for step in result.get('new_steps', []):
+            logger.info(f"  Step {step.get('step_number')}: {step.get('action')} | {step.get('description')}")
+            logger.info(f"    selector: {step.get('selector')}")
 
         _continue_orchestrator_chain(session_id, "regenerate_steps", result)
         return result
@@ -748,6 +749,7 @@ def regenerate_verify_steps(
 def evaluate_paths_with_ai(
         self,
         session_id: str,
+        junctions_data: List[Dict],
         completed_paths: List[Dict],
         discover_all_combinations: bool = False,
         max_paths: int = 7
@@ -755,6 +757,7 @@ def evaluate_paths_with_ai(
     """Celery task: Use AI to evaluate paths and determine next junction combination."""
     logger.info(f"[FormMapperTask] AI path evaluation for session {session_id}")
     print(f"!!!! 🤖 AI Path Evaluation for session {session_id}")
+    print(f"!!!! Junctions: {junctions_data}")
     print(f"!!!! Completed paths: {completed_paths}")
     print(f"!!!! Discover all combinations: {discover_all_combinations}")
 
@@ -781,6 +784,7 @@ def evaluate_paths_with_ai(
 
         # Call AI to evaluate paths
         ai_result = ai_helper.evaluate_paths(
+            junctions_data=junctions_data,
             completed_paths=completed_paths,
             discover_all_combinations=discover_all_combinations,
             max_paths=max_paths

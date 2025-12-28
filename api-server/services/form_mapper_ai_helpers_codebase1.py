@@ -123,12 +123,14 @@ class AIFormMapperHelper:
 
     def evaluate_paths(
             self,
+            junctions_data: List[Dict],
             completed_paths: List[Dict],
             discover_all_combinations: bool = False,
             max_paths: int = 7
     ) -> Dict:
         """Use AI to evaluate paths and determine next junction combination"""
         return self.helper.evaluate_paths(
+            junctions_data=junctions_data,
             completed_paths=completed_paths,
             discover_all_combinations=discover_all_combinations,
             max_paths=max_paths

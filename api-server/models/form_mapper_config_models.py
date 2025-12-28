@@ -84,6 +84,16 @@ class FormMapperConfig(BaseModel):
         description="Use AI hint (dont_regenerate) to skip regeneration for non-field-changing actions"
     )
 
+    use_ai_path_evaluation: bool = Field(
+        default=True,
+        description="Use AI to determine next junction path instead of algorithmic approach"
+    )
+
+    ai_discover_all_path_combinations: bool = Field(
+        default=False,
+        description="When True, test all combinations of junction options. When False, just ensure each option is tested once"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -99,7 +109,9 @@ class FormMapperConfig(BaseModel):
                 "max_junction_paths": 7,
                 "max_options_for_junction": 8,
                 "max_options_to_test": 4,
-                "use_ai_dont_regenerate": True
+                "use_ai_dont_regenerate": True,
+                "use_ai_path_evaluation": True,
+                "ai_discover_all_path_combinations": False
             }
         }
 
@@ -119,6 +131,8 @@ class FormMapperConfigUpdate(BaseModel):
     max_options_for_junction: Optional[int] = Field(default=None, ge=1, le=50)
     max_options_to_test: Optional[int] = Field(default=None, ge=1, le=20)
     use_ai_dont_regenerate: Optional[bool] = None
+    use_ai_path_evaluation: Optional[bool] = None
+    ai_discover_all_path_combinations: Optional[bool] = None
 
 
 # Default config as dict
@@ -135,7 +149,9 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "max_junction_paths": 7,
     "max_options_for_junction": 8,
     "max_options_to_test": 4,
-    "use_ai_dont_regenerate": True
+    "use_ai_dont_regenerate": True,
+    "use_ai_path_evaluation": True,
+    "ai_discover_all_path_combinations": False
 }
 
 

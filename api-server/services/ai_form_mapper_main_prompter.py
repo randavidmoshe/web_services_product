@@ -1225,10 +1225,12 @@ These fields caused the previous failure - pay special attention to them.
             route_planning_section = ""
             if junction_instructions:
                 route_planning_section = f"""
-🔀 JUNCTION INSTRUCTIONS:
+🔀 REQUIRED SELECTIONS FOR THIS PATH:
 {junction_instructions}
 
-When you have a step for these junctions instructions, use the specified option. If a junction doesn't exist in the current form state, skip it.
+For dropdowns or selection fields listed above, you MUST select the specified option.
+For ALL OTHER fields (including dropdowns/selections NOT listed above), you MUST still fill/select them - just choose any valid option.
+Do NOT skip fields just because they are not in the required selections list.
 """
 
             # Screenshot section
@@ -1241,6 +1243,7 @@ When you have a step for these junctions instructions, use the specified option.
 3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
 4. Screenshot shows active tab/section and visual layout
 5. BEFORE adding any navigation step (next tab, submit), re-check DOM and screenshot to ensure no field was skipped
+6. **JUNCTION CHECK:** Look for dropdowns/radio buttons/etc in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction: true + junction_info).
 
 """
 
@@ -1271,11 +1274,16 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 - NEVER generate fill/select/check steps for fields that already appear in completed steps
 - A field is "completed" ONLY if its EXACT selector appears in completed steps - do NOT assume
 
+**⚠️ Never return to a previous Tab that you already filled
+
 ** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
 - Locate the trigger step in SCREENSHOT
 - Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
 - Make sure you create steps for all of them
+- Note that the trigger step might be at an inner location so you need to look also outside this trigger step's scope
+- **JUNCTION CHECK:** Look for dropdowns/radio buttons/cards in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction: true + junction_info).
 - The SCREENSHOT may show only part of whats needed so its in Addition to what you find in DOM
+
 
 **Priority order:**
 1. **CHECK CURRENT PAGE FIRST:** Look at DOM/SCREENSHOT - if you see a list/table, you're on list page. If you see read-only values, you're on detail page. Do NOT generate navigation to a page you're already on.
@@ -1325,7 +1333,6 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
   * Opening/closing modals or dialogs
   * Adding/removing items in a list or table
   * Expanding/collapsing accordion sections
-  * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
 - Set to `false` (or omit) for all other actions
 
 
@@ -1413,7 +1420,6 @@ Always include `is_junction: true` and `junction_info` even when following junct
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
 
----
 ## VERIFICATION RULES
 
 **⚠️ CRITICAL - VIEW/DETAIL PAGE ≠ FORM PAGE:**
@@ -1456,7 +1462,6 @@ When on a view/detail page, verify ALL fields that were filled during TEST_1:
 - Inventing class names not in DOM
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
-
 ---
 
 ## Rules:
@@ -1594,28 +1599,6 @@ The "screenshot_self_check" field is MANDATORY.
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
 
-
-                #### DEBUG ####
-                # Print screenshot self-check if present
-                self_check = response_data.get("screenshot_self_check")
-                if self_check:
-                    print("\n" + "!" * 80)
-                    print("!!!!!!!!! SCREENSHOT SELF-CHECK !!!!!!!!!")
-                    print("!" * 80)
-                    print(json.dumps(self_check, indent=2))
-                    missed = self_check.get("missed_fields", [])
-                    if missed:
-                        print("!" * 80)
-                        if isinstance(missed[0], dict):
-                            missed_names = [m.get('field_name', str(m)) for m in missed]
-                        else:
-                            missed_names = missed
-                        print("!!!!!!!!! ⚠️ MISSED FIELDS: " + ", ".join(missed_names) + " !!!!!!!!!")
-                    print("!" * 80 + "\n")
-                else:
-                    print("!!!!!!!!! DEBUG: No screenshot_self_check in response !!!!!!!!!")
-                ### END DEBUG #####
-
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
                 print("[AIHelper] No JSON object found in regeneration response")
@@ -1707,7 +1690,16 @@ Generate steps to VERIFY all fields that were filled during the test, plus any n
 **Current page detection:**
 - If you see a LIST/TABLE page: Verify visible columns, then click View to see details
 - If you see a VIEW/DETAIL page: Verify ALL fields displayed on this page
-- If you see a SUCCESS message: Look for "View" or "Back to List" button to navigate
+
+**⚠️ CRITICAL - NO LOOPS:**
+Look at "Steps Already Completed". If you see BOTH:
+1. A "click View" step that navigated to a detail page, AND
+2. Verify steps for the detail page fields
+
+Then verification is COMPLETE. Generate ONLY `"steps": []` (empty array).
+
+Do NOT generate another "click View" if View was already clicked and detail page was already verified.
+Do NOT create a loop of: List → View → Back to List → View → Back to List...
 
 ## Response Format:
 ```json
@@ -1734,6 +1726,7 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 3. Each page requires FULL verification - do NOT skip fields verified on a previous page
 4. Get expected values from the `value` field of those fill/select steps
 5. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At", "Saved Date")
+6. Generate verify steps even if you suspect expected value might not match displayed value - verification failures are valid test results, do NOT skip fields to avoid failures
 
 **⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
 - ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
@@ -1747,7 +1740,12 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - By data attribute: `//div[@data-field='email']`
 - By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
 - By label proximity: `//label[contains(text(), 'Email')]/../div`
-- By parent with label: `//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Email')]]//div[contains(@class, 'field-value')]`
+- By parent with label: `//div[contains(@class, 'delivery-section')]//div[contains(@class, 'field-row')]//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Time Slot')]]//div[contains(@class, 'field-value')]`
+
+**⚠️ SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
+Every verify selector MUST include the field name/label as an anchor (e.g., 'Email', 'First Name', 'Phone').
+- ✅ `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[@class='value']`  
+- ❌ `(//div[@class='field-value'])[3]` - position-only without field name won't work if layout changes
 
 **TABLE/LIST verification - use POSITIONAL selectors:**
 - First data row, column 1: `//table//tbody//tr[1]//td[1]`
@@ -1833,6 +1831,14 @@ Return ONLY the JSON object.
                         "text": prompt
                     }
                 ]
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!! GENERATE RECOVERY PROMPT - FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
+                #                       flags=re.DOTALL)
+                #print(prompt)
+                #print("!" * 80 + "\n")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
             else:
@@ -2053,9 +2059,16 @@ Return ONLY the JSON object.
             
             print(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
             logger.info(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
-            
+
+            # Strip markdown code blocks first
+            clean_response = response_text
+            if '```json' in clean_response:
+                clean_response = clean_response.split('```json')[1].split('```')[0]
+            elif '```' in clean_response:
+                clean_response = clean_response.split('```')[1].split('```')[0]
+
             # Extract JSON from response
-            json_match = re.search(r'\[[\s\S]*\]', response_text)
+            json_match = re.search(r'\[[\s\S]*\]', clean_response)
             if json_match:
                 recovery_steps = json.loads(json_match.group())
                 print(f"[AIHelper] Successfully parsed {len(recovery_steps)} recovery steps")
@@ -2068,6 +2081,7 @@ Return ONLY the JSON object.
                 
         except Exception as e:
             print(f"[AIHelper] Error in failure recovery: {e}")
+            print(f"[AIHelper] Raw response was: {response_text[:1000] if response_text else 'None'}")
             logger.error(f"[AIHelper] Error in failure recovery: {e}")
             return []
 
@@ -2087,6 +2101,9 @@ Return ONLY the JSON object.
         action = failed_step.get('action', 'unknown')
         selector = failed_step.get('selector', '')
         description = failed_step.get('description', '')
+        expected_value = failed_step.get('value', '')
+        is_junction = failed_step.get('is_junction', False)
+        junction_info = failed_step.get('junction_info', {})
 
         # Build executed steps context (last 5 steps for context)
         executed_context = ""
@@ -2124,6 +2141,8 @@ Return ONLY the JSON object.
     - Selector: {selector}  
     - Description: {description}
     - Error: {error_message}
+    {f"- Expected Value: {expected_value}" if action == "verify" and expected_value else ""}
+    {f"- IS JUNCTION: This step is a junction - you MUST include is_junction: true and junction_info in your recovery step. junction_info: {json.dumps(junction_info)}" if is_junction else ""}
     {executed_context}
     {failure_history_section}
     ## Current DOM:
@@ -2132,7 +2151,35 @@ Return ONLY the JSON object.
     ```
 
     ---
-
+    
+    ## Special Case - VERIFY Action Recovery:
+    If the failed action is `verify`:
+    - Return EXACTLY 1 step with the FIXED selector
+    - Keep the SAME expected value (the `value` field) - do NOT change it
+    - Only fix the LOCATOR (selector)
+    
+    **VERIFY selector rules:**
+    - Build selector from DOM structure, NOT from displayed values
+    - Use `contains(@class, 'x')` not `@class='x'` (elements often have multiple classes)
+    - View/detail pages use `<div>`, `<span>`, `<td>`, `<p>` - NOT form elements like `input`, `select`
+    
+    **✅ CORRECT verify selectors - VIEW/DETAIL pages:**
+    - By label proximity: `//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Email')]]//div[contains(@class, 'field-value')]`
+    - By data attribute: `//div[@data-field='email']`
+    
+    **✅ CORRECT verify selectors - TABLE/LIST pages (use POSITIONAL):**
+    - First row, column 1: `//table//tbody//tr[1]//td[1]`
+    - Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
+    - By row class: `//tr[contains(@class,'highlight')]//td[1]`
+    
+    **❌ WRONG verify selectors - NEVER use value in selector:**
+    - `//div[contains(text(), 'john@email.com')]` - value in selector!
+    - `//td[text()='TestValue']` - value in selector!
+    - `//tr[td[text()='SomeValue']]//td[2]` - finding row by value!
+    - `input#email` - form elements don't exist on view pages!
+    - `@class='field-value'` - use `contains(@class, 'field-value')` instead
+    
+    
     ## Common Fixes by Error Type:
 
     **Element not found:**
@@ -2169,12 +2216,218 @@ Return ONLY the JSON object.
     ## Response Format:
     Return ONLY a JSON array with 1-5 fix steps:
     ```json
-    [
-      {{"step_number": 1, "action": "hover", "selector": "#trigger", "value": "", "description": "Re-hover to open menu"}},
-      {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu"}}
-    ]
+        [
+          {{"step_number": 1, "action": "hover", "selector": "#trigger", "value": "", "description": "Re-hover to open menu"}},
+          {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu"}}
+        ]
     ```
-    """
+
+    ## Important - Junction Detection:
+    **Case 1 - Failed step is a junction:**
+    If the failed step above shows "IS JUNCTION", your recovery step MUST also include `is_junction: true` and the same `junction_info`.
+    
+        """
+        #print(prompt)
         return prompt
 
+    def evaluate_paths(
+            self,
+            completed_paths: List[Dict],
+            discover_all_combinations: bool = False,
+            max_paths: int = 7
+    ) -> Dict:
+        """
+        Use AI to evaluate completed paths and determine next junction combination to test.
 
+        Args:
+            completed_paths: List of completed paths with full junction details
+                [{"path_number": 1, "junctions": [{"name": "accountType", "chosen_option": "individual", "all_options": ["individual", "corporate"], "is_confirmed": True}, ...]}, ...]
+            discover_all_combinations: If True, test ALL combinations. If False, just ensure each option tested once.
+            max_paths: Maximum number of paths allowed
+
+        Returns:
+            {
+                "all_paths_complete": bool,
+                "next_path": {"junction_name": "option_to_select", ...},
+                "total_paths_estimated": int,
+                "reason": str,
+                "tokens_used": int,
+                "cost": float
+            }
+        """
+        print(f"[AIHelper] Evaluating paths with AI...")
+        logger.info(f"[AIHelper] AI path evaluation - {len(completed_paths)} completed paths")
+
+        prompt = self._build_path_evaluation_prompt(
+            completed_paths, discover_all_combinations, max_paths
+        )
+
+        try:
+            response_text = self._call_api_with_retry(prompt, max_tokens=2000)
+
+            if not response_text:
+                logger.error("[AIHelper] No response from AI for path evaluation")
+                return {
+                    "all_paths_complete": True,
+                    "next_path": {},
+                    "total_paths_estimated": len(completed_paths),
+                    "reason": "AI returned no response - defaulting to complete",
+                    "tokens_used": 0,
+                    "cost": 0
+                }
+
+            print(f"[AIHelper] Path evaluation response: {response_text[:500]}")
+
+            # Strip markdown code blocks
+            clean_response = response_text
+            if '```json' in clean_response:
+                clean_response = clean_response.split('```json')[1].split('```')[0]
+            elif '```' in clean_response:
+                clean_response = clean_response.split('```')[1].split('```')[0]
+
+            # Parse JSON response
+            result = json.loads(clean_response.strip())
+
+            # Add token/cost estimates
+            result["tokens_used"] = len(prompt) // 4 + len(response_text) // 4
+            result["cost"] = result["tokens_used"] * 0.000003
+
+            logger.info(
+                f"[AIHelper] Path evaluation result: all_complete={result.get('all_paths_complete')}, next={result.get('next_path')}")
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[AIHelper] Failed to parse path evaluation response: {e}")
+            return {
+                "all_paths_complete": True,
+                "next_path": {},
+                "total_paths_estimated": len(completed_paths),
+                "reason": f"Failed to parse AI response: {e}",
+                "tokens_used": 0,
+                "cost": 0
+            }
+        except Exception as e:
+            logger.error(f"[AIHelper] Path evaluation error: {e}")
+            return {
+                "all_paths_complete": True,
+                "next_path": {},
+                "total_paths_estimated": len(completed_paths),
+                "reason": f"Error: {e}",
+                "tokens_used": 0,
+                "cost": 0
+            }
+
+    def _build_path_evaluation_prompt(
+            self,
+            completed_paths: List[Dict],
+            discover_all_combinations: bool,
+            max_paths: int
+    ) -> str:
+        """Build prompt for AI path evaluation."""
+
+        # Format completed paths with full junction details
+        paths_text = ""
+        if not completed_paths:
+            paths_text = "(No paths completed yet)\n"
+        else:
+            for path in completed_paths:
+                path_num = path.get("path_number", "?")
+                paths_text += f"\nPath {path_num}:\n"
+                for junc in path.get("junctions", []):
+                    name = junc.get("name", "unknown")
+                    chosen = junc.get("chosen_option", "?")
+                    all_opts = junc.get("all_options", [])
+                    confirmed = junc.get("is_confirmed", False)
+                    paths_text += f"  - {name}: chose '{chosen}' from options {all_opts} (confirmed={confirmed})\n"
+
+        if discover_all_combinations:
+            mode_instruction = """
+    **MODE: DISCOVER ALL COMBINATIONS**
+    Test ALL possible combinations of junction options.
+    If junction B only appears when A=x, valid combinations are: (A=x, B=1), (A=x, B=2), (A=y) - not (A=y, B=1).
+    """
+        else:
+            mode_instruction = """
+    **MODE: ENSURE EACH OPTION TESTED ONCE**
+    Test each junction option at least once to reach all form fields.
+    You do NOT need all combinations - just ensure every option is tested.
+    """
+
+        prompt = f"""You are determining which form paths to test next.
+
+    ## GOAL
+    Create paths to test all junction options. A junction is a dropdown/radio button where different options may reveal different fields. Each path = one form submission with specific junction choices. We need paths that cover ALL options across ALL junctions.
+
+    ## YOUR TASK
+    {mode_instruction}
+
+    ## UNDERSTANDING THE DATA
+    Each completed path shows ALL junctions that appeared during that form submission. If a junction is NOT listed in a path, it does NOT EXIST for that path. Some junctions only appear under specific parent values (nesting).
+
+    ## COMPLETED PATHS
+    {paths_text}
+
+    ## CONSTRAINTS
+    - Maximum paths allowed: {max_paths}
+    - Current completed paths: {len(completed_paths)}
+
+    ## RULES FOR BUILDING next_path
+    1. **ONE CHANGE AT A TIME** - Change only ONE junction option per path. Keep all other junctions the same as the path that revealed them.
+    2. **USE THE SAME PATH** - To test an untested option, use the EXACT path that discovered that junction (just change that one option).
+    3. **NEW PARENT = ONLY PARENT** - If testing an untested parent option, include ONLY that parent. The form will reveal what child junctions exist.
+    4. **CRITICAL: IGNORE >8 OPTIONS** - Junctions with more than 8 options (e.g., state/country) - NEVER include in next_path. Pretend they don't exist.
+    5. Junction names may vary slightly ("A" vs "a" are the same).
+    6. **GLOBALLY TESTED = DONE** - If an option was already tested in ANY previous path, it's done. Don't re-test it under a different parent unless the junction shows NEW options not seen before.
+
+    ## EXAMPLE
+
+    Completed paths:
+    - Path 1: A='x' (A options: ['x', 'y']), B='1' (B options: ['1', '2']), C='red' (C options: ['red', 'blue'])
+
+    Untested options: B='2', C='blue'
+
+    CORRECT next_path: {{"A": "x", "B": "2", "C": "red"}}
+    - ONE change: B from '1' to '2'
+    - Keep A and C the same as Path 1
+
+    WRONG: {{"A": "x", "B": "2", "C": "blue"}}
+    - TWO changes at once - not allowed!
+
+    WRONG: {{"A": "y", "B": "2"}}
+    - B was only seen under A='x' - don't assume it exists under A='y'!
+    
+    CORRECT next_path (for new parent): {{"A": "y"}}
+    - A='y' was never tested, so include ONLY A - the form will reveal what junctions exist under 'y'
+    
+    EXAMPLE FOR RULE 6 (GLOBALLY TESTED):
+    Completed paths:
+    - Path 1: A='x', B='1', C='red'
+    - Path 2: A='x', B='1', C='blue'
+    - Path 3: A='y', C='red' (B doesn't exist under A='y')
+    
+    C='red' and C='blue' were ALREADY TESTED in Paths 1-2.
+    
+    WRONG next_path: {{"A": "y", "C": "blue"}}
+    - C='blue' was already tested globally in Path 2 - don't re-test under A='y'!
+    
+    CORRECT: All paths complete - C options were already covered.
+    
+    ## RESPONSE FORMAT
+    Return ONLY valid JSON (no markdown):
+    {{
+        "all_paths_complete": true/false,
+        "next_path": {{"junction_name": "option_to_select"}},
+        "total_paths_estimated": <number>,
+        "reason": "Brief explanation"
+    }}
+
+    If all paths are complete:
+    {{
+        "all_paths_complete": true,
+        "next_path": {{}},
+        "total_paths_estimated": {len(completed_paths)},
+        "reason": "All junction options have been tested"
+    }}
+    """
+        print(prompt)
+        return prompt

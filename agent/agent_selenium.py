@@ -1190,7 +1190,8 @@ class AgentSelenium:
                 return {
                     "success": False,
                     "error": unique_check.get('error'),
-                    "selector_count": unique_check.get('count', 0)
+                    "selector_count": unique_check.get('count', 0),
+                    "locator_error": True
                 }
 
         action = step.get('action', 'unknown')
@@ -1881,7 +1882,8 @@ class AgentSelenium:
                         "verified": False,
                         "error": "Element not found",
                         "expected": expected_value,
-                        "actual": "Element not found"
+                        "actual": "Element not found",
+                        "locator_error": True
                     }
                 
                 if not element.is_displayed():
@@ -1905,7 +1907,8 @@ class AgentSelenium:
                         "verified": False,
                         "error": "Element not visible",
                         "expected": expected_value,
-                        "actual": "Element hidden"
+                        "actual": "Element hidden",
+                        "locator_error": True
                     }
                 
                 # If expected_value is provided, verify the content

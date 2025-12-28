@@ -20,7 +20,8 @@ class AIHelper:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+        #self.model = "claude-sonnet-4-5-20250929"
+        self.model = "claude-haiku-4-5-20251001"
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
         """
@@ -172,9 +173,7 @@ class AIHelper:
             previous_steps: Optional[List[Dict]] = None,
             step_where_dom_changed: Optional[int] = None,
             test_context=None,
-            is_first_iteration: bool = False,
-            previous_paths: Optional[List[Dict]] = None,
-            current_path_junctions: Optional[List[Dict]] = None
+            is_first_iteration: bool = False
     ) -> Dict[str, Any]:
         """
         Generate Selenium test steps based on DOM and test cases.
@@ -225,9 +224,11 @@ This checklist will remain active until the test completes successfully.
         route_planning_section = ""
         if junction_instructions:
             route_planning_section = f"""
-🔀 JUNCTION INSTRUCTIONS 🔀
+🔀 JUNCTION INSTRUCTIONS:
 {junction_instructions}
-Follow these choices exactly.
+
+When you have a step for these junctions, use the specified option. If a junction doesn't exist in the current form state, skip it.
+
 
 """
 
@@ -298,6 +299,11 @@ Follow these choices exactly.
         ✅ "selector": "select[name='country']"
         ✅ "selector": "#state-dropdown"
         ✅ they can be also custom dropdowns
+        
+        **Selection elements - choose correct action:**
+        - `select` → ONLY for `<select>` dropdowns
+        - `click` → For radio buttons, custom dropdowns, toggle buttons  
+        - `check`/`uncheck` → For checkboxes
 
         **Key Rules:**
         - Prefer CSS selectors with attributes (name, id, data-*, type)
@@ -410,6 +416,35 @@ Follow these choices exactly.
         - Data/Spreadsheet fields → create CSV or XLSX
         - Generic "file" upload → create PDF
         
+        **force_regenerate field (REQUIRED):**
+        - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
+        - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+        
+        **dont_regenerate field (optional):**
+        - Set to `true` ONLY for:
+          * Opening/closing modals or dialogs
+          * Adding/removing items in a list or table
+          * Expanding/collapsing accordion sections
+          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+        - Set to `false` (or omit) for all other actions
+        
+        **force_regenerate_verify field (for Save/Submit only):**
+        - Set to `true` ONLY for Save and Submit buttons
+        - This triggers verification-focused AI after form submission
+        
+        **full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
+        - Fallback selector if primary selector fails
+        - Must start from `/html/body/...`
+        - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
+        - Double-check your count
+        - **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+          - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
+          - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
+        - Only use indices `[n]` when no ID exists on that element
+        - Trace the path carefully from body → target element using the DOM
+        - For `verify` action: use empty string `""`
+        
+        
         **Example 1: Resume Upload**
         ```json
         {{
@@ -420,14 +455,18 @@ Follow these choices exactly.
           "content": "John Doe\\nSoftware Engineer\\n5 years experience\\nPython, Selenium, Testing",
           "selector": "",
           "value": "",
-          "description": "Create test resume PDF"
+          "description": "Create test resume PDF",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }},
         {{
           "step_number": 16,
           "action": "upload_file",
           "selector": "input[name='resumeUpload']",
           "value": "test_resume.pdf",
-          "description": "Upload resume file"
+          "description": "Upload resume file",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }}
         ```
         
@@ -441,14 +480,18 @@ Follow these choices exactly.
           "content": "Test Profile Photo\\nJohn Doe\\nID: 12345",
           "selector": "",
           "value": "",
-          "description": "Create test profile image"
+          "description": "Create test profile image",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }},
         {{
           "step_number": 9,
           "action": "upload_file",
           "selector": "input[type='file'][name='profileImage']",
           "value": "profile_photo.png",
-          "description": "Upload profile photo"
+          "description": "Upload profile photo",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }}
         ```
         
@@ -462,23 +505,30 @@ Follow these choices exactly.
           "content": "Test Document\\nDate: 2024\\nReference: TEST-001\\nApproved by QA Team",
           "selector": "",
           "value": "",
-          "description": "Create test document PDF"
+          "description": "Create test document PDF",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }},
         {{
           "step_number": 23,
           "action": "upload_file",
           "selector": "input#documentUpload",
           "value": "test_document.pdf",
-          "description": "Upload test document"
+          "description": "Upload test document",
+          "full_xpath": "/html/body/.../element",
+          "force_regenerate": false
         }}
         ```
         
+                        
+
         **IMPORTANT Rules:**
         - ALWAYS create files with simple, relevant content (3-5 lines)
         - Use descriptive filenames that match the field purpose
         - The filename in create_file MUST match the value in upload_file
         - File content should be contextual (resume for resume field, invoice for invoice field, etc.)
         - Never skip file upload fields - treat them as MANDATORY
+        - Do NOT skip fields because they appear optional - fill EVERY visible field
         ================================================================================
         
         **CRITICAL: Tab/Section Handling:**
@@ -499,9 +549,24 @@ Follow these choices exactly.
         
         **DO NOT skip tabs! Every tab must be filled before moving forward!**
         
-        **Junctions (dropdowns, radios, checkbox groups):**
-        For fields with multiple options, add `"is_junction": true` and `"junction_info": {{"all_options": ["opt1", "opt2", ...], "chosen_option": "your_choice"}}`. Choose a non-default option.
-               
+        **Junctions:** Mark any element where user selects ONE option from multiple choices, and different choices may reveal different form fields.
+
+        **Junction types:** dropdowns (`<select>`), radio buttons, checkboxes, styled toggle buttons, option cards, segmented controls, or any clickable elements that switch between different field sets.
+
+        **IMPORTANT:** When clicking a `<label>` that contains a radio button or wraps a selection option, check if selecting it shows/hides different panels or field sets. If yes, mark it as junction using the inner `input`'s `name` attribute for `junction_name` and list all sibling options in `all_options`.
+        
+        **Junction format:**
+        ```json
+        {{"action": "select", "selector": "...", "value": "...", "is_junction": true, "junction_info": {{"junction_name": "fieldName", "all_options": ["option1", "option2"], "chosen_option": "option1"}}, "description": "...", "full_xpath": "/html/body/.../element", "force_regenerate": false}}
+        ```
+        
+        **junction_info fields (ALL REQUIRED):**
+        - `junction_name`: Use element's `name` or `id` attribute
+        - `all_options`: List ALL available options from DOM
+        - `chosen_option`: The option you are selecting
+        
+        Always include `is_junction: true` and `junction_info` even when following junction instructions.
+        
         
         **Your Testing Path - Act Like a Real User:**
         You should follow ONE RANDOM path through the form, like a real user would:
@@ -555,7 +620,7 @@ Follow these choices exactly.
         **⚠️ DATE FIELDS - CRITICAL:** For date fields with "mm/dd/yyyy" placeholder → enter digits only: "01152025" (no slashes)
         
         **⚠️ ONLY THE MAIN/PRIMARY FIELD NEEDS UNIQUE SUFFIX:** 
-        - ONLY the main identifying field (e.g., Person Name, Company Name, Title) gets a random suffix like "_184093" (e.g., "John Doe_184093")
+        - ONLY the main identifying field (e.g., Person Name, Company Name, Title) gets a random suffix of 5 digits)
         - ALL OTHER FIELDS should have NORMAL realistic values WITHOUT any suffix!
         
         - Name (main field): {'Add unique suffix (e.g., TestUser_184093)'}
@@ -931,11 +996,11 @@ Follow these choices exactly.
           {{
             "step_number": 9,
             "test_case": "Complete Form Following Random Path",
-            "action": "verify",
-            "description": "Verify success message displayed",
+            "action": "wait_for_hidden",
+            "description": "Wait for success message to disappear",
             "selector": ".success-message",
             "value": null,
-            "verification": "success message is visible",
+            "verification": "success message disappeared",
             "wait_seconds": 1
           }}
         ]
@@ -955,19 +1020,30 @@ Follow these choices exactly.
 
         === RESPONSE FORMAT ===
         Return ONLY a JSON object with this structure:
-
         ```json
         {{
           "steps": [
-            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field"}},
-            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form"}}
-          ],
-          "no_more_paths": false
+            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false, "dont_regenerate": false}},
+            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true, "dont_regenerate": false}}
+          ]
         }}
         ```
+                        
+        **force_regenerate field (REQUIRED):**
+        - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
+        - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+        
+        **dont_regenerate field (optional):**
+        - Set to `true` ONLY for:
+          * Opening/closing modals or dialogs
+          * Adding/removing items in a list or table
+          * Expanding/collapsing accordion sections
+          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+        - Set to `false` (or omit) for all other actions
+        
+        - This tells the system to regenerate steps after this action completes
 
         - **steps**: Array of step objects to execute
-        - **no_more_paths**: Set to `true` ONLY if all junction combinations have been explored (no new paths possible). Otherwise `false`.
 
         Return ONLY the JSON object, no other text.
         """
@@ -993,13 +1069,14 @@ Follow these choices exactly.
                         "text": prompt
                     }
                 ]
-                print("\n" + "!" * 80)
-                print("!!!!!!!!!!!!! GENERATE_TEST_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
-                print("!" * 80)
-                import re
-                prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
-                print(prompt_no_dom)
-                print("!" * 80 + "\n")
+                #print("\n" + "!" * 80)
+                #print("!!!!!!!!!!!!! GENERATE_TEST_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
+                #print("!" * 80)
+                #import re
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+                #print(prompt_no_dom)
+                #print("!" * 80 + "\n")
+                print("!*!*!*!*!*!*!*! Entering the AI func for generate steps")
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
             else:
                 # Text-only API (backward compatibility)
@@ -1038,14 +1115,12 @@ Follow these choices exactly.
                 if isinstance(result, dict) and "steps" in result:
                     # New format: {"steps": [...], "no_more_paths": bool}
                     steps = result.get("steps", [])
-                    no_more_paths = result.get("no_more_paths", False)
-                    
+
                     logger.info(f"[AIHelper] Successfully parsed {len(steps)} steps")
                     print(f"[AIHelper] Successfully parsed {len(steps)} steps")
-                    if no_more_paths:
-                        print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
+
                     
-                    return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
+                    return {"steps": steps, "ui_issue": "", "no_more_paths": False}
                 elif isinstance(result, list):
                     # Old format: just array of steps (backward compatibility)
                     logger.info(f"[AIHelper] Successfully parsed {len(result)} steps (legacy format)")
@@ -1066,50 +1141,62 @@ Follow these choices exactly.
             import traceback
             traceback.print_exc()
             return {"steps": [], "ui_issue": "", "no_more_paths": False}
-    
+
     def regenerate_steps(
-        self,
-        dom_html: str,
-        executed_steps: list,
-        test_cases: list,
-        test_context,
-        screenshot_base64: Optional[str] = None,
-        critical_fields_checklist: Optional[Dict[str, str]] = None,
-        field_requirements: Optional[str] = None,
-        previous_paths: Optional[List[Dict]] = None,
-            current_path_junctions: Optional[List[Dict]] = None,
+            self,
+            dom_html: str,
+            executed_steps: list,
+            test_cases: list,
+            test_context,
+            screenshot_base64: Optional[str] = None,
+            critical_fields_checklist: Optional[Dict[str, str]] = None,
+            field_requirements: Optional[str] = None,
             junction_instructions: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Regenerate remaining steps after DOM change
-        
+
         Args:
             dom_html: Current page DOM (after change)
             executed_steps: Steps already executed
             test_cases: Test cases
             test_context: Test context
             screenshot_base64: Optional base64 screenshot for visual context
-            previous_paths: Previously completed paths (for junction discovery)
-            current_path_junctions: Junctions taken in current path so far
-            
+
         Returns:
             Dict with 'steps' (list), 'ui_issue' (string), and 'no_more_paths' (bool)
         """
         try:
             print(f"[AIHelper] Regenerating steps after DOM change...")
             print(f"[AIHelper] Already executed: {len(executed_steps)} steps")
-            
+
+            ##   DEBUG ###
+            '''
+            if screenshot_base64:
+                try:
+                    import base64 as b64_module
+                    import os
+                    from datetime import datetime
+                    screenshots_dir = "/tmp/debug_screenshots"
+                    os.makedirs(screenshots_dir, exist_ok=True)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    screenshot_path = os.path.join(screenshots_dir, f"{timestamp}_into_ai_regenerate.png")
+                    with open(screenshot_path, 'wb') as f:
+                        f.write(b64_module.b64decode(screenshot_base64))
+                    print(f"\n{'!' * 80}\n!!! SCREENSHOT SAVED: {screenshot_path}\n{'!' * 80}\n")
+                except Exception as e:
+                    print(f"[AIHelper] Warning: Failed to save debug screenshot: {e}")
+            '''
+            ### END DEBUG ####
+
             # Build context of what's been done
             executed_context = ""
             if executed_steps:
                 executed_context = f"""
-## Steps Already Completed (USE THESE VALUES FOR VERIFY STEPS!):
-{json.dumps([{"step": i+1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
-
-**IMPORTANT:** When generating VERIFY steps, use the "value" field from FILL/SELECT steps above as the expected value.
-Do NOT use what you see on the screenshot or DOM - values may have been corrupted during input.
+## Steps Already Completed:
+{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
 """
-            
+
             # Build test cases context
             test_cases_context = ""
             if test_cases:
@@ -1117,39 +1204,20 @@ Do NOT use what you see on the screenshot or DOM - values may have been corrupte
 ## Test Cases:
 {json.dumps(test_cases, indent=2)}
 """
-            
+
             # Build critical fields checklist section (for Scenario B recovery)
             critical_fields_section = ""
             if critical_fields_checklist:
-                fields_list = "\n".join([f"- **{field_name}**: {issue_type}" for field_name, issue_type in critical_fields_checklist.items()])
-                
-                # Include AI rewritten requirements if available
-                requirements_text = ""
-                if field_requirements:
-                    requirements_text = f"""
-**EXACT REQUIREMENTS FROM ALERT:**
-{field_requirements}
-"""
-                
+                fields_list = "\n".join([f"- **{field_name}**: {issue_type}" for field_name, issue_type in
+                                         critical_fields_checklist.items()])
+                requirements_text = f"\n**EXACT REQUIREMENTS FROM ALERT:**\n{field_requirements}\n" if field_requirements else ""
+
                 critical_fields_section = f"""
-⚠️⚠️⚠️ CRITICAL FIELDS CHECKLIST ⚠️⚠️⚠️
-================================================================================
-**ALERT RECOVERY MODE ACTIVE**
-
-A validation alert was detected. The following fields MUST be filled correctly:
-
+⚠️ ALERT RECOVERY MODE ⚠️
+The following fields MUST be filled correctly:
 {fields_list}
 {requirements_text}
-**MANDATORY INSTRUCTIONS:**
-1. Pay SPECIAL ATTENTION to these critical fields
-2. For fields marked "MUST FILL" - ensure they are filled with correct values from test_cases
-3. For fields marked "INVALID FORMAT" - use the correct format/value from test_cases
-4. These fields caused the previous test failure - DO NOT skip them!
-5. Verify the selectors for these fields are correct
-6. Double-check the values match test_cases exactly
-
-This checklist will remain active until the test completes successfully.
-================================================================================
+These fields caused the previous failure - pay special attention to them.
 
 """
 
@@ -1157,335 +1225,308 @@ This checklist will remain active until the test completes successfully.
             route_planning_section = ""
             if junction_instructions:
                 route_planning_section = f"""
-🔀 JUNCTION INSTRUCTIONS 🔀
+🔀 JUNCTION INSTRUCTIONS:
 {junction_instructions}
-Follow these choices exactly.
 
+When you have a step for these junctions instructions, use the specified option. If a junction doesn't exist in the current form state, skip it.
 """
-            
-            # Screenshot emphasis section
+
+            # Screenshot section
             screenshot_section = ""
             if screenshot_base64:
                 screenshot_section = """
-                🖼️ SCREENSHOT PROVIDED - FOR VISUAL CONTEXT - ONLY FOR CREATE TESTS - DONT USE FOR VERIFY TESTS
-                ==========================================================================================
-                Use the screenshot to see the current state after DOM change.
+🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY EXAMINING THE DOM AND ALSO VIEWING THE SCREENSHOT:
+1. Extract ALL input fields and repeatable lists with "Add"/"+"/etc from DOM (input, select, textarea, checkbox, radio, list items(with add buttons), everything user can add/input)
+2. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
+3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
+4. Screenshot shows active tab/section and visual layout
+5. BEFORE adding any navigation step (next tab, submit), re-check DOM and screenshot to ensure no field was skipped
 
-                **IMPORTANT:** The screenshot only shows the visible viewport - there may be MORE 
-                fields in scrollable areas. Always check the DOM for the complete list of fields!
-                ===========================================================================================
+"""
 
-                """
+            # ==================== BUILD THE PROMPT ====================
 
-            prompt = f"""You are a web automation expert. Your task is to generate remaining Selenium WebDriver test steps after a DOM change.
+            prompt = f"""You are a web automation expert generating Selenium WebDriver test steps.
 
-{screenshot_section}
-{critical_fields_section}
-{route_planning_section}
-The DOM has changed after executing some steps.
-
-**FIRST: Check for processing/loading messages**
-If the last executed step was a save/submit/next action, look at the screenshot and DOM for any processing message like:
-- "Saving...", "Processing...", "Loading...", "Please wait...", "Submitting..."
-- Spinners, progress bars, or loading overlays
-
-If you see such a message, your FIRST step must be:
-{{"step_number": N, "action": "wait_for_hidden", "selector": "[selector-of-the-message]", "description": "Wait for processing message to disappear"}}
-
-Then continue with the remaining form steps.
+{screenshot_section}{critical_fields_section}{route_planning_section}
+## Current Context:
 
 {executed_context}
-
-The DOM changed, and here is the NEW current state:
 
 ## Current Page DOM:
 {dom_html}
 
-**If a screenshot is provided, you can also use it to get additional understanding of the current page state (which tab is visible, if any overlays/menus are blocking elements, etc.)**
-
 {test_cases_context}
 
-**CRITICAL: Generate complete steps for current test case + 2-4 steps from next test case. This ensures execution continues after save/submit.**
-
-
-**For edit/update tests - COMPLETE WORKFLOW PER FIELD:**
-For each field that needs to be verified and updated, generate this complete sequence:
-1. Navigate to field (switch_to_frame/shadow_root, click tab, hover, wait_for_visible as needed)
-2. Verify original value (action: "verify", value: expected original value from TEST_1)
-3. Clear field (action: "clear" - only for text inputs, skip for select/checkbox/radio/slider)
-4. Update field (action: "fill"/"select"/"check" with new value)
-5. Navigate back (switch_to_default if you entered iframe/shadow_root)
-"""
-            
-            prompt += """
 ## Your Task:
-Based on the steps already completed and the NEW DOM state, generate the REMAINING steps needed to complete the form test.
+Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cases" section above.
 
-**LIST ITEMS HANDLING:**
-- If you see different types of "Add" buttons (e.g., "Add Finding", "Add Engagement"), add 1 item of each type
-- Do not add multiple items of the same type
-- Example: If you already added 1 Finding, move on to the next list type (e.g., Add Engagement) or continue with other form fields
+**⚠️ STOP WHEN COMPLETE:**
+- Generate steps ONLY for test cases in the list - NEVER invent new ones (no TEST_4 if not listed)
+- When all listed test cases are done, return empty steps array
+- Ignore Edit/Delete/other buttons if no matching test case exists
 
-**TAB/SECTION PRIORITY:**
-- Before navigating to a new tab or section, fill ALL remaining unfilled fields in the currently visible/active tab first
-- Only after completing all fields in the current tab should you navigate to the next tab
+**⚠️ DO NOT RE-FILL ALREADY COMPLETED FIELDS:**
+- Check "Steps Already Completed" above - these fields are DONE
+- NEVER generate fill/select/check steps for fields that already appear in completed steps
+- A field is "completed" ONLY if its EXACT selector appears in completed steps - do NOT assume
 
-Generate steps to:
-1. Check if there are other list item types that need to be added (1 item per type)
-2. Fill all remaining form fields in the currently visible tab
-3. Navigate to next tab only after current tab is complete
-4. Handle any dropdowns, checkboxes, or special inputs
-5. Submit the form
-6. Verify success
+** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
+- Locate the trigger step in SCREENSHOT
+- Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
+- Make sure you create steps for all of them
+- The SCREENSHOT may show only part of whats needed so its in Addition to what you find in DOM
 
-**Junctions (dropdowns, radios, checkbox groups):**
-For fields with multiple options, add `"is_junction": true` and `"junction_info": {{"all_options": ["opt1", "opt2", ...], "chosen_option": "your_choice"}}`. Choose a non-default option.
+**Priority order:**
+1. **CHECK CURRENT PAGE FIRST:** Look at DOM/SCREENSHOT - if you see a list/table, you're on list page. If you see read-only values, you're on detail page. Do NOT generate navigation to a page you're already on.
+2. If previous step was next/continue button AND you see a blocking overlay... your first step should be wait_message_hidden
+3. Complete current tab 100% before moving to next tab:
+   - Fill ALL visible fields - check horizontally (side-by-side fields) and vertically
+   - Fill ALL input fields - both required AND optional (text, date, email, textarea, comments, notes, etc.)
+   - Click EVERY "Add" button you find (each may open a different sub-form or list)
+   - Handle special inputs (dropdowns, checkboxes, sliders, file uploads, drag and drop)
+   - Do NOT skip fields because they appear optional - fill EVERY visible field
+4. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
+5. Submit form and verify success
 
+**For edit/update tests:** Navigate → Verify original value → Clear → Update → Navigate back
 
 ## Response Format:
-Return ONLY a JSON object with this structure:
-
 ```json
 {{
   "steps": [
-    {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field"}},
-    {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form"}}
-  ],
-  "no_more_paths": false
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false, "dont_regenerate": false}}
+  ]
 }}
 ```
 
-- **steps**: Array of step objects to execute
-- **no_more_paths**: Set to `true` ONLY if all junction combinations have been explored. Otherwise `false`.
-"""
-            
-            prompt += """
-Available actions: fill, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_for_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+---
 
-**SLIDER ACTION:**
-For range sliders (like employment status slider), use the `slider` action:
+**full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
+- Fallback selector if primary selector fails
+- Must start from `/html/body/...`
+- **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
+- Double-check your count
+- **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+  - ✅ `/html/body/div[@id='findingModal']/div/div[4]/button[2]`
+  - ❌ `/html/body/div[3]/div/div[4]/button[2]`
+- Only use indices `[n]` when no ID exists on that element
+- Trace the path carefully from body → target element using the DOM
+- For `verify` action: use empty string `""`
+
+---
+
+**force_regenerate field (REQUIRED):**
+- Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
+- Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+
+**dont_regenerate field (optional):**
+- Set to `true` ONLY for:
+  * Opening/closing modals or dialogs
+  * Adding/removing items in a list or table
+  * Expanding/collapsing accordion sections
+  * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
+- Set to `false` (or omit) for all other actions
+
+
+**force_regenerate_verify field (for Save/Submit only):**
+- Set to `true` ONLY for Save and Submit buttons
+- This triggers verification-focused AI after form submission
+
+---
+
+## Action Reference:
+
+**Available actions:** fill, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+
+**Context switching:**
+- `switch_to_frame` / `switch_to_shadow_root`: Enter iframe or shadow DOM
+- `switch_to_default`: Exit from iframe OR shadow DOM back to main page (ALWAYS use this to return)
+- `switch_to_parent_window`: Switch between browser windows/tabs only (NOT for iframe/shadow DOM)
+
+**wait_message_hidden:** ONLY after page-level navigation (Next Page, Submit Form) when blocking overlay covers >30% of page. Do NOT use for success toasts or floating messages.
+
+**wait_spinner_hidden:** ONLY when blocking spinner/loader covers >30% of page. Provide selector from DOM.
+
+**Selection elements - choose correct action:**
+- `select` → ONLY for `<select>` dropdowns
+- `click` → For radio buttons, custom dropdowns, toggle buttons  
+- `check`/`uncheck` → For checkboxes
+
+**Slider:** value = 0-100 (percentage)
 ```json
-{
-  "step_number": N,
-  "action": "slider",
-  "selector": "input[type='range']#employmentStatus",
-  "value": "50",
-  "description": "Set employment status to 50% (Partially Employed)"
-}
-```
-Value must be 0-100 (percentage). Example values:
-- "0" = leftmost position (Unemployed)
-- "50" = middle position (Partially Employed)
-- "100" = rightmost position (Employed)
-
-**DRAG AND DROP ACTION:**
-For drag-and-drop elements (like project priority assignment), use the `drag_and_drop` action:
-```json
-{
-  "step_number": N,
-  "action": "drag_and_drop",
-  "selector": ".project-item#projectAlpha",
-  "value": ".priority-box.high-priority",
-  "description": "Drag Project Alpha to High Priority box"
-}
-```
-Selector is the element to drag, value is the target drop zone selector.
-
-**CRITICAL:** Never use wait with value > 10 seconds! For AJAX, use wait_for_ready instead.
-
-**CRITICAL: Modal Button Selectors (Save/Submit/OK/Cancel):**
-Modal buttons require EXTRA PRECISION. ALWAYS use XPath for modal buttons:
-
-**PREFERRED XPATH STRATEGIES:**
-1. **XPath with onclick attribute** (BEST):
-   `//button[@onclick='saveEngagement()']`
-   `//div[@id='engagementModal']//button[@onclick='saveEngagement()']`
-
-2. **XPath scoped to specific modal + text content**:
-   `//div[@id='engagementModal']//button[contains(text(), 'Save')]`
-   `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
-
-3. **XPath with modal scope + button attributes**:
-   `//div[@id='findingModal']//button[@type='submit']`
-
-**WHY:** Multiple modals may exist with similar CSS classes. XPath ensures precision.
-
-**EXAMPLES:**
-- ❌ BAD: `button.btn-save-engagement` (ambiguous)
-- ✅ GOOD: `//button[@onclick='saveEngagement()']` (unique)
-- ✅ GOOD: `//div[@id='engagementModal']//button[contains(text(), 'Save')]` (scoped)
-
-**FILE UPLOAD ACTIONS:**
-
-When you encounter a file upload field (`<input type="file">`), use TWO sequential steps:
-
-**Step 1: create_file** - Create the test file
-```json
-{
-  "step_number": N,
-  "action": "create_file",
-  "file_type": "pdf|txt|csv|xlsx|docx|json|png|jpg",
-  "filename": "test_file.pdf",
-  "content": "File content here...",
-  "selector": "",
-  "value": "",
-  "description": "Create test file for upload"
-}
+{{"action": "slider", "selector": "input[type='range']", "value": "50", "description": "Set slider to 50%"}}
 ```
 
-**Step 2: upload_file** - Upload the created file
+**Drag and drop:** selector = element to drag, value = drop target
 ```json
-{
-  "step_number": N+1,
-  "action": "upload_file",
-  "selector": "input[type='file']",
-  "value": "test_file.pdf",
-  "description": "Upload the test file"
-}
+{{"action": "drag_and_drop", "selector": "#dragItem", "value": "#dropZone", "description": "Drag item to zone"}}
 ```
 
-**CRITICAL: VERIFY ACTION RULES:**
+**File upload:** Two steps required
+```json
+{{"action": "create_file", "file_type": "pdf", "filename": "test.pdf", "content": "Test content", "selector": "", "value": "", "description": "Create file"}}
+{{"action": "upload_file", "selector": "input[type='file']", "value": "test.pdf", "description": "Upload file"}}
+```
+Supported types: pdf, txt, csv, xlsx, docx, json, png, jpg
 
-When verifying content on a page (especially view/detail pages after form submission):
 
-**MANDATORY RULES:**
-1. **Do NOT generate more than 3-4 verify steps during form filling (TEST_1)
-1. **ALWAYS populate the `value` field** with the expected content
-2. **Use XPath for text content verification** - CSS `:contains()` does NOT work in Selenium
-3. **Use simple, robust selectors** - avoid complex chaining
-4. **DO NOT verify date/time fields unless you explicitly filled them** - Skip system-generated timestamps like "Saved Date", "Created At", "Last Modified"
+---
+**Junctions:** Mark a step as a junction if: (1) the step has multiple options to choose from, AND (2) selecting an option may uncover/reveal new fields, AND (3) different options might reveal different fields.
 
-**WHERE TO GET EXPECTED VALUES:**
-For VERIFY steps, get expected values from the "Steps Already Completed" section above.
-Look at the "value" field from FILL/SELECT steps - those are the INTENDED values.
-Do NOT use what you see on the screenshot or DOM - the values may have been corrupted during input.
+**Junction types:** dropdowns (`<select>` or div based), radio buttons, checkboxes, styled toggle buttons, option cards, segmented controls, or any clickable elements that switch between different field sets.
+
+**IMPORTANT:** When clicking any element that shows/hides different panels or field sets, mark it as a junction. Use the selector of the element you actually click for the action, and use the most relevant `name` or `id` attribute for `junction_name`.
+
+**Junction format:**
+```json
+{{"action": "select", "selector": "...", "value": "...", "is_junction": true, "junction_info": {{"junction_name": "fieldName", "all_options": ["option1", "option2"], "chosen_option": "option1"}}, "description": "..."}}
+```
+
+**junction_info fields (ALL MANDATORY):**
+- `junction_name`: Use element's `name` or `id` attribute
+- `all_options`: List ALL available options from DOM
+- `chosen_option`: The option you are selecting
+
+Always include `is_junction: true` and `junction_info` even when following junction instructions.
+---
+
+
+## Selector Rules:
+
+**General selectors - prefer in this order:**
+1. ID: `#fieldId` or `input#fieldId`
+2. Name: `input[name='fieldName']`
+3. Data attributes: `[data-testid='field']`
+4. Unique class: `.unique-class-name`
+5. XPath with attributes: `//button[@onclick='save()']`
+6. XPath by label: `//label[contains(text(), 'Name')]/..//input`
+
+**CRITICAL - SELECTOR MUST BE UNIQUE:**
+- If ID/name/data-attr are missing or not clearly unique, use XPath scoped to parent container
+- When in doubt, prefer more specific selector over simpler one
+
+**Modal buttons - use XPath for precision:**
+- `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
+- `//div[contains(@class, 'modal')]//button[@type='submit']`
+
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
+
+
+---
+## VERIFICATION RULES
+
+**⚠️ CRITICAL - VIEW/DETAIL PAGE ≠ FORM PAGE:**
+After clicking View/Edit/Details button, you are on a READ-ONLY display page:
+- ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
+- ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
+- ALWAYS examine the CURRENT DOM structure before generating verify selectors
 
 **VERIFY ALL FIELDS ON VIEW/DETAIL PAGES:**
-When on a view/detail page after form submission, you MUST verify ALL fields that were filled during the test:
-1. Look through ALL FILL/SELECT steps in "Steps Already Completed" section
-2. Generate a VERIFY step for EACH field that was filled
-3. Do NOT skip any fields - every field that was filled must be verified
-4. This includes fields in iframes, modals, shadow DOM, and all tabs/sections
+When on a view/detail page, verify ALL fields that were filled during TEST_1:
+1. Look through "Steps Already Completed" for ALL FILL/SELECT steps
+2. Generate a VERIFY step for EACH field found - count them and verify count matches
+3. Get expected values from the `value` field of those FILL/SELECT steps
+4. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At")
 
-**USE ROBUST SELECTORS:**
-- ✅ GOOD: `contains(@class, 'field-value')` - works if class has multiple values
-- ❌ BAD: `@class='field-value'` - fails if class is 'field-value other-class'
-- ✅ GOOD: `//div[contains(@class, 'field')]//span` (find by structure, not content)
-- ❌ BAD: `//div[@class='field-label']/following-sibling::div[@class='field-value']` - too fragile
+**⚠️ VERIFY ALL FIELDS ON EACH PAGE - NO SKIPPING:**
+- On LIST page: verify fields visible in the table
+- On VIEW page: verify ALL fields again, even if some were verified on list page
+- Each page is independent - do NOT skip fields because they were verified on a previous page
+- All fields must be verified on BOTH list AND view pages
 
-**Correct Verify Step Format:**
+**⚠️ COMMON FIELDS OFTEN MISSED - DO NOT SKIP:**
+- Date of Birth / Date fields
+- Phone numbers
+- Checkboxes (all checked/unchecked states)
+- File upload filenames
+- Dropdown selections
+
+**How verify works:** Selector finds element by LOCATION. The `value` field contains expected text.
+
+**BUILD SELECTOR FROM THE DOM - Common patterns:**
+- By data attribute: `//div[@data-field='email']`
+- By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
+- By label proximity: `//label[contains(text(), 'Email')]/../div`
+- Table structure: `//tr[contains(., 'Email')]//td[2]`
+
+**❌ WRONG:**
+- `//div[contains(text(), 'john@email.com')]` - expected value in selector!
+- `input#email` on view page - form elements don't exist on view pages!
+- Inventing class names not in DOM
+
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
+
+---
+
+## Rules:
+- Never use CSS `:contains()` or `:has()` - not supported in Selenium
+- Never use `wait` with value > 10 seconds - use wait_for_ready instead
+- Complete current tab before moving to next
+
+---
+
+
+## ⚠️ MANDATORY FINAL REVIEW - FULL SCREENSHOT SCAN
+
+Before returning your response, you MUST perform this review:
+
+1. **SCAN THE ENTIRE SCREENSHOT** - Every area: top, bottom, left, right, center. Do NOT focus only on one area. Scan horizontally AND vertically - fields may be side-by-side, not just stacked.
+
+2. **LIST EVERY USER ACTION** visible on screen - any field or sub field a user can fill, select, check, or click - optional fields like Comments are also mandatory.
+   - Your LIST MUST INCLUDE EVERY ACTION/SUB ACTION USER CAN PERFORM - NO EXCEPTIONS 
+
+3. **FOR EACH ACTION - VERIFY IT HAS A STEP:**
+   - Is it in "Steps Already Completed"?
+   - Is it in YOUR generated steps array?
+   - If NEITHER → **ADD A STEP FOR IT NOW**
+
+4. **Cross-check your steps:** For EACH element you identified in step 3:
+   - Confirm you have a corresponding step in your generated steps list OR in "Steps Already Completed"
+   - If ANY element is missing from BOTH, find it in the DOM and ADD a step for it at the correct position (before tab navigation)
+
+    FOR EACH FIELD YOU SEE IN THE SCREENSHOT:
+    1. Is there a step for this field in "Steps Already Completed"? → found_in_completed_steps = true
+    2. Is there a step for this field in YOUR "steps" array? → was_added_to_steps = true
+    
+    🚨🚨🚨 CRITICAL - READ THIS 🚨🚨🚨
+    If was_added_to_steps=false AND found_in_completed_steps=false:
+    → YOU MUST ADD A STEP FOR THIS FIELD TO THE "steps" ARRAY RIGHT NOW!
+    → DUPLICATES ARE OK - IT IS BETTER TO ADD A FIELD TWICE THAN TO MISS IT!
+    → IF YOU DO NOT ADD IT, THE ENTIRE TEST WILL FAIL!
+    → NO EXCUSES, NO EXCEPTIONS!
+    🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+
+5. **Check junctions:** Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
+
+6. **Do NOT remove steps:** This review is ONLY for adding missing steps and junction info. Never remove a step just because you don't see it in the screenshot (it may be below the fold or in another tab).
+
+---
+
+Return ONLY the following JSON object (no other text):
 ```json
-{
-  "step_number": N,
-  "action": "verify",
-  "selector": "//label[contains(text(), 'Field Name')]/..//div[contains(@class, 'value')]",
-  "value": "expected text",
-  "description": "Verify expected text is displayed"
-}
+{{
+  "steps": [...],
+  "screenshot_self_check": {{
+    "fields_seen_in_screenshot": [
+      {{
+        "field_name": "field label as seen",
+        "field_type": "input/textarea/select/checkbox/radio/button",
+        "was_added_to_steps": true,
+        "found_in_completed_steps": false
+      }}
+    ]
+  }}
+}}
 ```
 
-**XPATH PATTERNS FOR VERIFICATION:**
-
-Selector finds element by LOCATION. The `value` field has what to verify.
-- ✅ GOOD: `//label[contains(text(), 'Name')]/..//span` (by label)
-- ✅ GOOD: `//th[contains(text(), 'Email')]/following-sibling::td[1]` (table row)
-- ✅ GOOD: `(//div[contains(@class, 'field-value')])[1]` (by position)
-- ❌ BAD: `//div[contains(text(), 'John')]` (expected value in selector!)
-- ❌ BAD: `.field:contains('Email')` (CSS :contains doesn't work)
-
-For checking element existence:
-- ✅ GOOD: `//div[contains(@class, 'success-message')]`
-- ✅ GOOD: `div.success-message` (CSS is fine when not checking text)
-
-**Example Verification Steps:**
-```json
-{
-  "step_number": 50,
-  "action": "verify",
-  "selector": "//div[contains(@class, 'success-message')]",
-  "value": "Form created successfully",
-  "description": "Verify form submission success"
-},
-{
-  "step_number": 51,
-  "action": "verify",
-  "selector": "//label[contains(text(), 'Person Name')]/..//div[contains(@class, 'value')]",
-  "value": "TestUser123",
-  "description": "Verify person name field"
-},
-{
-  "step_number": 52,
-  "action": "verify",
-  "selector": "//label[contains(text(), 'Email')]/..//div[contains(@class, 'value')]",
-  "value": "test@example.com",
-  "description": "Verify email field"
-}
-```
-
-**CRITICAL REMINDERS:**
-- Never leave `value` empty in verify steps
-- Never use CSS `:contains()` or `:has()` - they don't work in Selenium
-- Always use `contains(@class, '...')` instead of `@class='...'` for class matching
-- On view/detail pages, verify EVERY field that was filled - do NOT skip any
-
-Return ONLY the JSON object, no other text.
-
-**Step 2: upload_file** - Upload the created file
-```json
-{
-  "step_number": N+1,
-  "action": "upload_file",
-  "selector": "input[type='file']",
-  "value": "test_file.pdf",
-  "description": "Upload the test file"
-}
-```
-
-**Supported file types:**
-- `pdf` - Simple PDF with text content
-- `txt` - Plain text file
-- `csv` - CSV data (use comma-separated content)
-- `xlsx` - Excel spreadsheet (use CSV-like content)
-- `docx` - Word document
-- `json` - JSON data
-- `png`, `jpg` - Images with text overlay
-
-**File content guidelines:**
-- Keep content simple and relevant to the form context
-- For resumes: name, experience, skills
-- For invoices: invoice number, amount, date
-- For images: descriptive test content
-- Content should be 2-5 lines for most files
-
-**Example for resume upload:**
-```json
-{
-  "step_number": 10,
-  "action": "create_file",
-  "file_type": "pdf",
-  "filename": "john_doe_resume.pdf",
-  "content": "John Doe\nSoftware Engineer\n5 years experience\nPython, Selenium, Testing",
-  "selector": "",
-  "value": "",
-  "description": "Create test resume"
-},
-{
-  "step_number": 11,
-  "action": "upload_file",
-  "selector": "input#resumeUpload",
-  "value": "john_doe_resume.pdf",
-  "description": "Upload resume file"
-}
-```
-
-Return ONLY the JSON object, no other text.
+The "screenshot_self_check" field is MANDATORY.
 """
-            
+
             # Call Claude API with retry (with or without screenshot)
             result_logger_gui.info("[AIHelper] Sending regeneration request to Claude API...")
-            
+
             if screenshot_base64:
-                # Use multimodal API with screenshot
                 message_content = [
                     {
                         "type": "image",
@@ -1500,53 +1541,327 @@ Return ONLY the JSON object, no other text.
                         "text": prompt
                     }
                 ]
-                print("\n" + "!" * 80)
-                print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
-                print("!" * 80)
-                import re
-                prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
-                print(prompt_no_dom)
-                print("!" * 80 + "\n")
-                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
-            else:
-                # Text-only API
                 #print("\n" + "!" * 80)
-                #print("!!!!!!!!!!! REGENERATE_STEPS - (NO IMAGE ... ?) FINAL PROMPT TO AI !!!!")
+                #print("!!!!!!!!!!! REGENERATE_STEPS - (WITH IMAGE) FINAL PROMPT TO AI !!!!")
                 #print("!" * 80)
                 #import re
-                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])', '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
-                #print(prompt_no_dom)
+                #prompt_no_dom = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z=\*#])',
+                #                       '## Current Page DOM:\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
+                #                       flags=re.DOTALL)
+                #print(prompt)
                 #print("!" * 80 + "\n")
+                #print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
+                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
+                                                                     max_retries=3)
+            else:
                 response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
-
 
             if response_text is None:
                 print("[AIHelper] ❌ Failed to regenerate steps after retries")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
-            
+
             print(f"[AIHelper] Received regeneration response ({len(response_text)} chars)")
-            
+
+            # Parse JSON response
+            import re
+
+
+            ## DEBUG ###
+            brace_count = 0
+            json_end = 0
+            in_json = False
+            for i, char in enumerate(response_text):
+                if char == '{':
+                    if not in_json:
+                        in_json = True
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and in_json:
+                        json_end = i + 1
+                        break
+            first_json = response_text[:json_end] if json_end > 0 else response_text
+            json_match = re.search(r'\{[\s\S]*\}', first_json)
+            ## DEBUG ##
+
+
+            ### original like ###
+            #json_match = re.search(r'\{[\s\S]*\}', response_text)
+
+            if json_match:
+                response_data = json.loads(json_match.group())
+                steps = response_data.get("steps", [])
+
+                print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
+
+
+                #### DEBUG ####
+                # Print screenshot self-check if present
+                self_check = response_data.get("screenshot_self_check")
+                if self_check:
+                    print("\n" + "!" * 80)
+                    print("!!!!!!!!! SCREENSHOT SELF-CHECK !!!!!!!!!")
+                    print("!" * 80)
+                    print(json.dumps(self_check, indent=2))
+                    missed = self_check.get("missed_fields", [])
+                    if missed:
+                        print("!" * 80)
+                        if isinstance(missed[0], dict):
+                            missed_names = [m.get('field_name', str(m)) for m in missed]
+                        else:
+                            missed_names = missed
+                        print("!!!!!!!!! ⚠️ MISSED FIELDS: " + ", ".join(missed_names) + " !!!!!!!!!")
+                    print("!" * 80 + "\n")
+                else:
+                    print("!!!!!!!!! DEBUG: No screenshot_self_check in response !!!!!!!!!")
+                ### END DEBUG #####
+
+                return {"steps": steps, "ui_issue": "", "no_more_paths": False}
+            else:
+                print("[AIHelper] No JSON object found in regeneration response")
+                return {"steps": [], "ui_issue": "", "no_more_paths": False}
+
+        except Exception as e:
+            print(f"[AIHelper] Error regenerating steps: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"steps": [], "ui_issue": "", "no_more_paths": False}
+
+    def regenerate_verify_steps(
+            self,
+            dom_html: str,
+            executed_steps: list,
+            test_cases: list,
+            test_context,
+            screenshot_base64: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Regenerate verification steps after Save/Submit - focused on verifying fields
+
+        Args:
+            dom_html: Current page DOM (after Save/Submit)
+            executed_steps: Steps already executed (contains FILL/SELECT values to verify)
+            test_cases: Test cases
+            test_context: Test context
+            screenshot_base64: Optional base64 screenshot for visual context
+
+        Returns:
+            Dict with 'steps' (list), 'ui_issue' (string), and 'no_more_paths' (bool)
+        """
+        try:
+            print(f"[AIHelper] Regenerating VERIFY steps after Save/Submit...")
+            print(f"[AIHelper] Already executed: {len(executed_steps)} steps")
+
+            # Build context of what's been done - this is crucial for knowing what to verify
+            executed_context = ""
+            if executed_steps:
+                executed_context = f"""
+## Steps Already Completed:
+{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
+"""
+
+            # Build test cases context
+            test_cases_context = ""
+            if test_cases:
+                test_cases_context = f"""
+## Test Cases:
+{json.dumps(test_cases, indent=2)}
+"""
+
+            # Screenshot section
+            screenshot_section = ""
+            if screenshot_base64:
+                screenshot_section = """
+🖼️ SCREENSHOT PROVIDED:
+Use the screenshot to understand the current page layout and identify where field values are displayed.
+"""
+
+            # ==================== BUILD THE VERIFICATION PROMPT ====================
+
+            prompt = f"""You are a web automation expert generating Selenium WebDriver VERIFICATION test steps.
+
+## VERIFICATION MODE - AFTER SAVE/SUBMIT
+
+You are now in VERIFICATION MODE. The form has been saved/submitted successfully.
+Your task is to VERIFY that all entered data is displayed correctly.
+
+{screenshot_section}
+## Current Context:
+
+{executed_context}
+
+## Current Page DOM:
+{dom_html}
+
+{test_cases_context}
+
+## Your Task:
+Generate steps to VERIFY all fields that were filled during the test, plus any navigation needed to access view pages.
+
+**What you must do:**
+1. Look at "Steps Already Completed" - find ALL fill/select/check steps
+2. For EACH field that was filled, generate a VERIFY step to confirm the value is displayed
+3. If data is on a different page (e.g., need to click "View" button), add navigation steps
+4. Verify ALL fields on EACH page you visit - do NOT skip fields even if verified on a previous page
+
+**Current page detection:**
+- If you see a LIST/TABLE page: Verify visible columns, then click View to see details
+- If you see a VIEW/DETAIL page: Verify ALL fields displayed on this page
+- If you see a SUCCESS message: Look for "View" or "Back to List" button to navigate
+
+## Response Format:
+```json
+{{
+  "steps": [
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "xpath", "force_regenerate": false, "force_regenerate_verify": false, "dont_regenerate": false}}
+  ]
+}}
+```
+
+---
+
+## VERIFICATION RULES
+
+**⚠️ CRITICAL - VIEW/DETAIL PAGE ≠ FORM PAGE:**
+After clicking View/Edit/Details button, you are on a READ-ONLY display page:
+- ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
+- ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
+- ALWAYS examine the CURRENT DOM structure before generating verify selectors
+
+**VERIFY ALL FIELDS - NO SKIPPING:**
+1. Look through "Steps Already Completed" for ALL fill/select/check steps
+2. Generate a VERIFY step for EACH field - do NOT skip any
+3. Each page requires FULL verification - do NOT skip fields verified on a previous page
+4. Get expected values from the `value` field of those fill/select steps
+5. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At", "Saved Date")
+
+**⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
+- ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
+- ❌ NEVER use values from the current DOM (what is DISPLAYED) as expected values
+- The whole point of verification is to CHECK if what was entered matches what is displayed
+- Example: If fill step had `"value": "15-1-1990"`, verify with `"value": "15-1-1990"` - NOT what DOM shows
+
+**How verify works:** Selector finds element by LOCATION. The `value` field contains expected text.
+
+**BUILD SELECTOR FROM THE DOM - Common patterns:**
+- By data attribute: `//div[@data-field='email']`
+- By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
+- By label proximity: `//label[contains(text(), 'Email')]/../div`
+- By parent with label: `//div[contains(@class, 'delivery-section')]//div[contains(@class, 'field-row')]//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Time Slot')]]//div[contains(@class, 'field-value')]`
+
+**TABLE/LIST verification - use POSITIONAL selectors:**
+- First data row, column 1: `//table//tbody//tr[1]//td[1]`
+- First data row, column 2: `//table//tbody//tr[1]//td[2]`
+- Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
+- By row with unique class: `//tr[contains(@class,'highlight')]//td[1]`
+
+**❌ WRONG selectors:**
+- `//div[contains(text(), 'john@email.com')]` - value in selector!
+- `//td[text()='TestValue']` - value in selector won't work with different test data!
+- `//tr[td[text()='SomeValue']]//td[2]` - finding row by value won't work for reusable tests!
+- `input#email` on view page - form elements don't exist on view pages!
+- Inventing class names not in DOM
+
+**⚠️ TABLE SELECTOR RULE:** Selectors must work with ANY test data. Use POSITION (row/column index) or STRUCTURE (classes, data-attributes), NEVER the actual field VALUES.
+
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
+
+---
+
+## Navigation Rules (for accessing view pages):
+
+**Available actions:** click, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, switch_to_frame, switch_to_default
+
+**Selector preference order:**
+1. ID: `#buttonId` or `button#viewBtn`
+2. Data attributes: `[data-testid='view-button']`
+3. Unique class: `button.view-btn`
+4. XPath with attributes: `//button[@onclick='viewForm(0)']`
+5. XPath by text: `//button[contains(text(), 'View')]`
+
+**Modal buttons - use XPath for precision:**
+- `//div[contains(@class, 'modal')]//button[contains(text(), 'View')]`
+
+**force_regenerate_verify field (stay in verification mode):**
+- Set to `true` for ANY navigation step that leads to a page with MORE fields to verify:
+  * Click "View" button to see detail page → `force_regenerate_verify: true`
+  * Click "Back to List" to verify list columns → `force_regenerate_verify: true`
+  * Click row in table to see details → `force_regenerate_verify: true`
+- Set to `false` for verify steps, wait steps, and final navigation (no more verification needed)
+- ⚠️ IMPORTANT: If clicking a button will show NEW fields to verify, use `force_regenerate_verify: true`, NOT `force_regenerate: true`
+
+**force_regenerate field (exit verification mode):**
+- Set to `true` ONLY when ALL verification is complete and ALL verification pages are complete AND next test case requires Edit/Update
+- Use this to transition from verification to the next test case (e.g., Edit test)
+
+**How to decide:**
+1. If more fields to verify on another page → use `force_regenerate_verify: true`
+2. If ALL fields verified and all Verification pages are done AND next test is Edit/Update → use `force_regenerate: true` on Edit button
+
+
+**full_xpath field:**
+- Required for click/navigation steps - fallback selector starting from `/html/body/...`
+- Prefer `[@id='...']` over index when element has an ID
+- For `verify` action: use empty string `""`
+
+---
+
+## Rules:
+- Never use CSS `:contains()` or `:has()` - not supported in Selenium
+- Focus on VERIFICATION - this is not for filling forms
+- Verify ALL fields from the test, including: text, dates, dropdowns, checkboxes, file uploads
+- Navigate between pages as needed to verify all data
+
+Return ONLY the JSON object.
+"""
+
+            # Call Claude API with retry (with or without screenshot)
+            result_logger_gui.info("[AIHelper] Sending verify regeneration request to Claude API...")
+
+            if screenshot_base64:
+                message_content = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": screenshot_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
+                                                                     max_retries=3)
+            else:
+                response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
+
+            if response_text is None:
+                print("[AIHelper] ❌ Failed to regenerate verify steps after retries")
+                return {"steps": [], "ui_issue": "", "no_more_paths": False}
+
+            print(f"[AIHelper] Received verify regeneration response ({len(response_text)} chars)")
+
             # Parse JSON response
             import re
             json_match = re.search(r'\{[\s\S]*\}', response_text)
 
-            #print(f"extracted json: {json_match.group()}")
             if json_match:
                 response_data = json.loads(json_match.group())
                 steps = response_data.get("steps", [])
-                no_more_paths = response_data.get("no_more_paths", False)
-                
-                print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
-                if no_more_paths:
-                    print(f"[AIHelper] 🏁 AI indicates no more paths to explore")
-                
-                return {"steps": steps, "ui_issue": "", "no_more_paths": no_more_paths}
+
+                print(f"[AIHelper] Successfully regenerated {len(steps)} verify steps")
+
+
+                return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
-                print("[AIHelper] No JSON object found in regeneration response")
+                print("[AIHelper] No JSON object found in verify regeneration response")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
-                
+
         except Exception as e:
-            print(f"[AIHelper] Error regenerating steps: {e}")
+            print(f"[AIHelper] Error regenerating verify steps: {e}")
             import traceback
             traceback.print_exc()
             return {"steps": [], "ui_issue": "", "no_more_paths": False}
@@ -1722,12 +2037,14 @@ Return ONLY the JSON object, no other text.
             #print("!!!!!!!! ANALYZE_FAILURE_AND_RECOVER - FINAL PROMPT TO AI !!!!")
             #print("!" * 80)
             #import re
-            #prompt_no_dom = re.sub(r'=== CURRENT PAGE DOM ===.*?(?=\n\s*===)',
-            #                       '=== CURRENT PAGE DOM ===\n[DOM REMOVED FOR LOGGING]\n\n', prompt, flags=re.DOTALL)
+            #prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
+            #                       flags=re.DOTALL)
             #print(prompt_no_dom)
             #print("!" * 80 + "\n")
 
+            print("!*!*!*!*!*!*!*! Entering the AI func for analyze failures and recover")
             response_text = self._call_api_with_retry_multimodal(content, max_tokens=16000, max_retries=3)
+            #print(f"[DEBUG] Raw AI response: {response_text[:500]}...")
             
             if response_text is None:
                 print("[AIHelper] ❌ Failed to get recovery response after retries")
@@ -1736,9 +2053,16 @@ Return ONLY the JSON object, no other text.
             
             print(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
             logger.info(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
-            
+
+            # Strip markdown code blocks first
+            clean_response = response_text
+            if '```json' in clean_response:
+                clean_response = clean_response.split('```json')[1].split('```')[0]
+            elif '```' in clean_response:
+                clean_response = clean_response.split('```')[1].split('```')[0]
+
             # Extract JSON from response
-            json_match = re.search(r'\[[\s\S]*\]', response_text)
+            json_match = re.search(r'\[[\s\S]*\]', clean_response)
             if json_match:
                 recovery_steps = json.loads(json_match.group())
                 print(f"[AIHelper] Successfully parsed {len(recovery_steps)} recovery steps")
@@ -1751,6 +2075,7 @@ Return ONLY the JSON object, no other text.
                 
         except Exception as e:
             print(f"[AIHelper] Error in failure recovery: {e}")
+            print(f"[AIHelper] Raw response was: {response_text[:1000] if response_text else 'None'}")
             logger.error(f"[AIHelper] Error in failure recovery: {e}")
             return []
 
@@ -1765,152 +2090,354 @@ Return ONLY the JSON object, no other text.
             recovery_failure_history: List[Dict] = None,
             error_message: str = None
     ) -> str:
-        """Build the prompt for failure recovery analysis"""
+        """Build the prompt for failure recovery analysis - ONLY fix steps, not remaining steps"""
 
         action = failed_step.get('action', 'unknown')
         selector = failed_step.get('selector', '')
         description = failed_step.get('description', '')
+        expected_value = failed_step.get('value', '')
 
-        # Build executed steps context
+        # Build executed steps context (last 5 steps for context)
         executed_context = ""
         if executed_steps:
+            recent_steps = executed_steps[-5:] if len(executed_steps) > 5 else executed_steps
             executed_context = f"""
-Steps completed successfully so far:
-{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
-"""
+    ## Recent Executed Steps:
+    {json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector")} for i, s in enumerate(recent_steps)], indent=2)}
+
+    ⚠️ **VERIFY THESE STEPS:** Check screenshot/DOM - did the last 2-3 steps ACTUALLY achieve their effect?
+    - hover/click: Did menu/dropdown/modal open and is it STILL visible?
+    - select: Is the option actually selected?
+    - fill: Is the value in the field?
+    If a previous step's effect is MISSING, redo it first before fixing the failed step.
+    """
 
         # Build recovery failure history section
         failure_history_section = ""
         if recovery_failure_history and len(recovery_failure_history) > 0:
             failure_history_section = f"""
-## ⚠️ ACCUMULATED RECOVERY FAILURE HISTORY:
-The following steps have failed during this recovery session:
-{json.dumps(recovery_failure_history, indent=2)}
+    ## ⚠️ Previous Recovery Attempts Failed:
+    {json.dumps(recovery_failure_history, indent=2)}
 
-**CRITICAL: If you see 4 or more failures in a row that are about the same stage (same action trying to do the same thing), 
-this indicates an unrecoverable issue. In this case, return an EMPTY array [] to signal that recovery is not possible.**
-"""
+    If 4+ failures on same action, return EMPTY array [] to signal unrecoverable.
+    """
 
-        prompt = f"""
-# FAILURE RECOVERY AND ANALYSIS
+        prompt = f"""# STEP FAILURE RECOVERY
 
-A test step has FAILED. Your job is to analyze the failure and provide recovery steps.
+    🖼️ **Screenshot and DOM provided.** DOM is primary source, screenshot for visual verification.
 
-## Failed Step (Attempt {attempt_number}/2):
-- Action: {action}
-- Selector: {selector}
-- Description: {description}
+    **Task:** Fix the failed step. Return ONLY fix steps (1-5 max). Do NOT generate remaining form steps.
 
-- Error Message: {error_message}
+    ## Failed Step (Attempt {attempt_number}/2):
+    - Action: {action}
+    - Selector: {selector}  
+    - Description: {description}
+    - Error: {error_message}
+    {f"- Expected Value: {expected_value}" if action == "verify" and expected_value else ""}
+    {executed_context}
+    {failure_history_section}
+    ## Current DOM:
+    ```html
+    {fresh_dom}
+    ```
 
-{executed_context}
-{failure_history_section}
+    ---
+    
+    ## Special Case - VERIFY Action Recovery:
+    If the failed action is `verify`:
+    - Return EXACTLY 1 step with the FIXED selector
+    - Keep the SAME expected value (the `value` field) - do NOT change it
+    - Only fix the LOCATOR (selector)
+    
+    **VERIFY selector rules:**
+    - Build selector from DOM structure, NOT from displayed values
+    - Use `contains(@class, 'x')` not `@class='x'` (elements often have multiple classes)
+    - View/detail pages use `<div>`, `<span>`, `<td>`, `<p>` - NOT form elements like `input`, `select`
+    
+    **✅ CORRECT verify selectors - VIEW/DETAIL pages:**
+    - By label proximity: `//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Email')]]//div[contains(@class, 'field-value')]`
+    - By data attribute: `//div[@data-field='email']`
+    
+    **✅ CORRECT verify selectors - TABLE/LIST pages (use POSITIONAL):**
+    - First row, column 1: `//table//tbody//tr[1]//td[1]`
+    - Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
+    - By row class: `//tr[contains(@class,'highlight')]//td[1]`
+    
+    **❌ WRONG verify selectors - NEVER use value in selector:**
+    - `//div[contains(text(), 'john@email.com')]` - value in selector!
+    - `//td[text()='TestValue']` - value in selector!
+    - `//tr[td[text()='SomeValue']]//td[2]` - finding row by value!
+    - `input#email` - form elements don't exist on view pages!
+    - `@class='field-value'` - use `contains(@class, 'field-value')` instead
+    
+    
+    ## Common Fixes by Error Type:
 
-## What I'm Providing:
-1. **Screenshot**: Full page screenshot showing current state
-2. **Fresh DOM**: Current DOM structure (see below)
+    **Element not found:**
+    - Selector may be wrong - check DOM for correct id/class/name
+    - Element inside iframe → switch_to_frame first
+    - Element in shadow DOM → switch_to_shadow_root first
 
-## Your Tasks:
+    **Element not interactable / not clickable:**
+    - Hidden in collapsed section → click parent to expand first
+    - Hidden in hover menu → hover on trigger element first  
+    - Hidden in closed dropdown → click dropdown trigger first
+    - Covered by overlay/tooltip → dismiss it first (click elsewhere or ESC)
+    - Element disabled → enable via checkbox/toggle first
+    - Outside viewport → scroll to element first
 
-### 1. MANDATORY - Analyze the Screenshot:
-Look at the screenshot and identify WHY the step failed - what is preventing interaction with this element?
+    **Selector not unique:**
+    - Scope to parent: `//div[@id='container']//button[text()='Save']`
+    - Use index: `(//button[@class='submit'])[1]`
 
-Possible causes:
-- Hover menu blocking it
-- Modal/overlay blocking it
-- Element not visible (need to scroll)
-- Element in wrong tab/section
-- Element doesn't exist (wrong selector)
-- Page error/blank page
-- Loading spinner active
-- Cookie banner/chat widget blocking
+    **Stale element:**
+    - Page refreshed - add wait, retry same selector
 
-**You MUST:**
-1. Visually analyze the screenshot to see what's blocking/preventing the interaction
-2. Generate appropriate recovery action(s) based on what you see
-3. Then retry the failed step
+    **Wrong context:**
+    - Inside iframe → switch_to_frame first
+    - Need main page → switch_to_default first
 
-### 2. Check the DOM:
-- Does the selector exist in the DOM?
-- If wrong selector, find the CORRECT one from the DOM
-- Is element hidden (display:none)?
+    ## Selector Priority:
+    1. ID: `#fieldId`
+    2. Name: `[name='fieldName']`
+    3. Scoped XPath: `//parent[@id='x']//child`
 
-### 3. Generate Recovery Steps:
-Return JSON array with:
-- **Recovery actions** (if needed): refresh, press_key (ESC), click outside, scroll, wait, move_mouse_away, etc.
-- **Corrected failed step** (with fixed selector if needed)
-- **All remaining steps** to complete the form
+    Use `contains(@class, 'x')` not `@class='x'` for partial class match.
 
-## Available Recovery Actions:
-- `refresh`: Reload the page
-- `press_key`: Press a key (e.g., "ESC" to close modals)
-- `click`: Click element to close overlays
-- `scroll`: Scroll to element
-- `wait`: Wait for element to appear
-- `hover`: Move mouse away from hover menus (use offset coordinates)
-
-## Important Notes:
-- If the screenshot shows the page is functioning normally but element just isn't found, the selector is likely wrong - find the correct one
-- If there's a hover menu open from previous steps, you MUST add a recovery action to close it (move mouse away or press ESC)
-- Always return the FULL remaining test plan, not just the recovery
-
-## Test Cases:
-{json.dumps(test_cases, indent=2)}
-
-**CRITICAL: Generate steps for ALL test cases above in ONE continuous JSON array. Do NOT stop after TEST_1!**
-
-**For edit/update tests - COMPLETE WORKFLOW PER FIELD:**
-For each field that needs to be verified and updated, generate this complete sequence:
-1. Navigate to field (switch_to_frame/shadow_root, click tab, hover, wait_for_visible as needed)
-2. Verify original value (action: "verify", value: expected original value from TEST_1)
-3. Clear field (action: "clear" - only for text inputs, skip for select/checkbox/radio/slider)
-4. Update field (action: "fill"/"select"/"check" with new value)
-5. Navigate back (switch_to_default if you entered iframe/shadow_root)
-
-## Current DOM:
-```html
-{fresh_dom}
-```
-
-## Response Format:
-Return ONLY a JSON array of step objects. Each step must have:
-- step_number: sequential number
-- action: one of (fill, select, click, verify, navigate, wait, scroll, switch_to_frame, switch_to_default, switch_to_shadow_root, hover, refresh, press_key)
-- selector: CSS selector or XPath (use XPath for modal buttons - see below)
-- value: value for the action (if applicable)
-- description: what this step does
-
-**CRITICAL: Modal Button Selectors (Save/Submit/OK/Cancel):**
-If the failed step was trying to click a modal button, ALWAYS use XPath for precision:
-If the failed step was a locator that is not unique, ALWAYS use Full XPath for precision:
-
-**PREFERRED XPATH STRATEGIES:**
-1. **XPath with onclick attribute** (BEST):
-   `//button[@onclick='saveEngagement()']`
-
-2. **XPath scoped to modal + text content**:
-   `//div[@id='engagementModal']//button[contains(text(), 'Save')]`
-
-3. **XPath with modal scope + attributes**:
-   `//div[@id='findingModal']//button[@type='submit']`
-
-**EXAMPLES:**
-- ❌ BAD: `button.btn-save-engagement` (ambiguous)
-- ✅ GOOD: `//button[@onclick='saveEngagement()']`
-- ✅ GOOD: `//div[@id='engagementModal']//button[contains(text(), 'Save')]`
-
-Example response:
-```json
-[
-  {{"step_number": 1, "action": "press_key", "selector": "body", "value": "ESC", "description": "Close any open overlays"}},
-  {{"step_number": 2, "action": "click", "selector": ".star[data-rating='4']", "description": "Click 4-star rating"}},
-  {{"step_number": 3, "action": "fill", "selector": "input#field1", "value": "test", "description": "Fill field 1"}}
-]
-```
-
-Return ONLY the JSON array, no other text.
-"""
-
+    ## Response Format:
+    Return ONLY a JSON array with 1-5 fix steps:
+    ```json
+    [
+      {{"step_number": 1, "action": "hover", "selector": "#trigger", "value": "", "description": "Re-hover to open menu"}},
+      {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu"}}
+    ]
+    ```
+    """
         return prompt
 
+    def evaluate_paths(
+            self,
+            junctions_data: List[Dict],
+            completed_paths: List[Dict],
+            discover_all_combinations: bool = False,
+            max_paths: int = 7
+    ) -> Dict:
+        """
+        Use AI to evaluate completed paths and determine next junction combination to test.
 
+        Args:
+            junctions_data: List of junctions with their options
+                [{"name": "applicationtype", "selector": "#appType", "options": ["personal", "business"], "tested_options": ["personal"]}, ...]
+            completed_paths: List of completed path combinations
+                [{"applicationtype": "personal", "worktype": "employed"}, ...]
+            discover_all_combinations: If True, test ALL combinations. If False, just ensure each option tested once.
+            max_paths: Maximum number of paths allowed
+
+        Returns:
+            {
+                "all_paths_complete": bool,
+                "next_path": {"junction_name": "option_to_select", ...},
+                "total_paths_estimated": int,
+                "reason": str,
+                "tokens_used": int,
+                "cost": float
+            }
+        """
+        print(f"[AIHelper] Evaluating paths with AI...")
+        logger.info(
+            f"[AIHelper] AI path evaluation - {len(junctions_data)} junctions, {len(completed_paths)} completed paths")
+
+        prompt = self._build_path_evaluation_prompt(
+            junctions_data, completed_paths, discover_all_combinations, max_paths
+        )
+
+        try:
+            response_text = self._call_api_with_retry(prompt, max_tokens=2000)
+
+            if not response_text:
+                logger.error("[AIHelper] No response from AI for path evaluation")
+                return {
+                    "all_paths_complete": True,
+                    "next_path": {},
+                    "total_paths_estimated": len(completed_paths),
+                    "reason": "AI returned no response - defaulting to complete",
+                    "tokens_used": 0,
+                    "cost": 0
+                }
+
+            print(f"[AIHelper] Path evaluation response: {response_text[:500]}")
+
+            # Strip markdown code blocks
+            clean_response = response_text
+            if '```json' in clean_response:
+                clean_response = clean_response.split('```json')[1].split('```')[0]
+            elif '```' in clean_response:
+                clean_response = clean_response.split('```')[1].split('```')[0]
+
+            # Parse JSON response
+            result = json.loads(clean_response.strip())
+
+            # Add token/cost estimates
+            result["tokens_used"] = len(prompt) // 4 + len(response_text) // 4
+            result["cost"] = result["tokens_used"] * 0.000003
+
+            logger.info(
+                f"[AIHelper] Path evaluation result: all_complete={result.get('all_paths_complete')}, next={result.get('next_path')}")
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[AIHelper] Failed to parse path evaluation response: {e}")
+            return {
+                "all_paths_complete": True,
+                "next_path": {},
+                "total_paths_estimated": len(completed_paths),
+                "reason": f"Failed to parse AI response: {e}",
+                "tokens_used": 0,
+                "cost": 0
+            }
+        except Exception as e:
+            logger.error(f"[AIHelper] Path evaluation error: {e}")
+            return {
+                "all_paths_complete": True,
+                "next_path": {},
+                "total_paths_estimated": len(completed_paths),
+                "reason": f"Error: {e}",
+                "tokens_used": 0,
+                "cost": 0
+            }
+
+    def _build_path_evaluation_prompt(
+            self,
+            junctions_data: List[Dict],
+            completed_paths: List[Dict],
+            discover_all_combinations: bool,
+            max_paths: int
+    ) -> str:
+        """Build prompt for AI path evaluation."""
+
+        # Format junctions info
+        junctions_text = ""
+        for j in junctions_data:
+            tested = j.get("tested_options", [])
+            untested = [opt for opt in j.get("options", []) if opt not in tested]
+            junctions_text += f"""
+Junction: {j['name']}
+  - All options: {j.get('options', [])}
+  - Already tested: {tested}
+  - Not yet tested: {untested}
+"""
+
+        # Format completed paths
+        paths_text = ""
+        for i, path in enumerate(completed_paths, 1):
+            paths_text += f"  Path {i}: {path}\n"
+
+        if not paths_text:
+            paths_text = "  (No paths completed yet)\n"
+
+        mode_instruction = ""
+        if discover_all_combinations:
+            mode_instruction = """
+**MODE: DISCOVER ALL COMBINATIONS**
+You must test ALL possible combinations of junction options.
+For example, if junction A has options [x, y] and junction B has options [1, 2]:
+- You need to test: (x,1), (x,2), (y,1), (y,2) = 4 combinations
+
+Some junctions may be NESTED (only appear when parent has specific value).
+If junction B only appears when A=x, then valid combinations are: (x,1), (x,2), (y) = 3 paths
+"""
+        else:
+            mode_instruction = """
+**MODE: ENSURE EACH OPTION TESTED ONCE**
+Your goal is to reach ALL form fields by testing each junction option at least once.
+You do NOT need to test all combinations - just ensure every option is tested.
+
+**CRITICAL RULE - ONLY INCLUDE JUNCTIONS YOU KNOW EXIST:**
+When building next_path, ONLY include junctions that you have SEEN exist for that specific parent value.
+- If you haven't tested a parent option yet, you DON'T KNOW what child junctions exist under it
+- In that case, just include the parent junction - let the form reveal what's there
+- After discovering what exists, you can include those children in future paths
+
+**UNDERSTANDING NESTING:**
+Some junctions are NESTED - they only appear when a parent junction has a specific value.
+You can detect nesting by comparing completed paths:
+- If a junction appears in one path but NOT in another, it's nested under a specific parent option
+- Only include nested junctions when you KNOW they exist for that parent value
+
+**EXAMPLE FORM:**
+A form has these junctions:
+- accountType: [individual, corporate]
+- taxStatus: [single, married] - but we don't know yet if it's nested
+- paymentMethod: [credit, bank] - but we don't know yet if it's nested
+
+**EXAMPLE PATH SEQUENCE:**
+
+Path 1: {accountType: individual, taxStatus: single, paymentMethod: credit}
+- Result: We now KNOW that under "individual", both taxStatus and paymentMethod exist
+
+Path 2: {accountType: corporate}
+- Why only accountType? Because we've NEVER seen what exists under "corporate"
+- Don't assume taxStatus or paymentMethod exist there - let the form reveal it
+- Result: We discover that paymentMethod exists under corporate, but taxStatus does NOT
+
+Path 3: {accountType: individual, taxStatus: married, paymentMethod: bank}
+- Now we KNOW taxStatus exists under individual (from Path 1)
+- Now we KNOW paymentMethod exists under individual (from Path 1)
+- So we can safely combine the remaining untested options: married + bank
+
+Total: 3 paths - all options tested efficiently!
+
+**RULES:**
+1. Only include junctions in next_path that you KNOW exist for that parent combination
+2. If testing a new parent option you've never seen, include ONLY that parent - discover first
+3. After discovering what exists, combine untested options efficiently in future paths
+4. Check completed paths to see which junctions appeared together
+"""
+
+        prompt = f"""You are an AI assistant helping determine which form paths to test next.
+
+## CONTEXT
+A web form has "junctions" - elements like dropdowns or radio buttons where different selections may reveal different form fields.
+We need to systematically test these junctions to discover all form variations.
+
+{mode_instruction}
+
+## JUNCTIONS DISCOVERED
+{junctions_text}
+
+## COMPLETED PATHS
+{paths_text}
+
+## CONSTRAINTS
+- Maximum paths allowed: {max_paths}
+- Current completed paths: {len(completed_paths)}
+
+## YOUR TASK
+Analyze the junctions and completed paths. Determine:
+1. Are all required paths complete? (based on the mode above)
+2. If not, what junction options should the next path use?
+
+## IMPORTANT RULES
+- Junction names may vary slightly (e.g., "accounttype" vs "accountType" vs "account_type" are the same)
+- Only include junctions in next_path that need a SPECIFIC option selected
+- If a junction's option doesn't matter for the next test, don't include it
+- Consider nesting: if junction B only appears when A=x, don't include B when testing A=y
+
+## RESPONSE FORMAT
+Return ONLY valid JSON (no markdown, no explanation):
+{{
+    "all_paths_complete": true/false,
+    "next_path": {{"junction_name": "option_to_select"}},
+    "total_paths_estimated": <number>,
+    "reason": "Brief explanation"
+}}
+
+If all paths are complete, return:
+{{
+    "all_paths_complete": true,
+    "next_path": {{}},
+    "total_paths_estimated": {len(completed_paths)},
+    "reason": "All required junction options have been tested"
+}}
+"""
+        return prompt

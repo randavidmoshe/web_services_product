@@ -171,7 +171,7 @@ class AIErrorRecovery:
         step_where_alert_appeared: int,
         include_accept_step: bool = True,
         gathered_error_info: Optional[Dict] = None  # NEW: For validation errors from DOM detection
-    ) -> List[Dict]:
+    ) -> Dict[str, Any]:
         """
         Generate steps to handle a JavaScript alert/confirm/prompt OR validation errors with AI vision
         
@@ -249,7 +249,7 @@ class AIErrorRecovery:
             if response_text is None:
                 print("[AIErrorRecovery] ❌ Failed to get alert handling response after retries")
                 logger.error("[AIErrorRecovery] Failed to get alert handling response after retries")
-                return []
+                return {"scenario": "B", "issue_type": "api_error", "steps": [], "explanation": "Failed to get API response"}
             
             print(f"[AIErrorRecovery] Received alert handling response ({len(response_text)} chars)")
             logger.info(f"[AIErrorRecovery] Received alert handling response ({len(response_text)} chars)")
@@ -338,7 +338,7 @@ class AIErrorRecovery:
         except Exception as e:
             print(f"[AIErrorRecovery] Error generating alert handling steps: {e}")
             logger.error(f"[AIErrorRecovery] Error generating alert handling steps: {e}")
-            return []
+            return {"scenario": "B", "issue_type": "parse_error", "steps": [], "explanation": str(e)}
     
     def _build_alert_handling_prompt(
         self,
