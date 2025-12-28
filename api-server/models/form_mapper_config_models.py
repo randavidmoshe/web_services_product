@@ -59,7 +59,7 @@ class FormMapperConfig(BaseModel):
     )
     
     max_junction_paths: int = Field(
-        default=5,
+        default=7,
         ge=1,
         le=50,
         description="Maximum number of junction paths to explore"

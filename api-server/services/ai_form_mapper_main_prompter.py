@@ -1238,7 +1238,7 @@ Do NOT skip fields just because they are not in the required selections list.
             if screenshot_base64:
                 screenshot_section = """
 🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY EXAMINING THE DOM AND ALSO VIEWING THE SCREENSHOT:
-1. Extract ALL input fields and repeatable lists with "Add"/"+"/etc from DOM (input, select, textarea, checkbox, radio, list items(with add buttons), everything user can add/input)
+1. Extract ALL interactive elements from DOM - inputs, selects, textareas, checkboxes, radio buttons, clickable option cards, toggles, tabs, accordions, repeatable lists with "Add"/"+"/etc buttons, and any element a user would click or fill to complete the form
 2. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
 3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
 4. Screenshot shows active tab/section and visual layout
@@ -1279,6 +1279,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 ** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
 - Locate the trigger step in SCREENSHOT
 - Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
+- imagine you are a user: what is EVERY click, selection, and input you would make?
 - Make sure you create steps for all of them
 - Note that the trigger step might be at an inner location so you need to look also outside this trigger step's scope
 - **JUNCTION CHECK:** Look for dropdowns/radio buttons/cards in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction: true + junction_info).
@@ -1290,7 +1291,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 2. If previous step was next/continue button AND you see a blocking overlay... your first step should be wait_message_hidden
 3. Complete current tab 100% before moving to next tab:
    - Fill ALL visible fields - check horizontally (side-by-side fields) and vertically
-   - Fill ALL input fields - both required AND optional (text, date, email, textarea, comments, notes, etc.)
+   - Interact with ALL elements - both required AND optional (inputs, selects, clickable option cards, toggles, text, date, email, textarea, comments, notes, etc.)
    - Click EVERY "Add" button you find (each may open a different sub-form or list)
    - Handle special inputs (dropdowns, checkboxes, sliders, file uploads, drag and drop)
    - Do NOT skip fields because they appear optional - fill EVERY visible field
@@ -2350,68 +2351,69 @@ Return ONLY the JSON object.
             mode_instruction = """
     **MODE: ENSURE EACH OPTION TESTED ONCE**
     Test each junction option at least once to reach all form fields.
-    You do NOT need all combinations - just ensure every option is tested.
+    You do NOT need all combinations - just ensure every option is tested ONCE globally.
     """
 
         prompt = f"""You are determining which form paths to test next.
 
     ## GOAL
-    Create paths to test all junction options. A junction is a dropdown/radio button where different options may reveal different fields. Each path = one form submission with specific junction choices. We need paths that cover ALL options across ALL junctions.
+    Test each junction option at least once. Once an option has been tested in ANY path, it is DONE - do not re-test it.
 
     ## YOUR TASK
     {mode_instruction}
 
     ## UNDERSTANDING THE DATA
-    Each completed path shows ALL junctions that appeared during that form submission. If a junction is NOT listed in a path, it does NOT EXIST for that path. Some junctions only appear under specific parent values (nesting).
+    Each completed path shows ALL junctions that appeared during that form submission. If a junction is NOT listed in a path, it does NOT EXIST for that parent - do not try to add it. Some junctions only appear under specific parent values (nesting). If a path shows only a parent junction with no children, that parent has no child junctions.
 
     ## COMPLETED PATHS
     {paths_text}
 
     ## CONSTRAINTS
-    - Maximum paths allowed: {max_paths}
     - Current completed paths: {len(completed_paths)}
 
     ## RULES FOR BUILDING next_path
     1. **ONE CHANGE AT A TIME** - Change only ONE junction option per path. Keep all other junctions the same as the path that revealed them.
-    2. **USE THE SAME PATH** - To test an untested option, use the EXACT path that discovered that junction (just change that one option).
-    3. **NEW PARENT = ONLY PARENT** - If testing an untested parent option, include ONLY that parent. The form will reveal what child junctions exist.
-    4. **CRITICAL: IGNORE >8 OPTIONS** - Junctions with more than 8 options (e.g., state/country) - NEVER include in next_path. Pretend they don't exist.
-    5. Junction names may vary slightly ("A" vs "a" are the same).
-    6. **GLOBALLY TESTED = DONE** - If an option was already tested in ANY previous path, it's done. Don't re-test it under a different parent unless the junction shows NEW options not seen before.
+    2. **USE THE SAME PATH** - To test an untested option, use a path where that junction exists (just change that one option).
+    3. Junction names may vary slightly ("A" vs "a" are the same).
+    4. **ONLY INCLUDE SEEN JUNCTIONS** - Only include junctions you have SEEN exist together in a previous path. Don't assume a child junction will exist under a different option.
+    5. **GLOBALLY TESTED = DONE** - If an option was already tested in ANY previous path, it is complete. Don't re-test it.
 
     ## EXAMPLE
 
     Completed paths:
     - Path 1: A='x' (A options: ['x', 'y']), B='1' (B options: ['1', '2']), C='red' (C options: ['red', 'blue'])
 
-    Untested options: B='2', C='blue'
-
-    CORRECT next_path: {{"A": "x", "B": "2", "C": "red"}}
+    CORRECT next_path: {{"A": "x", "B": "2"}}
     - ONE change: B from '1' to '2'
-    - Keep A and C the same as Path 1
+    - Keep A the same as Path 1
+    - Do NOT include C - we haven't seen C exist under B='2'
+
+    WRONG: {{"A": "x", "B": "2", "C": "red"}}
+    - We haven't seen C under B='2' - don't assume it exists!
 
     WRONG: {{"A": "x", "B": "2", "C": "blue"}}
-    - TWO changes at once - not allowed!
+    - TWO problems: assuming C exists under B='2', AND two changes at once!
 
     WRONG: {{"A": "y", "B": "2"}}
     - B was only seen under A='x' - don't assume it exists under A='y'!
-    
+
     CORRECT next_path (for new parent): {{"A": "y"}}
     - A='y' was never tested, so include ONLY A - the form will reveal what junctions exist under 'y'
-    
-    EXAMPLE FOR RULE 6 (GLOBALLY TESTED):
+
+    EXAMPLE FOR RULE 5 (GLOBALLY TESTED):
     Completed paths:
     - Path 1: A='x', B='1', C='red'
-    - Path 2: A='x', B='1', C='blue'
-    - Path 3: A='y', C='red' (B doesn't exist under A='y')
-    
-    C='red' and C='blue' were ALREADY TESTED in Paths 1-2.
-    
+    - Path 2: A='x', B='2'
+    - Path 3: A='x', B='1', C='blue'
+    - Path 4: A='y'
+
+    All options tested: A='x' (Path 1), A='y' (Path 4), B='1' (Path 1), B='2' (Path 2), C='red' (Path 1), C='blue' (Path 3).
+
     WRONG next_path: {{"A": "y", "C": "blue"}}
-    - C='blue' was already tested globally in Path 2 - don't re-test under A='y'!
-    
-    CORRECT: All paths complete - C options were already covered.
-    
+    - C='blue' was already tested globally in Path 3 - don't re-test under A='y'!
+
+    CORRECT: All paths complete - all options were already covered.
+
     ## RESPONSE FORMAT
     Return ONLY valid JSON (no markdown):
     {{

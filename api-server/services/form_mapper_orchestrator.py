@@ -573,8 +573,15 @@ class FormMapperOrchestrator:
         logger.warning(f"[Orchestrator] Step failed. Consecutive: {consecutive_failures}/{max_retries}")
         logger.info(
             f"[handle_step_result] consecutive_failures={consecutive_failures}, max_retries={max_retries}, will_fail={consecutive_failures >= max_retries}")
-        
+
         if consecutive_failures >= max_retries:
+            # For verify steps - skip to next step instead of failing session (don't add to executed_steps)
+            if step.get("action") == "verify":
+                logger.info(f"[Orchestrator] Verify step max retries ({max_retries}) reached - skipping to next step")
+                print(f"[Orchestrator] ⚠️ Verify step max retries reached - skipping to next step")
+                self.update_session(session_id, {"current_step_index": current_index + 1,
+                                                 "consecutive_failures": 0})
+                return self._execute_next_step(session_id)
             return self._fail_session(session_id, f"Max consecutive failures ({max_retries}) reached")
         
         # Add to recovery history
@@ -666,7 +673,6 @@ class FormMapperOrchestrator:
             self.update_session(session_id, {
                 "all_steps": new_all_steps,
                 "current_step_index": current_index,
-                "consecutive_failures": 0
             })
             return self._execute_next_step(session_id)
 
@@ -1277,6 +1283,23 @@ class FormMapperOrchestrator:
                 self.update_session(session_id, {
                     "pending_completed_paths": json.dumps(completed_paths_for_ai)
                 })
+
+                # Check if we've reached max paths - if so, we're done
+                max_paths = config.get("max_junction_paths", 7)
+                if len(completed_paths_for_ai) >= max_paths:
+                    logger.info(f"[Orchestrator] Max paths ({max_paths}) reached - completing")
+                    self.transition_to(session_id, MapperState.SAVING_RESULT)
+                    return {
+                        "success": True,
+                        "state": "saving_result",
+                        "trigger_celery": True,
+                        "celery_task": "save_mapping_result",
+                        "celery_args": {
+                            "session_id": session_id,
+                            "steps": executed_steps,
+                            "all_paths_complete": True
+                        }
+                    }
 
                 self.transition_to(session_id, MapperState.PATH_EVALUATION_AI)
                 return {
