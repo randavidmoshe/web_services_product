@@ -181,7 +181,7 @@ export default function DashboardLayout({
       emoji: '🤍',
       category: 'elegant',
       colors: {
-        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+        bgGradient: 'linear-gradient(180deg, #c5d5e8 0%, #b0c4da 50%, #96b0c8 100%)',
         headerBg: 'rgba(248, 250, 252, 0.98)',
         sidebarBg: 'rgba(241, 245, 249, 0.95)',
         cardBg: 'rgba(242, 246, 250, 0.98)',

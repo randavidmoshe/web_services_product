@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 
 interface Project {
   id: number
@@ -33,6 +33,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [companyId, setCompanyId] = useState<string | null>(null)
@@ -82,8 +83,8 @@ export default function DashboardLayout({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   
-  // Active tab for left sidebar
-  const [activeTab, setActiveTab] = useState<string>('form-discovery')
+  // Helper to check active route
+  const isActiveRoute = (route: string) => pathname?.includes(route) || false
   
   // Agent status
   const [agentStatus, setAgentStatus] = useState<'online' | 'offline' | 'unknown'>('unknown')
@@ -99,7 +100,7 @@ export default function DashboardLayout({
   const [showThemeModal, setShowThemeModal] = useState(false)
   const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
 
-  // Theme definitions - Regular + Ultra Bright
+  // Theme definitions - Kept themes only
   const themes: Record<string, {
     name: string
     emoji: string
@@ -124,7 +125,7 @@ export default function DashboardLayout({
       borderGlow: string
     }
   }> = {
-    // === ELEGANT THEMES ===
+    // === DARK THEME ===
     'platinum-steel': {
       name: 'Platinum Steel',
       emoji: '🔩',
@@ -149,127 +150,7 @@ export default function DashboardLayout({
         borderGlow: 'none'
       }
     },
-    'ocean-depths': {
-      name: 'Ocean Depths',
-      emoji: '🌊',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
-        headerBg: 'rgba(15, 76, 92, 0.9)',
-        sidebarBg: 'rgba(15, 76, 92, 0.6)',
-        cardBg: 'rgba(15, 76, 92, 0.5)',
-        cardBorder: 'rgba(34, 211, 238, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#06b6d4',
-        accentSecondary: '#22d3ee',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfeff',
-        textSecondary: '#67e8f9',
-        textGlow: 'none',
-        statusOnline: '#22d3ee',
-        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'aurora-borealis': {
-      name: 'Aurora Borealis',
-      emoji: '🌌',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
-        headerBg: 'rgba(49, 46, 129, 0.9)',
-        sidebarBg: 'rgba(49, 46, 129, 0.6)',
-        cardBg: 'rgba(49, 46, 129, 0.5)',
-        cardBorder: 'rgba(167, 139, 250, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#8b5cf6',
-        accentSecondary: '#a78bfa',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#f5f3ff',
-        textSecondary: '#c4b5fd',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'sunset-ember': {
-      name: 'Sunset Ember',
-      emoji: '🔥',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
-        headerBg: 'rgba(124, 45, 18, 0.9)',
-        sidebarBg: 'rgba(124, 45, 18, 0.6)',
-        cardBg: 'rgba(124, 45, 18, 0.5)',
-        cardBorder: 'rgba(251, 146, 60, 0.4)',
-        cardGlow: 'none',
-        accentPrimary: '#f97316',
-        accentSecondary: '#fb923c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff7ed',
-        textSecondary: '#fdba74',
-        textGlow: 'none',
-        statusOnline: '#fbbf24',
-        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'emerald-forest': {
-      name: 'Emerald Forest',
-      emoji: '🌲',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
-        headerBg: 'rgba(6, 78, 59, 0.9)',
-        sidebarBg: 'rgba(6, 78, 59, 0.6)',
-        cardBg: 'rgba(6, 78, 59, 0.5)',
-        cardBorder: 'rgba(52, 211, 153, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#10b981',
-        accentSecondary: '#34d399',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfdf5',
-        textSecondary: '#6ee7b7',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'crimson-night': {
-      name: 'Crimson Night',
-      emoji: '🍷',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
-        headerBg: 'rgba(69, 10, 10, 0.9)',
-        sidebarBg: 'rgba(69, 10, 10, 0.6)',
-        cardBg: 'rgba(69, 10, 10, 0.5)',
-        cardBorder: 'rgba(251, 113, 133, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#f43f5e',
-        accentSecondary: '#fb7185',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff1f2',
-        textSecondary: '#fda4af',
-        textGlow: 'none',
-        statusOnline: '#fb7185',
-        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    // === BRIGHT GRAY & WHITE THEMES ===
+    // === MEDIUM DARK THEME ===
     'bright-silver': {
       name: 'Bright Silver',
       emoji: '🥈',
@@ -294,269 +175,29 @@ export default function DashboardLayout({
         borderGlow: 'none'
       }
     },
-    'chrome-glow': {
-      name: 'Chrome Glow',
-      emoji: '⚙️',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
-        headerBg: 'rgba(156, 163, 175, 0.95)',
-        sidebarBg: 'rgba(156, 163, 175, 0.7)',
-        cardBg: 'rgba(156, 163, 175, 0.6)',
-        cardBorder: 'rgba(229, 231, 235, 0.6)',
-        cardGlow: 'none',
-        accentPrimary: '#0f4c5c',
-        accentSecondary: '#1a6b7c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#111827',
-        textSecondary: '#374151',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
+    // === LIGHT THEMES (with improved contrast) ===
     'pearl-white': {
       name: 'Pearl White',
       emoji: '🤍',
       category: 'elegant',
       colors: {
-        bgGradient: 'linear-gradient(180deg, #f9fafb 0%, #e5e7eb 50%, #d1d5db 100%)',
-        headerBg: 'rgba(249, 250, 251, 0.98)',
-        sidebarBg: 'rgba(243, 244, 246, 0.95)',
-        cardBg: 'rgba(255, 255, 255, 0.9)',
-        cardBorder: 'rgba(209, 213, 219, 0.8)',
+        bgGradient: 'linear-gradient(180deg, #d0dce8 0%, #bccbd8 50%, #a4b8c8 100%)',
+        headerBg: 'rgba(248, 250, 252, 0.98)',
+        sidebarBg: 'rgba(241, 245, 249, 0.95)',
+        cardBg: 'rgba(235, 240, 247, 0.98)',
+        cardBorder: 'rgba(100, 116, 139, 0.3)',
         cardGlow: 'none',
-        accentPrimary: '#374151',
-        accentSecondary: '#4b5563',
+        accentPrimary: '#0369a1',
+        accentSecondary: '#0ea5e9',
         accentGlow: 'none',
         iconGlow: 'none',
         buttonGlow: 'none',
-        textPrimary: '#111827',
-        textSecondary: '#4b5563',
+        textPrimary: '#1e293b',
+        textSecondary: '#475569',
         textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
         borderGlow: 'none'
-      }
-    },
-    'snow-crystal': {
-      name: 'Snow Crystal',
-      emoji: '❄️',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #ffffff 0%, #f0f9ff 50%, #e0f2fe 100%)',
-        headerBg: 'rgba(255, 255, 255, 0.98)',
-        sidebarBg: 'rgba(240, 249, 255, 0.95)',
-        cardBg: 'rgba(255, 255, 255, 0.95)',
-        cardBorder: 'rgba(186, 230, 253, 0.8)',
-        cardGlow: 'none',
-        accentPrimary: '#1e40af',
-        accentSecondary: '#2563eb',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#0c4a6e',
-        textSecondary: '#0369a1',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
-    // === ULTRA BRIGHT NEON THEMES ===
-    'cyber-pink': {
-      name: 'Cyber Pink',
-      emoji: '💖',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
-        headerBg: 'rgba(40, 15, 40, 0.95)',
-        sidebarBg: 'rgba(40, 15, 40, 0.8)',
-        cardBg: 'rgba(50, 20, 50, 0.6)',
-        cardBorder: 'rgba(255, 0, 128, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
-        accentPrimary: '#ff0080',
-        accentSecondary: '#ff00ff',
-        accentGlow: 'rgba(255, 0, 128, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff99cc',
-        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
-      }
-    },
-    'radioactive': {
-      name: 'Radioactive',
-      emoji: '☢️',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
-        headerBg: 'rgba(20, 40, 10, 0.95)',
-        sidebarBg: 'rgba(20, 40, 10, 0.8)',
-        cardBg: 'rgba(25, 50, 15, 0.6)',
-        cardBorder: 'rgba(136, 255, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
-        accentPrimary: '#00ff00',
-        accentSecondary: '#88ff00',
-        accentGlow: 'rgba(0, 255, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#bbff66',
-        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
-        statusOnline: '#ffff00',
-        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
-      }
-    },
-    'electric-blue': {
-      name: 'Electric Blue',
-      emoji: '⚡',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
-        headerBg: 'rgba(0, 20, 50, 0.95)',
-        sidebarBg: 'rgba(0, 20, 50, 0.8)',
-        cardBg: 'rgba(0, 30, 60, 0.6)',
-        cardBorder: 'rgba(0, 204, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
-        accentPrimary: '#0066ff',
-        accentSecondary: '#00ccff',
-        accentGlow: 'rgba(0, 102, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ddff',
-        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
-      }
-    },
-    'golden-sunrise': {
-      name: 'Golden Sunrise',
-      emoji: '🌅',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
-        headerBg: 'rgba(40, 30, 10, 0.95)',
-        sidebarBg: 'rgba(40, 30, 10, 0.8)',
-        cardBg: 'rgba(50, 35, 15, 0.6)',
-        cardBorder: 'rgba(255, 204, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
-        accentPrimary: '#ff8800',
-        accentSecondary: '#ffcc00',
-        accentGlow: 'rgba(255, 136, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffdd44',
-        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
-        statusOnline: '#ffff66',
-        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
-      }
-    },
-    'plasma-purple': {
-      name: 'Plasma Purple',
-      emoji: '🔮',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
-        headerBg: 'rgba(30, 10, 50, 0.95)',
-        sidebarBg: 'rgba(30, 10, 50, 0.8)',
-        cardBg: 'rgba(40, 15, 60, 0.6)',
-        cardBorder: 'rgba(204, 102, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
-        accentPrimary: '#9900ff',
-        accentSecondary: '#cc66ff',
-        accentGlow: 'rgba(153, 0, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#dd99ff',
-        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
-        statusOnline: '#ff99ff',
-        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
-      }
-    },
-    'fire-storm': {
-      name: 'Fire Storm',
-      emoji: '🔥',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
-        headerBg: 'rgba(40, 10, 10, 0.95)',
-        sidebarBg: 'rgba(40, 10, 10, 0.8)',
-        cardBg: 'rgba(50, 15, 15, 0.6)',
-        cardBorder: 'rgba(255, 102, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
-        accentPrimary: '#ff0000',
-        accentSecondary: '#ff6600',
-        accentGlow: 'rgba(255, 0, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff9944',
-        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
-        statusOnline: '#ffcc00',
-        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
-      }
-    },
-    'arctic-aurora': {
-      name: 'Arctic Aurora',
-      emoji: '❄️',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
-        headerBg: 'rgba(0, 40, 40, 0.95)',
-        sidebarBg: 'rgba(0, 40, 40, 0.8)',
-        cardBg: 'rgba(0, 50, 50, 0.6)',
-        cardBorder: 'rgba(0, 255, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
-        accentPrimary: '#00ffcc',
-        accentSecondary: '#00ffff',
-        accentGlow: 'rgba(0, 255, 204, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ffff',
-        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
-        statusOnline: '#66ffff',
-        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
-      }
-    },
-    'midnight-rose': {
-      name: 'Midnight Rose',
-      emoji: '🌹',
-      category: 'neon',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
-        headerBg: 'rgba(40, 10, 25, 0.95)',
-        sidebarBg: 'rgba(40, 10, 25, 0.8)',
-        cardBg: 'rgba(50, 15, 35, 0.6)',
-        cardBorder: 'rgba(255, 102, 153, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
-        accentPrimary: '#ff3377',
-        accentSecondary: '#ff66aa',
-        accentGlow: 'rgba(255, 51, 119, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffaacc',
-        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
-        statusOnline: '#ff99cc',
-        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
       }
     }
   }
@@ -566,7 +207,7 @@ export default function DashboardLayout({
 
   // Detect if current theme is light (for contrast adjustments)
   const isLightTheme = () => {
-    const lightThemes = ['pearl-white', 'snow-crystal', 'chrome-glow', 'bright-silver']
+    const lightThemes = ['pearl-white']
     return lightThemes.includes(currentTheme)
   }
 
@@ -605,12 +246,12 @@ export default function DashboardLayout({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  // Load networks when Networks tab is selected
+  // Load networks when Test Sites tab is selected
   useEffect(() => {
-    if (activeTab === 'networks' && activeProject && token) {
+    if (pathname?.includes('test-sites') && activeProject && token) {
       loadNetworksForTab()
     }
-  }, [activeTab, activeProject])
+  }, [pathname, activeProject])
 
   const loadNetworksForTab = async () => {
     if (!activeProject || !token) return
@@ -1219,20 +860,14 @@ export default function DashboardLayout({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
-                padding: '12px 18px',
-                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-                borderRadius: '12px',
-                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
+                gap: '8px',
                 fontSize: '15px'
               }} 
               title={`AI Usage: $${aiUsed} / $${aiBudget}`}
             >
               <span style={{ 
                 fontSize: '16px',
-                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                color: getTheme().colors.textSecondary,
                 fontWeight: 600
               }}>AI:</span>
               <span style={{ 
@@ -1428,159 +1063,112 @@ export default function DashboardLayout({
           </div>
           
           <div style={{ padding: '0 16px' }}>
+            {/* Team Members - Global (at top) */}
+            {(userRole === 'admin' || userRole === 'super_admin') && (
+              <>
+                <div 
+                  onClick={() => router.push('/users')}
+                  className="sidebar-item"
+                  style={{
+                    ...sidebarItemStyle,
+                    background: pathname === '/users' 
+                      ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
+                      : getContrastBg(0.08),
+                    borderColor: pathname === '/users' ? `${getTheme().colors.accentPrimary}80` : 'transparent'
+                  }}
+                >
+                  <div style={{
+                    ...sidebarIconStyle,
+                    background: pathname === '/users' 
+                      ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
+                      : getContrastBg(0.15),
+                    boxShadow: pathname === '/users' ? getTheme().colors.iconGlow : 'none'
+                  }}>
+                    <span>👥</span>
+                  </div>
+                  <span style={{ 
+                    color: pathname === '/users' ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
+                    fontWeight: pathname === '/users' ? 600 : 500,
+                    textShadow: pathname === '/users' ? getTheme().colors.textGlow : 'none'
+                  }}>Team Members</span>
+                </div>
+                <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
+              </>
+            )}
+            
+            {/* Project-specific tabs */}
             {[
-              { id: 'form-discovery', icon: '🔍', label: 'Form Pages Discovery' },
-              { id: 'test-scenarios', icon: '📝', label: 'Test Scenarios' },
-              { id: 'run-tests', icon: '▶️', label: 'Run Tests' },
-              { id: 'form-mapping', icon: '🗺️', label: 'Form Page Mapping' },
+              { id: 'project-dashboard', path: '/dashboard/project-dashboard', icon: '📊', label: 'Dashboard' },
+              { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+              { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
+              { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },
+              { id: 'test-sites', path: '/dashboard/test-sites', icon: '🌐', label: 'Test Sites' },
             ].map((item, index) => (
               <div 
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => router.push(item.path)}
                 className="sidebar-item"
                 style={{
                   ...sidebarItemStyle,
-                  background: activeTab === item.id 
+                  background: isActiveRoute(item.id) 
                     ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
                     : getContrastBg(0.08),
-                  borderColor: activeTab === item.id ? `${getTheme().colors.accentPrimary}80` : 'transparent',
+                  borderColor: isActiveRoute(item.id) ? `${getTheme().colors.accentPrimary}80` : 'transparent',
                   animation: `slideIn 0.3s ease ${index * 0.05}s both`
                 }}
               >
                 <div style={{
                   ...sidebarIconStyle,
-                  background: activeTab === item.id 
+                  background: isActiveRoute(item.id) 
                     ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
                     : getContrastBg(0.15),
-                  boxShadow: activeTab === item.id ? getTheme().colors.iconGlow : 'none'
+                  boxShadow: isActiveRoute(item.id) ? getTheme().colors.iconGlow : 'none'
                 }}>
                   <span>{item.icon}</span>
                 </div>
                 <span style={{ 
-                  color: activeTab === item.id ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
-                  fontWeight: activeTab === item.id ? 600 : 500,
-                  textShadow: activeTab === item.id ? getTheme().colors.textGlow : 'none'
+                  color: isActiveRoute(item.id) ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
+                  fontWeight: isActiveRoute(item.id) ? 600 : 500,
+                  textShadow: isActiveRoute(item.id) ? getTheme().colors.textGlow : 'none'
                 }}>{item.label}</span>
               </div>
             ))}
             
             <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
             
+            {/* Logs at bottom */}
             <div 
-              onClick={() => setActiveTab('networks')}
+              onClick={() => router.push('/dashboard/logs')}
               className="sidebar-item"
               style={{
                 ...sidebarItemStyle,
-                background: activeTab === 'networks' 
+                background: isActiveRoute('logs') 
                   ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
                   : getContrastBg(0.08),
-                borderColor: activeTab === 'networks' ? `${getTheme().colors.accentPrimary}80` : 'transparent'
+                borderColor: isActiveRoute('logs') ? `${getTheme().colors.accentPrimary}80` : 'transparent'
               }}
             >
               <div style={{
                 ...sidebarIconStyle,
-                background: activeTab === 'networks' 
+                background: isActiveRoute('logs') 
                   ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
                   : getContrastBg(0.15),
-                boxShadow: activeTab === 'networks' ? getTheme().colors.iconGlow : 'none'
+                boxShadow: isActiveRoute('logs') ? getTheme().colors.iconGlow : 'none'
               }}>
-                <span>🌐</span>
+                <span>📋</span>
               </div>
               <span style={{ 
-                color: activeTab === 'networks' ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
-                fontWeight: activeTab === 'networks' ? 600 : 500,
-                textShadow: activeTab === 'networks' ? getTheme().colors.textGlow : 'none'
-              }}>Test Sites</span>
+                color: isActiveRoute('logs') ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
+                fontWeight: isActiveRoute('logs') ? 600 : 500,
+                textShadow: isActiveRoute('logs') ? getTheme().colors.textGlow : 'none'
+              }}>Logs</span>
             </div>
-            
-            {/* Users Management - Admin only */}
-            {(userRole === 'admin' || userRole === 'super_admin') && (
-              <>
-                <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
-                <div 
-                  onClick={() => router.push('/users')}
-                  className="sidebar-item"
-                  style={{
-                    ...sidebarItemStyle,
-                    background: getContrastBg(0.08),
-                    borderColor: 'transparent'
-                  }}
-                >
-                  <div style={{
-                    ...sidebarIconStyle,
-                    background: getContrastBg(0.15)
-                  }}>
-                    <span>👥</span>
-                  </div>
-                  <span style={{ 
-                    color: getTheme().colors.textSecondary,
-                    fontWeight: 500
-                  }}>Team Members</span>
-                </div>
-              </>
-            )}
           </div>
         </div>
 
         {/* Main Content */}
         <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
-          {activeTab === 'form-discovery' && children}
-          
-          {activeTab === 'test-scenarios' && (
-            <div style={{
-              ...placeholderCardStyle,
-              background: getTheme().colors.cardBg,
-              border: `2px solid ${getTheme().colors.cardBorder}`,
-              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
-            }}>
-              <div style={{
-                ...placeholderIconStyle,
-                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
-                border: `2px solid ${getTheme().colors.accentPrimary}80`,
-                boxShadow: getTheme().colors.iconGlow
-              }}>📝</div>
-              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Test Scenarios</h2>
-              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Define and manage your test scenarios here.</p>
-            </div>
-          )}
-          
-          {activeTab === 'run-tests' && (
-            <div style={{
-              ...placeholderCardStyle,
-              background: getTheme().colors.cardBg,
-              border: `2px solid ${getTheme().colors.cardBorder}`,
-              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
-            }}>
-              <div style={{
-                ...placeholderIconStyle,
-                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
-                border: `2px solid ${getTheme().colors.accentPrimary}80`,
-                boxShadow: getTheme().colors.iconGlow
-              }}>▶️</div>
-              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Run Tests</h2>
-              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Execute your test scenarios and view results.</p>
-            </div>
-          )}
-          
-          {activeTab === 'form-mapping' && (
-            <div style={{
-              ...placeholderCardStyle,
-              background: getTheme().colors.cardBg,
-              border: `2px solid ${getTheme().colors.cardBorder}`,
-              boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`
-            }}>
-              <div style={{
-                ...placeholderIconStyle,
-                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}40, ${getTheme().colors.accentSecondary}35)`,
-                border: `2px solid ${getTheme().colors.accentPrimary}80`,
-                boxShadow: getTheme().colors.iconGlow
-              }}>🗺️</div>
-              <h2 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>Form Page Mapping</h2>
-              <p style={{ color: getTheme().colors.textSecondary, margin: 0, fontSize: '18px', lineHeight: 1.6 }}>Coming soon - Visualize relationships between form pages.</p>
-            </div>
-          )}
-          
-          {activeTab === 'networks' && (
+          {pathname?.includes('test-sites') ? (
             <div style={contentCardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
@@ -1707,6 +1295,8 @@ export default function DashboardLayout({
                 </div>
               )}
             </div>
+          ) : (
+            children
           )}
         </div>
       </div>

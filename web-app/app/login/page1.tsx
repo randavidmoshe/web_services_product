@@ -161,7 +161,7 @@ export default function WebAppLoginPage() {
       localStorage.setItem('company_id', String(data.company_id))
     }
     setMessage('✅ Login successful!')
-    setTimeout(() => window.location.href = '/dashboard/form-pages-discovery', 1000)
+    setTimeout(() => window.location.href = '/dashboard', 1000)
   }
 
   const handle2FASetupSuccess = () => {
@@ -175,7 +175,7 @@ export default function WebAppLoginPage() {
       localStorage.setItem('company_id', String(pendingCompanyId))
     }
     setMessage('✅ 2FA enabled! Redirecting...')
-    setTimeout(() => window.location.href = '/dashboard/form-pages-discovery', 1000)
+    setTimeout(() => window.location.href = '/dashboard', 1000)
   }
 
   const resetLogin = () => {

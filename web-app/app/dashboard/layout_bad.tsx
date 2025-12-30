@@ -181,19 +181,43 @@ export default function DashboardLayout({
       emoji: '🤍',
       category: 'elegant',
       colors: {
-        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-        headerBg: 'rgba(248, 250, 252, 0.98)',
-        sidebarBg: 'rgba(241, 245, 249, 0.95)',
-        cardBg: 'rgba(242, 246, 250, 0.98)',
-        cardBorder: 'rgba(100, 116, 139, 0.3)',
+        bgGradient: 'linear-gradient(180deg, #f9fafb 0%, #e5e7eb 50%, #d1d5db 100%)',
+        headerBg: 'rgba(249, 250, 251, 0.98)',
+        sidebarBg: 'rgba(243, 244, 246, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.9)',
+        cardBorder: 'rgba(156, 163, 175, 0.6)',
         cardGlow: 'none',
-        accentPrimary: '#0369a1',
-        accentSecondary: '#0ea5e9',
+        accentPrimary: '#1e40af',
+        accentSecondary: '#3b82f6',
         accentGlow: 'none',
         iconGlow: 'none',
         buttonGlow: 'none',
-        textPrimary: '#1e293b',
-        textSecondary: '#475569',
+        textPrimary: '#1f2937',
+        textSecondary: '#374151',
+        textGlow: 'none',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'snow-crystal': {
+      name: 'Snow Crystal',
+      emoji: '❄️',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #ffffff 0%, #f0f9ff 50%, #e0f2fe 100%)',
+        headerBg: 'rgba(255, 255, 255, 0.98)',
+        sidebarBg: 'rgba(240, 249, 255, 0.95)',
+        cardBg: 'rgba(255, 255, 255, 0.95)',
+        cardBorder: 'rgba(147, 197, 253, 0.6)',
+        cardGlow: 'none',
+        accentPrimary: '#1e40af',
+        accentSecondary: '#2563eb',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#1e3a5f',
+        textSecondary: '#334155',
         textGlow: 'none',
         statusOnline: '#16a34a',
         statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
@@ -207,7 +231,7 @@ export default function DashboardLayout({
 
   // Detect if current theme is light (for contrast adjustments)
   const isLightTheme = () => {
-    const lightThemes = ['pearl-white']
+    const lightThemes = ['pearl-white', 'snow-crystal']
     return lightThemes.includes(currentTheme)
   }
 
@@ -1042,27 +1066,25 @@ export default function DashboardLayout({
 
       {/* Main Layout */}
       <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
-        {/* Sidebar - Modern Glass Design */}
+        {/* Sidebar - Clean Simple Design */}
         <div style={{
-          width: '320px',
+          width: '240px',
           background: getTheme().colors.sidebarBg,
-          backdropFilter: 'blur(20px)',
-          borderRight: `2px solid ${getTheme().colors.cardBorder}`,
-          flexShrink: 0,
-          boxShadow: 'inset -10px 0 30px rgba(0,0,0,0.1)'
+          borderRight: `1px solid ${getTheme().colors.cardBorder}`,
+          flexShrink: 0
         }}>
           <div style={{
-            padding: '36px 28px 24px',
-            fontSize: '14px',
+            padding: '24px 16px 16px',
+            fontSize: '11px',
             fontWeight: 600,
             color: getTheme().colors.textSecondary,
-            letterSpacing: '2.5px',
+            letterSpacing: '1.5px',
             textTransform: 'uppercase'
           }}>
             <span>MENU</span>
           </div>
           
-          <div style={{ padding: '0 16px' }}>
+          <div style={{ padding: '0 12px' }}>
             {/* Team Members - Global (at top) */}
             {(userRole === 'admin' || userRole === 'super_admin') && (
               <>
@@ -1071,28 +1093,17 @@ export default function DashboardLayout({
                   className="sidebar-item"
                   style={{
                     ...sidebarItemStyle,
-                    background: pathname === '/users' 
-                      ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
-                      : getContrastBg(0.08),
-                    borderColor: pathname === '/users' ? `${getTheme().colors.accentPrimary}80` : 'transparent'
+                    background: pathname === '/users' ? getContrastBg(0.08) : 'transparent',
+                    borderLeftColor: pathname === '/users' ? getTheme().colors.accentPrimary : 'transparent',
+                    color: pathname === '/users' ? getTheme().colors.textPrimary : getTheme().colors.textSecondary
                   }}
                 >
-                  <div style={{
-                    ...sidebarIconStyle,
-                    background: pathname === '/users' 
-                      ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
-                      : getContrastBg(0.15),
-                    boxShadow: pathname === '/users' ? getTheme().colors.iconGlow : 'none'
-                  }}>
-                    <span>👥</span>
-                  </div>
+                  <span style={{ fontSize: '18px' }}>👥</span>
                   <span style={{ 
-                    color: pathname === '/users' ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
-                    fontWeight: pathname === '/users' ? 600 : 500,
-                    textShadow: pathname === '/users' ? getTheme().colors.textGlow : 'none'
+                    fontWeight: pathname === '/users' ? 600 : 500
                   }}>Team Members</span>
                 </div>
-                <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
+                <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '12px 8px' }} />
               </>
             )}
             
@@ -1103,38 +1114,26 @@ export default function DashboardLayout({
               { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
               { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },
               { id: 'test-sites', path: '/dashboard/test-sites', icon: '🌐', label: 'Test Sites' },
-            ].map((item, index) => (
+            ].map((item) => (
               <div 
                 key={item.id}
                 onClick={() => router.push(item.path)}
                 className="sidebar-item"
                 style={{
                   ...sidebarItemStyle,
-                  background: isActiveRoute(item.id) 
-                    ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
-                    : getContrastBg(0.08),
-                  borderColor: isActiveRoute(item.id) ? `${getTheme().colors.accentPrimary}80` : 'transparent',
-                  animation: `slideIn 0.3s ease ${index * 0.05}s both`
+                  background: isActiveRoute(item.id) ? getContrastBg(0.08) : 'transparent',
+                  borderLeftColor: isActiveRoute(item.id) ? getTheme().colors.accentPrimary : 'transparent',
+                  color: isActiveRoute(item.id) ? getTheme().colors.textPrimary : getTheme().colors.textSecondary
                 }}
               >
-                <div style={{
-                  ...sidebarIconStyle,
-                  background: isActiveRoute(item.id) 
-                    ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
-                    : getContrastBg(0.15),
-                  boxShadow: isActiveRoute(item.id) ? getTheme().colors.iconGlow : 'none'
-                }}>
-                  <span>{item.icon}</span>
-                </div>
+                <span style={{ fontSize: '18px' }}>{item.icon}</span>
                 <span style={{ 
-                  color: isActiveRoute(item.id) ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
-                  fontWeight: isActiveRoute(item.id) ? 600 : 500,
-                  textShadow: isActiveRoute(item.id) ? getTheme().colors.textGlow : 'none'
+                  fontWeight: isActiveRoute(item.id) ? 600 : 500
                 }}>{item.label}</span>
               </div>
             ))}
             
-            <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '20px 8px' }} />
+            <div style={{ height: '1px', background: getTheme().colors.cardBorder, margin: '12px 8px' }} />
             
             {/* Logs at bottom */}
             <div 
@@ -1142,25 +1141,14 @@ export default function DashboardLayout({
               className="sidebar-item"
               style={{
                 ...sidebarItemStyle,
-                background: isActiveRoute('logs') 
-                  ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`
-                  : getContrastBg(0.08),
-                borderColor: isActiveRoute('logs') ? `${getTheme().colors.accentPrimary}80` : 'transparent'
+                background: isActiveRoute('logs') ? getContrastBg(0.08) : 'transparent',
+                borderLeftColor: isActiveRoute('logs') ? getTheme().colors.accentPrimary : 'transparent',
+                color: isActiveRoute('logs') ? getTheme().colors.textPrimary : getTheme().colors.textSecondary
               }}
             >
-              <div style={{
-                ...sidebarIconStyle,
-                background: isActiveRoute('logs') 
-                  ? `linear-gradient(135deg, ${getTheme().colors.accentPrimary}, ${getTheme().colors.accentSecondary})`
-                  : getContrastBg(0.15),
-                boxShadow: isActiveRoute('logs') ? getTheme().colors.iconGlow : 'none'
-              }}>
-                <span>📋</span>
-              </div>
+              <span style={{ fontSize: '18px' }}>📋</span>
               <span style={{ 
-                color: isActiveRoute('logs') ? getTheme().colors.textPrimary : getTheme().colors.textSecondary,
-                fontWeight: isActiveRoute('logs') ? 600 : 500,
-                textShadow: isActiveRoute('logs') ? getTheme().colors.textGlow : 'none'
+                fontWeight: isActiveRoute('logs') ? 600 : 500
               }}>Logs</span>
             </div>
           </div>
@@ -2022,27 +2010,26 @@ const sidebarHeaderStyle: React.CSSProperties = {
 const sidebarItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '18px',
-  padding: '20px 24px',
+  gap: '12px',
+  padding: '12px 16px',
   cursor: 'pointer',
-  fontSize: '18px',
+  fontSize: '15px',
   fontWeight: 500,
-  transition: 'all 0.2s ease',
-  borderRadius: '14px',
-  margin: '8px 0',
-  border: '1px solid transparent',
-  color: '#e2e8f0'
+  transition: 'all 0.15s ease',
+  borderRadius: '8px',
+  margin: '2px 0',
+  borderLeft: '3px solid transparent',
+  color: '#64748b'
 }
 
 const sidebarIconStyle: React.CSSProperties = {
-  width: '52px',
-  height: '52px',
+  width: '24px',
+  height: '24px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  borderRadius: '14px',
-  fontSize: '24px',
-  transition: 'all 0.2s ease'
+  fontSize: '16px',
+  transition: 'all 0.15s ease'
 }
 
 const placeholderCardStyle: React.CSSProperties = {

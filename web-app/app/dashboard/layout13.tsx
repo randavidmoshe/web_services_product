@@ -181,10 +181,10 @@ export default function DashboardLayout({
       emoji: '🤍',
       category: 'elegant',
       colors: {
-        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+        bgGradient: 'linear-gradient(180deg, #d0dce8 0%, #bccbd8 50%, #a4b8c8 100%)',
         headerBg: 'rgba(248, 250, 252, 0.98)',
         sidebarBg: 'rgba(241, 245, 249, 0.95)',
-        cardBg: 'rgba(242, 246, 250, 0.98)',
+        cardBg: 'rgba(235, 240, 247, 0.98)',
         cardBorder: 'rgba(100, 116, 139, 0.3)',
         cardGlow: 'none',
         accentPrimary: '#0369a1',

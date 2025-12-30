@@ -92,6 +92,43 @@ class AgentTaskResultResponse(BaseModel):
     next_action: Optional[str] = None
     message: Optional[str] = None
 
+# ============================================================================
+# Completed Paths Response Models
+# ============================================================================
+
+class JunctionChoiceResponse(BaseModel):
+    """Junction choice in a path"""
+    junction_id: Optional[str] = None
+    junction_name: str
+    option: str
+    selector: Optional[str] = None
+
+
+class CompletedPathResponse(BaseModel):
+    """A completed mapping path"""
+    id: int
+    path_number: int
+    path_junctions: List[JunctionChoiceResponse]
+    steps: List[dict]
+    steps_count: int
+    is_verified: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class CompletedPathsListResponse(BaseModel):
+    """List of completed paths for a form page route"""
+    form_page_route_id: int
+    total_paths: int
+    paths: List[CompletedPathResponse]
+
+
+class StepUpdateRequest(BaseModel):
+    """Request to update a step"""
+    action: Optional[str] = None
+    selector: Optional[str] = None
+    value: Optional[str] = None
+    description: Optional[str] = None
 
 # ============================================================================
 # User Endpoints
@@ -534,6 +571,144 @@ async def download_result(
             "Content-Disposition": f"attachment; filename=path_{result.path_number}_form_{result.form_page_route_id}.json"
         }
     )
+
+
+# ============================================================================
+# Completed Paths Endpoints (for Frontend Display)
+# ============================================================================
+
+@router.get("/routes/{form_page_route_id}/paths", response_model=CompletedPathsListResponse)
+async def get_completed_paths(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """
+    Get all completed mapping paths for a form page route.
+
+    Each path represents a unique combination of junction options
+    that was discovered during form mapping.
+
+    Returns paths with steps (junction info filtered out for display).
+    """
+    # Query all form_map_results for this form_page_route
+    results = db.query(FormMapResult).filter(
+        FormMapResult.form_page_route_id == form_page_route_id
+    ).order_by(FormMapResult.path_number.asc()).all()
+
+    paths = []
+    for result in results:
+        # Parse path_junctions - handle different storage formats
+        junctions = []
+        path_junctions_data = result.path_junctions or []
+
+        # Handle dict format with junction_choices key
+        if isinstance(path_junctions_data, dict):
+            junction_choices = path_junctions_data.get('junction_choices', {})
+            if isinstance(junction_choices, dict):
+                # Convert {junction_id: option} to list format
+                for jid, opt in junction_choices.items():
+                    junctions.append(JunctionChoiceResponse(
+                        junction_id=jid,
+                        junction_name=jid.replace('junction_', ''),
+                        option=opt
+                    ))
+            elif isinstance(junction_choices, list):
+                for j in junction_choices:
+                    if isinstance(j, dict):
+                        junctions.append(JunctionChoiceResponse(
+                            junction_id=j.get('junction_id'),
+                            junction_name=j.get('junction_name', ''),
+                            option=j.get('option', ''),
+                            selector=j.get('selector')
+                        ))
+        elif isinstance(path_junctions_data, list):
+            for j in path_junctions_data:
+                if isinstance(j, dict):
+                    junctions.append(JunctionChoiceResponse(
+                        junction_id=j.get('junction_id'),
+                        junction_name=j.get('junction_name', ''),
+                        option=j.get('option', ''),
+                        selector=j.get('selector')
+                    ))
+
+        # Filter junction info from steps for display
+        filtered_steps = []
+        for step in (result.steps or []):
+            step_copy = dict(step)
+            step_copy.pop('is_junction', None)
+            step_copy.pop('junction_info', None)
+            filtered_steps.append(step_copy)
+
+        paths.append(CompletedPathResponse(
+            id=result.id,
+            path_number=result.path_number or 1,
+            path_junctions=junctions,
+            steps=filtered_steps,
+            steps_count=len(result.steps) if result.steps else 0,
+            is_verified=result.is_verified or False,
+            created_at=result.created_at.isoformat() if result.created_at else None,
+            updated_at=result.updated_at.isoformat() if result.updated_at else None
+        ))
+
+    return CompletedPathsListResponse(
+        form_page_route_id=form_page_route_id,
+        total_paths=len(paths),
+        paths=paths
+    )
+
+
+@router.put("/paths/{path_id}/steps/{step_index}")
+async def update_path_step(
+        path_id: int,
+        step_index: int,
+        step_update: StepUpdateRequest,
+        db: Session = Depends(get_db)
+):
+    """
+    Update a specific step in a completed path.
+
+    Used by frontend to allow editing of step details
+    (selector, value, description).
+    """
+    # Get the form_map_result
+    result = db.query(FormMapResult).filter(
+        FormMapResult.id == path_id
+    ).first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    # Validate step_index
+    if not result.steps or step_index < 0 or step_index >= len(result.steps):
+        raise HTTPException(status_code=400, detail=f"Invalid step index: {step_index}")
+
+    # Create new steps list (JSON columns need full replacement)
+    steps = list(result.steps)
+    step = dict(steps[step_index])
+
+    # Apply updates (only non-None fields)
+    if step_update.action is not None:
+        step['action'] = step_update.action
+    if step_update.selector is not None:
+        step['selector'] = step_update.selector
+    if step_update.value is not None:
+        step['value'] = step_update.value
+    if step_update.description is not None:
+        step['description'] = step_update.description
+
+    steps[step_index] = step
+    result.steps = steps
+
+    db.commit()
+    db.refresh(result)
+
+    logger.info(f"[API] Updated step {step_index} in path {path_id}")
+
+    return {
+        "success": True,
+        "message": f"Step {step_index} updated successfully",
+        "step": step
+    }
 
 
 @router.get("/sessions/{session_id}/logs")

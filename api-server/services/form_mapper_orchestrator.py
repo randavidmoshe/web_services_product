@@ -1423,6 +1423,7 @@ class FormMapperOrchestrator:
                 if len(completed_paths_for_ai) >= max_paths:
                     logger.info(f"[Orchestrator] Max paths ({max_paths}) reached - completing")
                     self.transition_to(session_id, MapperState.SAVING_RESULT)
+                    path_junctions = self._extract_path_junctions_from_steps(executed_steps)
                     return {
                         "success": True,
                         "state": "saving_result",
@@ -1430,8 +1431,8 @@ class FormMapperOrchestrator:
                         "celery_task": "save_mapping_result",
                         "celery_args": {
                             "session_id": session_id,
-                            "steps": executed_steps,
-                            "all_paths_complete": True
+                            "stages": executed_steps,
+                            "path_junctions": path_junctions
                         }
                     }
 
@@ -1472,12 +1473,12 @@ class FormMapperOrchestrator:
             # All paths complete - save final state
             #self.update_session(session_id, {"junctions_state": json.dumps(junctions_state.to_dict())})
 
-        # Save result and complete
-        self.transition_to(session_id, MapperState.SAVING_RESULT)
-        path_junctions = []  # Junction info now in junctions_state
-        return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
-                "celery_args": {"session_id": session_id, "stages": executed_steps,
-                                "path_junctions": path_junctions}}
+            # Save result and complete
+            self.transition_to(session_id, MapperState.SAVING_RESULT)
+            path_junctions = self._extract_path_junctions_from_steps(executed_steps)
+            return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
+                    "celery_args": {"session_id": session_id, "stages": executed_steps,
+                                    "path_junctions": path_junctions}}
 
     def _load_junction_paths_from_db(self, db, form_page_route_id: int, config: Dict) -> List[Dict]:
         """Load completed paths from DB and extract only junctions for AI."""
@@ -1610,7 +1611,7 @@ class FormMapperOrchestrator:
                 f"[Orchestrator] More paths needed. Starting path {eval_result['next_path_number']} of {eval_result['total_paths_needed']}")
             # Save current path result first
             self.transition_to(session_id, MapperState.SAVING_RESULT)
-            path_junctions = []
+            path_junctions = self._extract_path_junctions_from_steps(executed_steps)
             return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
                     "celery_args": {"session_id": session_id, "stages": executed_steps,
                                     "path_junctions": path_junctions, "continue_to_next_path": True}}
@@ -1620,7 +1621,7 @@ class FormMapperOrchestrator:
 
         # Save result and complete
         self.transition_to(session_id, MapperState.SAVING_RESULT)
-        path_junctions = []
+        path_junctions = self._extract_path_junctions_from_steps(executed_steps)
         return {"success": True, "trigger_celery": True, "celery_task": "save_mapping_result",
                 "celery_args": {"session_id": session_id, "stages": executed_steps,
                                 "path_junctions": path_junctions}}
@@ -1698,6 +1699,24 @@ class FormMapperOrchestrator:
         elif state in [MapperState.COMPLETED.value, MapperState.FAILED.value,
                       MapperState.CANCELLED.value, MapperState.SYSTEM_ISSUE.value]: return "finished"
         return "mapping"
+
+    def _extract_path_junctions_from_steps(self, executed_steps: List[Dict]) -> List[Dict]:
+        """
+        Extract junction choices from executed steps to save in path_junctions.
+        This makes junction info visible in the frontend without parsing all steps.
+        """
+        path_junctions = []
+        for step in executed_steps:
+            if step.get("is_junction"):
+                junction_info = step.get("junction_info", {})
+                path_junctions.append({
+                    "junction_id": f"junction_{junction_info.get('junction_name', 'unknown')}",
+                    "junction_name": junction_info.get("junction_name", "unknown"),
+                    "option": junction_info.get("chosen_option") or step.get("value", ""),
+                    "selector": step.get("selector", ""),
+                    "all_options": junction_info.get("all_options", [])
+                })
+        return path_junctions
 
     # ============================================================
     # MAIN ROUTERS

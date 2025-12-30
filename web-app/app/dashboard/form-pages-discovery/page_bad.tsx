@@ -143,7 +143,7 @@ export default function DashboardPage() {
   // Theme state - reads from localStorage to sync with layout
   const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
 
-  // Theme definitions (same as layout.tsx)
+  // Theme definitions (same as layout.tsx - only 4 themes)
   const themes: Record<string, {
     name: string
     colors: {
@@ -188,116 +188,6 @@ export default function DashboardPage() {
         borderGlow: 'none'
       }
     },
-    'ocean-depths': {
-      name: 'Ocean Depths',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
-        headerBg: 'rgba(15, 76, 92, 0.9)',
-        sidebarBg: 'rgba(15, 76, 92, 0.6)',
-        cardBg: 'rgba(15, 76, 92, 0.5)',
-        cardBorder: 'rgba(34, 211, 238, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#06b6d4',
-        accentSecondary: '#22d3ee',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfeff',
-        textSecondary: '#67e8f9',
-        textGlow: 'none',
-        statusOnline: '#22d3ee',
-        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'aurora-borealis': {
-      name: 'Aurora Borealis',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
-        headerBg: 'rgba(49, 46, 129, 0.9)',
-        sidebarBg: 'rgba(49, 46, 129, 0.6)',
-        cardBg: 'rgba(49, 46, 129, 0.5)',
-        cardBorder: 'rgba(167, 139, 250, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#8b5cf6',
-        accentSecondary: '#a78bfa',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#f5f3ff',
-        textSecondary: '#c4b5fd',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'sunset-ember': {
-      name: 'Sunset Ember',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
-        headerBg: 'rgba(124, 45, 18, 0.9)',
-        sidebarBg: 'rgba(124, 45, 18, 0.6)',
-        cardBg: 'rgba(124, 45, 18, 0.5)',
-        cardBorder: 'rgba(251, 146, 60, 0.4)',
-        cardGlow: 'none',
-        accentPrimary: '#f97316',
-        accentSecondary: '#fb923c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff7ed',
-        textSecondary: '#fdba74',
-        textGlow: 'none',
-        statusOnline: '#fbbf24',
-        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'emerald-forest': {
-      name: 'Emerald Forest',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
-        headerBg: 'rgba(6, 78, 59, 0.9)',
-        sidebarBg: 'rgba(6, 78, 59, 0.6)',
-        cardBg: 'rgba(6, 78, 59, 0.5)',
-        cardBorder: 'rgba(52, 211, 153, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#10b981',
-        accentSecondary: '#34d399',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfdf5',
-        textSecondary: '#6ee7b7',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'crimson-night': {
-      name: 'Crimson Night',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
-        headerBg: 'rgba(69, 10, 10, 0.9)',
-        sidebarBg: 'rgba(69, 10, 10, 0.6)',
-        cardBg: 'rgba(69, 10, 10, 0.5)',
-        cardBorder: 'rgba(251, 113, 133, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#f43f5e',
-        accentSecondary: '#fb7185',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff1f2',
-        textSecondary: '#fda4af',
-        textGlow: 'none',
-        statusOnline: '#fb7185',
-        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
-        borderGlow: 'none'
-      }
-    },
     'bright-silver': {
       name: 'Bright Silver',
       colors: {
@@ -320,28 +210,6 @@ export default function DashboardPage() {
         borderGlow: 'none'
       }
     },
-    'chrome-glow': {
-      name: 'Chrome Glow',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
-        headerBg: 'rgba(156, 163, 175, 0.95)',
-        sidebarBg: 'rgba(156, 163, 175, 0.7)',
-        cardBg: 'rgba(156, 163, 175, 0.6)',
-        cardBorder: 'rgba(229, 231, 235, 0.6)',
-        cardGlow: 'none',
-        accentPrimary: '#0f4c5c',
-        accentSecondary: '#1a6b7c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#111827',
-        textSecondary: '#374151',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
     'pearl-white': {
       name: 'Pearl White',
       colors: {
@@ -349,18 +217,18 @@ export default function DashboardPage() {
         headerBg: 'rgba(249, 250, 251, 0.98)',
         sidebarBg: 'rgba(243, 244, 246, 0.95)',
         cardBg: 'rgba(255, 255, 255, 0.9)',
-        cardBorder: 'rgba(209, 213, 219, 0.8)',
+        cardBorder: 'rgba(156, 163, 175, 0.6)',
         cardGlow: 'none',
-        accentPrimary: '#374151',
-        accentSecondary: '#4b5563',
+        accentPrimary: '#1e40af',
+        accentSecondary: '#3b82f6',
         accentGlow: 'none',
         iconGlow: 'none',
         buttonGlow: 'none',
-        textPrimary: '#111827',
-        textSecondary: '#4b5563',
+        textPrimary: '#1f2937',
+        textSecondary: '#374151',
         textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
         borderGlow: 'none'
       }
     },
@@ -371,195 +239,19 @@ export default function DashboardPage() {
         headerBg: 'rgba(255, 255, 255, 0.98)',
         sidebarBg: 'rgba(240, 249, 255, 0.95)',
         cardBg: 'rgba(255, 255, 255, 0.95)',
-        cardBorder: 'rgba(186, 230, 253, 0.8)',
+        cardBorder: 'rgba(147, 197, 253, 0.6)',
         cardGlow: 'none',
         accentPrimary: '#1e40af',
         accentSecondary: '#2563eb',
         accentGlow: 'none',
         iconGlow: 'none',
         buttonGlow: 'none',
-        textPrimary: '#0c4a6e',
-        textSecondary: '#0369a1',
+        textPrimary: '#1e3a5f',
+        textSecondary: '#334155',
         textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
         borderGlow: 'none'
-      }
-    },
-    'cyber-pink': {
-      name: 'Cyber Pink',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
-        headerBg: 'rgba(40, 15, 40, 0.95)',
-        sidebarBg: 'rgba(40, 15, 40, 0.8)',
-        cardBg: 'rgba(50, 20, 50, 0.6)',
-        cardBorder: 'rgba(255, 0, 128, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
-        accentPrimary: '#ff0080',
-        accentSecondary: '#ff00ff',
-        accentGlow: 'rgba(255, 0, 128, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff99cc',
-        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
-      }
-    },
-    'radioactive': {
-      name: 'Radioactive',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
-        headerBg: 'rgba(20, 40, 10, 0.95)',
-        sidebarBg: 'rgba(20, 40, 10, 0.8)',
-        cardBg: 'rgba(25, 50, 15, 0.6)',
-        cardBorder: 'rgba(136, 255, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
-        accentPrimary: '#00ff00',
-        accentSecondary: '#88ff00',
-        accentGlow: 'rgba(0, 255, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#bbff66',
-        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
-        statusOnline: '#ffff00',
-        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
-      }
-    },
-    'electric-blue': {
-      name: 'Electric Blue',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
-        headerBg: 'rgba(0, 20, 50, 0.95)',
-        sidebarBg: 'rgba(0, 20, 50, 0.8)',
-        cardBg: 'rgba(0, 30, 60, 0.6)',
-        cardBorder: 'rgba(0, 204, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
-        accentPrimary: '#0066ff',
-        accentSecondary: '#00ccff',
-        accentGlow: 'rgba(0, 102, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ddff',
-        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
-      }
-    },
-    'golden-sunrise': {
-      name: 'Golden Sunrise',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
-        headerBg: 'rgba(40, 30, 10, 0.95)',
-        sidebarBg: 'rgba(40, 30, 10, 0.8)',
-        cardBg: 'rgba(50, 35, 15, 0.6)',
-        cardBorder: 'rgba(255, 204, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
-        accentPrimary: '#ff8800',
-        accentSecondary: '#ffcc00',
-        accentGlow: 'rgba(255, 136, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffdd44',
-        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
-        statusOnline: '#ffff66',
-        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
-      }
-    },
-    'plasma-purple': {
-      name: 'Plasma Purple',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
-        headerBg: 'rgba(30, 10, 50, 0.95)',
-        sidebarBg: 'rgba(30, 10, 50, 0.8)',
-        cardBg: 'rgba(40, 15, 60, 0.6)',
-        cardBorder: 'rgba(204, 102, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
-        accentPrimary: '#9900ff',
-        accentSecondary: '#cc66ff',
-        accentGlow: 'rgba(153, 0, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#dd99ff',
-        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
-        statusOnline: '#ff99ff',
-        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
-      }
-    },
-    'fire-storm': {
-      name: 'Fire Storm',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
-        headerBg: 'rgba(40, 10, 10, 0.95)',
-        sidebarBg: 'rgba(40, 10, 10, 0.8)',
-        cardBg: 'rgba(50, 15, 15, 0.6)',
-        cardBorder: 'rgba(255, 102, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
-        accentPrimary: '#ff0000',
-        accentSecondary: '#ff6600',
-        accentGlow: 'rgba(255, 0, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff9944',
-        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
-        statusOnline: '#ffcc00',
-        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
-      }
-    },
-    'arctic-aurora': {
-      name: 'Arctic Aurora',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
-        headerBg: 'rgba(0, 40, 40, 0.95)',
-        sidebarBg: 'rgba(0, 40, 40, 0.8)',
-        cardBg: 'rgba(0, 50, 50, 0.6)',
-        cardBorder: 'rgba(0, 255, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
-        accentPrimary: '#00ffcc',
-        accentSecondary: '#00ffff',
-        accentGlow: 'rgba(0, 255, 204, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ffff',
-        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
-        statusOnline: '#66ffff',
-        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
-      }
-    },
-    'midnight-rose': {
-      name: 'Midnight Rose',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
-        headerBg: 'rgba(40, 10, 25, 0.95)',
-        sidebarBg: 'rgba(40, 10, 25, 0.8)',
-        cardBg: 'rgba(50, 15, 35, 0.6)',
-        cardBorder: 'rgba(255, 102, 153, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
-        accentPrimary: '#ff3377',
-        accentSecondary: '#ff66aa',
-        accentGlow: 'rgba(255, 51, 119, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffaacc',
-        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
-        statusOnline: '#ff99cc',
-        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
       }
     }
   }
@@ -569,7 +261,7 @@ export default function DashboardPage() {
 
   // Detect if current theme is light (for contrast adjustments)
   const isLightTheme = () => {
-    const lightThemes = ['pearl-white', 'snow-crystal', 'chrome-glow', 'bright-silver']
+    const lightThemes = ['pearl-white', 'snow-crystal']
     return lightThemes.includes(currentTheme)
   }
 
@@ -578,6 +270,48 @@ export default function DashboardPage() {
     return isLightTheme() 
       ? `rgba(0, 0, 0, ${opacity})`
       : `rgba(255, 255, 255, ${opacity * 0.3})`
+  }
+
+  // Systematic background colors for consistency
+  const getBgColor = (level: 'card' | 'section' | 'input' | 'header' | 'hover' | 'muted') => {
+    if (isLightTheme()) {
+      switch (level) {
+        case 'card': return 'rgba(255, 255, 255, 0.95)'
+        case 'section': return 'rgba(0, 0, 0, 0.03)'
+        case 'input': return 'rgba(255, 255, 255, 0.9)'
+        case 'header': return 'rgba(0, 0, 0, 0.04)'
+        case 'hover': return 'rgba(0, 0, 0, 0.06)'
+        case 'muted': return 'rgba(0, 0, 0, 0.02)'
+        default: return 'rgba(255, 255, 255, 0.95)'
+      }
+    } else {
+      switch (level) {
+        case 'card': return 'rgba(255, 255, 255, 0.03)'
+        case 'section': return 'rgba(0, 0, 0, 0.1)'
+        case 'input': return 'rgba(255, 255, 255, 0.05)'
+        case 'header': return 'rgba(255, 255, 255, 0.05)'
+        case 'hover': return 'rgba(255, 255, 255, 0.08)'
+        case 'muted': return 'rgba(255, 255, 255, 0.02)'
+        default: return 'rgba(255, 255, 255, 0.03)'
+      }
+    }
+  }
+
+  // Systematic border colors
+  const getBorderColor = (emphasis: 'normal' | 'strong' | 'subtle' = 'normal') => {
+    if (isLightTheme()) {
+      switch (emphasis) {
+        case 'strong': return 'rgba(0, 0, 0, 0.15)'
+        case 'subtle': return 'rgba(0, 0, 0, 0.06)'
+        default: return 'rgba(0, 0, 0, 0.1)'
+      }
+    } else {
+      switch (emphasis) {
+        case 'strong': return 'rgba(255, 255, 255, 0.15)'
+        case 'subtle': return 'rgba(255, 255, 255, 0.06)'
+        default: return 'rgba(255, 255, 255, 0.1)'
+      }
+    }
   }
 
   // Load theme from localStorage on mount and listen for changes
@@ -1012,6 +746,12 @@ export default function DashboardPage() {
       return
     }
     
+    // Immediately show "Stopping..." state
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'stopping', sessionId: status.sessionId }
+    }))
+    
     try {
       const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
         method: 'POST',
@@ -1019,28 +759,70 @@ export default function DashboardPage() {
       })
       
       if (response.ok) {
-        // Stop polling
+        // Stop old polling
         stopMappingStatusPolling(formPageId)
         
-        // Update status
-        setMappingFormIds(prev => {
-          const next = new Set(prev)
-          next.delete(formPageId)
-          return next
-        })
-        setMappingStatus(prev => ({
-          ...prev,
-          [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
-        }))
+        // Start polling until fully stopped (cancelled, failed, or completed)
+        const pollUntilStopped = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(`/api/form-mapper/sessions/${status.sessionId}/status`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            })
+            if (statusResponse.ok) {
+              const data = await statusResponse.json()
+              const sessionStatus = data.session?.status || data.status
+              
+              // Terminal states - fully stopped
+              if (['cancelled', 'cancelled_ack', 'failed', 'completed'].includes(sessionStatus)) {
+                clearInterval(pollUntilStopped)
+                setMappingFormIds(prev => {
+                  const next = new Set(prev)
+                  next.delete(formPageId)
+                  return next
+                })
+                setMappingStatus(prev => ({
+                  ...prev,
+                  [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
+                }))
+                setMessage('Mapping stopped')
+              }
+            }
+          } catch (err) {
+            console.error('Error polling for stop status:', err)
+          }
+        }, 1000)
         
-        setMessage('Mapping cancelled')
+        // Safety timeout - stop polling after 30 seconds regardless
+        setTimeout(() => {
+          clearInterval(pollUntilStopped)
+          setMappingFormIds(prev => {
+            const next = new Set(prev)
+            next.delete(formPageId)
+            return next
+          })
+          setMappingStatus(prev => ({
+            ...prev,
+            [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
+          }))
+        }, 30000)
+        
       } else {
         const errorData = await response.json()
         setError(`Failed to cancel mapping: ${errorData.detail || 'Unknown error'}`)
+        // Revert to mapping state on error
+        setMappingStatus(prev => ({
+          ...prev,
+          [formPageId]: { status: 'mapping', sessionId: status.sessionId }
+        }))
       }
     } catch (err: any) {
       console.error('Failed to cancel mapping:', err)
       setError(`Failed to cancel mapping: ${err.message}`)
+      // Revert to mapping state on error
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: status.sessionId }
+      }))
     }
   }
   
@@ -1547,18 +1329,126 @@ export default function DashboardPage() {
           boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.3)`,
           animation: 'fadeIn 0.3s ease'
         }}>
-          {/* Header */}
+          {/* Header with buttons */}
           <div style={{
             padding: '32px 40px',
             borderBottom: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '10' : '12'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '08' : '08'})`
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}${isLightTheme() ? '10' : '12'}, ${getTheme().colors.accentSecondary}${isLightTheme() ? '08' : '08'})`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start'
           }}>
-            <h1 style={{ margin: 0, fontSize: '32px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px' }}>
-              <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
-            </h1>
-            <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '18px' }}>
-              Editing: <strong style={{ color: getTheme().colors.textPrimary }}>{editingFormPage.form_name}</strong>
-            </p>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '32px', color: getTheme().colors.textPrimary, fontWeight: 700, letterSpacing: '-0.5px' }}>
+                <span style={{ marginRight: '14px' }}>✏️</span>Edit Form Page
+              </h1>
+              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+                Editing: <strong style={{ color: getTheme().colors.textPrimary }}>{editingFormPage.form_name}</strong>
+              </p>
+            </div>
+            {/* Action Buttons - Top Right */}
+            <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+              {editingFormPage && (
+                mappingFormIds.has(editingFormPage.id) ? (
+                  mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
+                    <button 
+                      disabled
+                      style={{
+                        background: 'linear-gradient(135deg, #9ca3af, #6b7280)',
+                        color: 'white',
+                        padding: '14px 28px',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: 'not-allowed',
+                        boxShadow: '0 4px 15px rgba(156, 163, 175, 0.3)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      ⏳ Stopping...
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => cancelMapping(editingFormPage.id)} 
+                      style={{
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        color: 'white',
+                        padding: '14px 28px',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      ⏹️ Stop Mapping
+                    </button>
+                  )
+                ) : (
+                  <button 
+                    onClick={() => {
+                      setShowEditPanel(false)
+                      openMapModal(editingFormPage)
+                    }} 
+                    style={{
+                      background: isLightTheme() 
+                        ? 'linear-gradient(135deg, #0ea5e9, #0284c7)'
+                        : 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                      color: 'white',
+                      padding: '14px 28px',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: isLightTheme() ? '0 2px 8px rgba(14, 165, 233, 0.25)' : '0 4px 15px rgba(14, 165, 233, 0.3)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    🗺️ Map Form
+                  </button>
+                )
+              )}
+              <button 
+                onClick={() => setShowEditPanel(false)} 
+                style={{
+                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                  color: isLightTheme() ? '#4b5563' : '#e2e8f0',
+                  padding: '14px 28px',
+                  border: isLightTheme() ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '12px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={saveFormPage} 
+                style={{
+                  background: isLightTheme() 
+                    ? 'linear-gradient(135deg, #10b981, #059669)'
+                    : 'linear-gradient(135deg, #10b981, #059669)',
+                  color: 'white',
+                  padding: '14px 28px',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: isLightTheme() ? '0 2px 8px rgba(16, 185, 129, 0.25)' : '0 4px 15px rgba(16, 185, 129, 0.3)',
+                  transition: 'all 0.2s ease'
+                }}
+                disabled={savingFormPage}
+              >
+                {savingFormPage ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
 
           {/* Content - Two Column Layout */}
@@ -1662,8 +1552,8 @@ export default function DashboardPage() {
               <div style={{
                 display: 'flex',
                 gap: '20px',
-                background: 'rgba(0, 187, 249, 0.1)',
-                border: '1px solid rgba(0, 187, 249, 0.2)',
+                background: isLightTheme() ? 'rgba(14, 165, 233, 0.08)' : 'rgba(0, 187, 249, 0.1)',
+                border: isLightTheme() ? '1px solid rgba(14, 165, 233, 0.2)' : '1px solid rgba(0, 187, 249, 0.2)',
                 padding: '26px 30px',
                 borderRadius: '18px',
                 marginBottom: '32px',
@@ -1882,95 +1772,18 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Footer */}
+          {/* Footer - minimal now that buttons are in header */}
           <div style={{
-            padding: '28px 44px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(0,0,0,0.2)',
+            padding: '20px 44px',
+            borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+            background: isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.15)',
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'center',
             gap: '18px'
           }}>
-            {editingFormPage && (
-              mappingFormIds.has(editingFormPage.id) ? (
-                <button 
-                  onClick={() => cancelMapping(editingFormPage.id)} 
-                  style={{
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  ⏹️ Stop Mapping
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setShowEditPanel(false)
-                    openMapModal(editingFormPage)
-                  }} 
-                  style={{
-                    background: isLightTheme() 
-                      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                      : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    color: 'white',
-                    padding: '16px 32px',
-                    border: 'none',
-                    borderRadius: '14px',
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: isLightTheme() ? '0 2px 8px rgba(245, 158, 11, 0.25)' : '0 4px 20px rgba(245, 158, 11, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  🗺️ Map Form
-                </button>
-              )
-            )}
-            <button 
-              onClick={() => setShowEditPanel(false)} 
-              style={{
-                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-                color: isLightTheme() ? '#4b5563' : '#e2e8f0',
-                padding: '16px 32px',
-                border: isLightTheme() ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(255,255,255,0.12)',
-                borderRadius: '14px',
-                fontSize: '17px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={saveFormPage} 
-              style={{
-                background: isLightTheme() 
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                color: 'white',
-                padding: '16px 32px',
-                border: 'none',
-                borderRadius: '14px',
-                fontSize: '17px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: isLightTheme() ? '0 2px 8px rgba(37, 99, 235, 0.25)' : '0 4px 20px rgba(99, 102, 241, 0.3)',
-                transition: 'all 0.2s ease'
-              }}
-              disabled={savingFormPage}
-            >
-              {savingFormPage ? 'Saving...' : 'Save Changes'}
-            </button>
+            <p style={{ margin: 0, fontSize: '14px', color: getTheme().colors.textSecondary, opacity: 0.7 }}>
+              💡 Tip: Click on a step to expand and edit its details
+            </p>
           </div>
         </div>
 
@@ -2568,8 +2381,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                      color: getTheme().colors.textSecondary,
+                      background: getBgColor('header'),
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2596,8 +2409,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getBgColor('header'),
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2610,8 +2423,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getBgColor('header'),
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2625,8 +2438,8 @@ export default function DashboardPage() {
                       padding: '18px 24px',
                       borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                       fontWeight: 600,
-                      color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                      background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                      color: getTheme().colors.textSecondary,
+                      background: getBgColor('header'),
                       position: 'sticky',
                       top: 0,
                       zIndex: 1,
@@ -2652,8 +2465,8 @@ export default function DashboardPage() {
                     padding: '18px 24px',
                     borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                     fontWeight: 600,
-                    color: isLightTheme() ? '#1e3a5f' : getTheme().colors.textSecondary,
-                    background: isLightTheme() ? '#e1edf5' : getTheme().colors.headerBg,
+                    color: getTheme().colors.textSecondary,
+                    background: getBgColor('header'),
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -2781,6 +2594,20 @@ export default function DashboardPage() {
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                         {/* Map Button or Stop Button */}
                         {mappingFormIds.has(form.id) ? (
+                          mappingStatus[form.id]?.status === 'stopping' ? (
+                            <span style={{
+                              padding: '10px 16px',
+                              background: 'rgba(156, 163, 175, 0.2)',
+                              color: '#9ca3af',
+                              borderRadius: '10px',
+                              fontSize: '15px',
+                              fontWeight: 600,
+                              border: '2px solid rgba(156, 163, 175, 0.4)',
+                              boxShadow: '0 0 15px rgba(156, 163, 175, 0.3)'
+                            }}>
+                              ⏳ Stopping...
+                            </span>
+                          ) : (
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <span style={{
                               padding: '10px 16px',
@@ -2812,6 +2639,7 @@ export default function DashboardPage() {
                               ⏹️
                             </button>
                           </div>
+                          )
                         ) : mappingStatus[form.id]?.status === 'completed' ? (
                           <span style={{
                             padding: '10px 16px',
