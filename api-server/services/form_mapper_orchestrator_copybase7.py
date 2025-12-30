@@ -54,8 +54,6 @@ class MapperState(str, Enum):
     CANCELLED = "cancelled"
     SYSTEM_ISSUE = "system_issue"
     NO_MORE_PATHS = "no_more_paths"
-    VALIDATION_ERROR_RECOVERY = "validation_error_recovery"
-    VALIDATION_ERROR_GETTING_DOM = "validation_error_getting_dom"
 
 
 class SessionStatus:
@@ -633,19 +631,6 @@ class FormMapperOrchestrator:
     def handle_step_failure_recovery_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
-
-        # Check if validation errors were detected - route to validation error recovery
-        if result.get("validation_errors_detected"):
-            logger.info(f"[Orchestrator] Validation errors detected in step recovery - getting fresh DOM for recovery")
-            print(
-                f"[Orchestrator] ⚠️ Validation errors detected in step recovery - routing to validation error handler")
-            self.update_session(session_id, {"pending_validation_error_recovery": True, "consecutive_failures": 0})
-            self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
-            task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
-                "capture_screenshot": True
-            })
-            return {"success": True, "state": "validation_error_getting_dom", "agent_task": task}
-
         recovery_steps = result.get("recovery_steps", []) or result.get("steps", [])
         if not recovery_steps:
 
@@ -848,45 +833,7 @@ class FormMapperOrchestrator:
                 self.update_session(session_id, {"all_steps": alert_steps, "executed_steps": [],
                                                  "current_step_index": 0})
                 return self._execute_next_step(session_id)
-
-
-    def handle_validation_error_recovery_result(self, session_id: str, result: Dict) -> Dict:
-        """Handle result from validation error recovery - same logic as alert recovery"""
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-        if not result.get("success", True):
-            return self._fail_session(session_id, "AI failed to analyze validation errors")
-
-        scenario = result.get("scenario", "B")
-        issue_type = result.get("issue_type", "")
-
-        # Real system issue
-        if scenario == "B" and issue_type == "real_issue":
-            self.transition_to(session_id, MapperState.SYSTEM_ISSUE,
-                               last_error=f"Real issue: {result.get('explanation', '')}",
-                               completed_at=datetime.utcnow().isoformat())
-            return {"success": False, "system_issue": True, "explanation": result.get("explanation", "")}
-
-        # AI issue - navigate back and retry with critical fields
-        logger.info(f"[Orchestrator] Validation Error - AI issue, navigating back to retry")
-        updates = {}
-        if result.get("problematic_fields"):
-            updates["critical_fields_checklist"] = {f: "MUST FILL" for f in result.get("problematic_fields")}
-        if result.get("field_requirements"):
-            updates["field_requirements_for_recovery"] = result.get("field_requirements")
-        if updates:
-            self.update_session(session_id, updates)
-
-        form_page_url = session.get("form_page_url", "")
-        if form_page_url:
-            self.transition_to(session_id, MapperState.ALERT_NAVIGATING_BACK)
-            task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": form_page_url})
-            return {"success": True, "state": "alert_navigating_back", "agent_task": task}
-        else:
-            return self._fail_session(session_id, "No form page URL for retry")
-
-
-
+    
     def handle_navigate_back_result(self, session_id: str, result: Dict) -> Dict:
         #session = self.get_session(session_id)
         #if not session: return {"success": False, "error": "Session not found"}
@@ -1171,18 +1118,6 @@ class FormMapperOrchestrator:
     def handle_regenerate_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
-
-        # Check if AI detected validation errors - route to validation error recovery
-        if result.get("validation_errors_detected"):
-            logger.info(f"[Orchestrator] Validation errors detected, getting fresh DOM for recovery")
-            self.update_session(session_id, {"pending_validation_error_recovery": True})
-            self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
-            task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
-                "capture_screenshot": True
-            })
-            return {"success": True, "state": "validation_error_getting_dom", "agent_task": task}
-
-
         config = session.get("config", {})
         if config.get("enable_junction_discovery", True) and result.get("no_more_paths", False):
             if session.get("current_path", 1) > 1:
@@ -1204,16 +1139,6 @@ class FormMapperOrchestrator:
 
         if not result.get("success"):
             return self._fail_session(session_id, f"Verify regeneration failed: {result.get('error')}")
-
-        # Check if AI detected validation errors - route to validation error recovery
-        if result.get("validation_errors_detected"):
-            logger.info(f"[Orchestrator] Validation errors detected in verify, getting fresh DOM for recovery")
-            self.update_session(session_id, {"pending_validation_error_recovery": True})
-            self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
-            task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
-                "capture_screenshot": True
-            })
-            return {"success": True, "state": "validation_error_getting_dom", "agent_task": task}
 
         new_steps = result.get("new_steps", [])
         no_more_paths = result.get("no_more_paths", False)
@@ -1243,38 +1168,7 @@ class FormMapperOrchestrator:
     # ============================================================
     # VALIDATION ERROR HANDLING
     # ============================================================
-
-    def handle_validation_error_dom_result(self, session_id: str, result: Dict) -> Dict:
-        """Handle fresh DOM extraction for validation error recovery"""
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-
-        if not result.get("success"):
-            return self._fail_session(session_id, f"Failed to extract DOM for validation error recovery")
-
-        dom_html = result.get("dom_html", "")
-        screenshot_base64 = result.get("screenshot_base64", "")
-
-        # Store fresh DOM in Redis
-        if dom_html:
-            self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
-
-        self.transition_to(session_id, MapperState.VALIDATION_ERROR_RECOVERY)
-        return {
-            "success": True,
-            "trigger_celery": True,
-            "celery_task": "handle_validation_error_recovery",
-            "celery_args": {
-                "session_id": session_id,
-                "executed_steps": session.get("executed_steps", []),
-                "dom_html": dom_html,
-                "screenshot_base64": screenshot_base64,
-                "test_cases": session.get("test_cases", []),
-                "test_context": session.get("test_context", {})
-            }
-        }
-
-
+    
     def _handle_validation_errors(self, session_id: str, validation_errors: Dict) -> Dict:
         logger.warning(f"[Orchestrator] Validation errors: {len(validation_errors.get('error_fields', []))} fields")
         self.update_session(session_id, {"pending_validation_errors": validation_errors})
@@ -1736,8 +1630,6 @@ class FormMapperOrchestrator:
             return self.handle_dom_change_screenshot_result(session_id, result)
         elif state == MapperState.DOM_CHANGE_GETTING_DOM.value:
             return self.handle_dom_change_dom_result(session_id, result)
-        elif state == MapperState.VALIDATION_ERROR_GETTING_DOM.value:
-            return self.handle_validation_error_dom_result(session_id, result)
         else:
             logger.warning(f"[Orchestrator] Unhandled state {state} for task {task_type}")
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
@@ -1760,8 +1652,6 @@ class FormMapperOrchestrator:
             return self.handle_step_failure_recovery_result(session_id, result)
         elif task_name == "handle_alert_recovery":
             return self.handle_alert_recovery_result(session_id, result)
-        elif task_name == "handle_validation_error_recovery":
-            return self.handle_validation_error_recovery_result(session_id, result)
         elif task_name == "regenerate_steps":
             return self.handle_regenerate_steps_result(session_id, result)
         elif task_name == "regenerate_verify_steps":

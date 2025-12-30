@@ -228,6 +228,7 @@ def analyze_form_page(
         print(f"!!!! 🤖 Entering AI for Generating steps ...")
         print(f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
+        print(f"!!!! Generating steps: field_requirements: {field_requirements}")
         print(f"!!!! Generating steps: junction instructions: {junction_instructions}")
         print(f"!!!! Generating steps: test_cases: {test_cases}")
         ai_result = ai_helper.generate_test_steps(
@@ -342,7 +343,7 @@ def analyze_failure_and_recover(
         if recovery_failure_history:
             error_message = recovery_failure_history[-1].get('error', '')
 
-        recovery_steps = ai_helper.analyze_failure_and_recover(
+        recovery_result = ai_helper.analyze_failure_and_recover(
             failed_step=failed_step,
             executed_steps=executed_steps,
             fresh_dom=fresh_dom,
@@ -353,6 +354,19 @@ def analyze_failure_and_recover(
             recovery_failure_history=recovery_failure_history,
             error_message=error_message
         )
+
+        # Check if validation errors were detected
+        if isinstance(recovery_result, dict) and recovery_result.get("validation_errors_detected"):
+            print(f"[FormMapperTask] ⚠️ Validation errors detected - routing to validation error recovery")
+            result = {
+                "success": True,
+                "validation_errors_detected": True,
+                "recovery_steps": []
+            }
+            _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+            return result
+
+        recovery_steps = recovery_result if isinstance(recovery_result, list) else []
         ai_result = {"steps": recovery_steps, "no_more_paths": False}
 
         print(
@@ -488,6 +502,85 @@ def handle_alert_recovery(
         
     finally:
         db.close()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10,
+             autoretry_for=(Exception,), retry_backoff=True)
+def handle_validation_error_recovery(
+        self,
+        session_id: str,
+        executed_steps: List[Dict],
+        dom_html: str,
+        screenshot_base64: Optional[str],
+        test_cases: List[Dict],
+        test_context: Dict
+):
+    """Analyze validation errors (red borders, error messages) and determine if real_issue or ai_issue"""
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+
+    logger.info(f"[FormMapperTask] Validation error recovery for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+            return result
+
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+        ai_recovery = helpers["alert_recovery"]
+
+        print(f"!!!! 🔴 Analyzing validation errors...")
+
+        ai_result = ai_recovery.analyze_validation_errors(
+            executed_steps=executed_steps,
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64
+        )
+
+        print(f"!!!! ✅ AI validation error analysis returned: {ai_result}")
+
+        input_tokens = len(dom_html) // 4 + 500
+        output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
+
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_ALERT_RECOVERY,
+            input_tokens, output_tokens, session_id
+        )
+
+        result = {"success": True, **ai_result}
+
+        logger.info(
+            f"[FormMapperTask] Validation error recovery complete: issue_type={ai_result.get('issue_type', 'unknown')}")
+        _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+        return result
+
+    except BudgetExceededError as e:
+        logger.warning(f"[FormMapperTask] Budget exceeded for validation error recovery: {e}")
+        result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+        return result
+
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Validation error recovery failed: {e}", exc_info=True)
+        result = {"success": False, "error": str(e)}
+        _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+        return result
+
+    finally:
+        db.close()
+
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=5)
@@ -636,11 +729,12 @@ def regenerate_steps(
             AIOperationType.FORM_MAPPER_REGENERATE,
             input_tokens, output_tokens, session_id
         )
-        
+
         result = {
             "success": True,
             "new_steps": ai_result.get("steps", []),
-            "no_more_paths": ai_result.get("no_more_paths", False)
+            "no_more_paths": ai_result.get("no_more_paths", False),
+            "validation_errors_detected": ai_result.get("validation_errors_detected", False)
         }
         
 
@@ -724,7 +818,12 @@ def regenerate_verify_steps(
 
         logger.info(f"[FormMapperTask] Verify regeneration complete: {len(new_steps)} new steps")
 
-        result = {"success": True, "new_steps": new_steps, "no_more_paths": no_more_paths}
+        result = {
+            "success": True,
+            "new_steps": new_steps,
+            "no_more_paths": no_more_paths,
+            "validation_errors_detected": ai_result.get("validation_errors_detected", False)
+        }
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 

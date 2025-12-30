@@ -999,6 +999,20 @@ class FormMapperTaskHandler:
             )
             
             alert_text = alert.text
+
+            # Capture screenshot BEFORE accepting alert (so AI can see the alert dialog)
+            screenshot_b64 = None
+            try:
+                screenshot_result = self.selenium.capture_screenshot(
+                    scenario_description="alert_visible",
+                    save_to_folder=False
+                )
+                if screenshot_result.get("success"):
+                    screenshot_b64 = screenshot_result.get("screenshot", "")
+                    logger.info(f"[FormMapper] Captured screenshot with alert visible")
+            except Exception as e:
+                logger.warning(f"[FormMapper] Failed to capture alert screenshot: {e}")
+
             alert.accept()  # Always accept
             
             logger.info(f"[FormMapper] Alert detected and accepted: {alert_text[:100]}")
@@ -1006,7 +1020,8 @@ class FormMapperTaskHandler:
             return {
                 "alert_present": True,
                 "alert_type": "alert",
-                "alert_text": alert_text
+                "alert_text": alert_text,
+                "alert_screenshot_base64": screenshot_b64
             }
             
         except TimeoutException:

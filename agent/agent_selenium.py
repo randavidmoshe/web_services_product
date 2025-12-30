@@ -1346,7 +1346,7 @@ class AgentSelenium:
                 element = self._find_element(selector)
                 if not element:
                     return {"success": False, "error": f"Element not found: {selector}"}
-                
+
                 select = Select(element)
                 try:
                     select.select_by_visible_text(value)
@@ -1354,7 +1354,20 @@ class AgentSelenium:
                     try:
                         select.select_by_value(value)
                     except:
-                        select.select_by_index(int(value))
+                        # Only try index if value is numeric
+                        if value.isdigit():
+                            select.select_by_index(int(value))
+                        else:
+                            # Try partial match on visible text
+                            matched = False
+                            for option in select.options:
+                                if value.lower() in option.text.lower():
+                                    select.select_by_visible_text(option.text)
+                                    matched = True
+                                    break
+                            if not matched:
+                                raise ValueError(
+                                    f"Could not select option '{value}' - not found by text, value, or index")
                 
                 return _finalize_success_result({
                     "success": True,

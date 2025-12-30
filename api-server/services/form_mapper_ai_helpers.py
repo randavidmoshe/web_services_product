@@ -184,6 +184,23 @@ class AIAlertRecoveryHelper:
             gathered_error_info=gathered_error_info
         )
 
+    def analyze_validation_errors(
+            self,
+            executed_steps: List[Dict],
+            dom_html: str,
+            screenshot_base64: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze validation errors visible in DOM/screenshot.
+
+        Returns:
+            Dict with issue_type (real_issue or ai_issue) and relevant details
+        """
+        return self.helper.analyze_validation_errors(
+            executed_steps=executed_steps,
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64
+        )
 
 class AIFormPageEndPrompterWrapper:
     """

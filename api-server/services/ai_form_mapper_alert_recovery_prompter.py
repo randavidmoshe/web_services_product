@@ -6,6 +6,7 @@ import time
 import logging
 import anthropic
 import random
+import re
 from typing import List, Dict, Optional, Any
 from anthropic._exceptions import OverloadedError, APIError
 
@@ -22,7 +23,7 @@ class AIErrorRecovery:
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
     
-    def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
+    def _call_api_with_retry(self, prompt: str, max_tokens: int = 4000, max_retries: int = 3) -> Optional[str]:
         """
         Call Claude API with retry logic for handling overload errors
         
@@ -92,7 +93,7 @@ class AIErrorRecovery:
         
         return None
     
-    def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
+    def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 4000, max_retries: int = 3) -> Optional[str]:
         """
         Call Claude API with retry logic for multimodal content (images + text)
         
@@ -108,8 +109,8 @@ class AIErrorRecovery:
         
         for attempt in range(max_retries):
             try:
-                print(f"[AIErrorRecovery] Calling Claude API with vision for alert recovery (attempt {attempt + 1}/{max_retries})...")
-                result_logger_gui.info(f"[AIErrorRecovery] Calling Claude API with vision for alert recovery (attempt {attempt + 1}/{max_retries})...")
+                print(f"[AIErrorRecovery] Calling Claude API with vision (attempt {attempt + 1}/{max_retries})...")
+                result_logger_gui.info(f"[AIErrorRecovery] Calling Claude API with vision (attempt {attempt + 1}/{max_retries})...")
                 
                 message = self.client.messages.create(
                     model=self.model,
@@ -160,60 +161,49 @@ class AIErrorRecovery:
         
         return None
 
-    def regenerate_steps_after_alert(
+    def analyze_error(
         self,
-        alert_info: Dict,
+        error_info: Dict,
         executed_steps: List[Dict],
         dom_html: str,
-        screenshot_base64: Optional[str],
-        test_cases: List[Dict],
-        test_context,
-        step_where_alert_appeared: int,
-        include_accept_step: bool = True,
-        gathered_error_info: Optional[Dict] = None  # NEW: For validation errors from DOM detection
+        screenshot_base64: Optional[str] = None,
+        gathered_error_info: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
-        Generate steps to handle a JavaScript alert/confirm/prompt OR validation errors with AI vision
+        Analyze an error (alert or validation error) and determine how to handle it.
+        
+        This method does NOT generate steps - it only classifies the error:
+        - Scenario A: Simple alert (not a validation error)
+        - Scenario B real_issue: Validation error but we filled the field correctly (system bug)
+        - Scenario B ai_issue: Validation error because we missed/incorrectly filled a field
         
         Args:
-            alert_info: Dict with 'type' and 'text' of the alert (or validation error info)
-            executed_steps: Steps completed before alert appeared
-            dom_html: Current DOM HTML after alert was accepted
-            screenshot_base64: Base64 encoded screenshot showing the alert
-            test_cases: Active test cases
-            test_context: Test context
-            step_where_alert_appeared: Step number that triggered the alert
-            include_accept_step: Whether AI should include accept_alert step in response
+            error_info: Dict with 'type' ('alert' or 'validation_error') and 'text'
+            executed_steps: Steps completed before error appeared
+            dom_html: Current DOM HTML
+            screenshot_base64: Optional screenshot
             gathered_error_info: Optional dict with 'error_fields' and 'error_messages' from DOM detection
             
         Returns:
-            List of steps to handle alert + continue with remaining steps
+            Dict with scenario classification and relevant details
         """
-        import base64
-        import re
-        
         try:
-            print(f"[AIErrorRecovery] Generating alert handling steps...")
+            print(f"[AIErrorRecovery] Analyzing error...")
             
-            # Build the prompt (screenshot is optional for alerts)
-            prompt = self._build_alert_handling_prompt(
-                alert_info=alert_info,
+            # Build the prompt
+            prompt = self._build_error_analysis_prompt(
+                error_info=error_info,
                 executed_steps=executed_steps,
                 dom_html=dom_html,
-                test_cases=test_cases,
-                test_context=test_context,
-                step_where_alert_appeared=step_where_alert_appeared,
-                include_accept_step=include_accept_step,  # NEW: Pass to prompt builder
-                gathered_error_info=gathered_error_info  # NEW: Pass gathered validation errors
+                gathered_error_info=gathered_error_info
             )
             
-            # Call Claude (with or without screenshot) using retry logic
-            result_logger_gui.info("[AIErrorRecovery] Sending alert handling request to Claude API...")
+            result_logger_gui.info("[AIErrorRecovery] Sending error analysis request to Claude API...")
             
             # Build message content
             message_content = []
             
-            # Add screenshot if available (not for JS alerts)
+            # Add screenshot if available
             if screenshot_base64:
                 message_content.append({
                     "type": "image",
@@ -229,414 +219,451 @@ class AIErrorRecovery:
                 "type": "text",
                 "text": prompt
             })
-
-            #print("\n" + "!" * 80)
-            #print("!!!!!!!! REGENERATE_STEPS_AFTER_ALERT - FINAL PROMPT TO AI !!!!")
-            #print("!" * 80)
-            #import re as re_module
-            #prompt_no_dom = re_module.sub(r'=== CURRENT PAGE DOM ===.*?(?=\n\s*===|\n\s*\*\*|\Z)',
-            #                              '=== CURRENT PAGE DOM ===\n[DOM REMOVED FOR LOGGING]\n\n', prompt,
-            #                              flags=re_module.DOTALL)
-            #print(prompt_no_dom)
-            #print("!" * 80 + "\n")
             
-            # Use multimodal retry if we have image, otherwise use regular retry
+            # Call API
             if screenshot_base64:
-                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
+                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=4000, max_retries=3)
             else:
-                response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
+                response_text = self._call_api_with_retry(prompt, max_tokens=4000, max_retries=3)
             
             if response_text is None:
-                print("[AIErrorRecovery] ❌ Failed to get alert handling response after retries")
-                logger.error("[AIErrorRecovery] Failed to get alert handling response after retries")
-                return {"scenario": "B", "issue_type": "api_error", "steps": [], "explanation": "Failed to get API response"}
+                print("[AIErrorRecovery] ❌ Failed to get error analysis response after retries")
+                logger.error("[AIErrorRecovery] Failed to get error analysis response after retries")
+                return {"scenario": "B", "issue_type": "api_error", "explanation": "Failed to get API response"}
             
-            print(f"[AIErrorRecovery] Received alert handling response ({len(response_text)} chars)")
-            logger.info(f"[AIErrorRecovery] Received alert handling response ({len(response_text)} chars)")
-            
-            # Extract JSON from response - now expecting object with "scenario" and "steps"
+            print(f"[AIErrorRecovery] Received error analysis response ({len(response_text)} chars)")
+            logger.info(f"[AIErrorRecovery] Received error analysis response ({len(response_text)} chars)")
+
+            # Extract JSON from response
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
-                alert_response = json.loads(json_match.group())
+                json_str = json_match.group()
+                # Sanitize invalid escape sequences (e.g., \E, \T, etc.)
+                json_str = re.sub(r'\\([^"\\/bfnrtu])', r'\\\\\1', json_str)
+                response = json.loads(json_str)
                 
-                # Extract scenario
-                scenario = alert_response.get("scenario", "B")  # Default to B if not specified
+                scenario = response.get("scenario", "B")
                 
                 if scenario == "A":
-                    # Scenario A: Simple alert - just continue
-                    alert_steps = alert_response.get("steps", [])
-                    
-                    if not alert_steps:
-                        print("[AIErrorRecovery] No steps found in Scenario A response")
-                        logger.warning("[AIErrorRecovery] No steps found in Scenario A response")
-                        return {"scenario": "A", "steps": []}
-                    
-                    print(f"[AIErrorRecovery] Successfully parsed {len(alert_steps)} alert handling steps")
-                    print(f"[AIErrorRecovery] Scenario: A")
-                    logger.info(f"[AIErrorRecovery] Scenario A - {len(alert_steps)} steps")
-                    
-                    return {"scenario": "A", "steps": alert_steps}
+                    print(f"[AIErrorRecovery] Scenario A: Simple alert (not validation error)")
+                    logger.info(f"[AIErrorRecovery] Scenario A: Simple alert")
+                    return {"scenario": "A"}
                 
                 elif scenario == "B":
-                    # Scenario B: Validation error - check issue_type
-                    issue_type = alert_response.get("issue_type", "ai_issue")
-                    problematic_fields = alert_response.get("problematic_fields", [])
+                    issue_type = response.get("issue_type", "ai_issue")
                     
                     if issue_type == "real_issue":
-                        # Real system bug
-                        explanation = alert_response.get("explanation", "")
-                        problematic_field_claimed = alert_response.get("problematic_field_claimed", "")
-                        our_action = alert_response.get("our_action", "")
-                        
                         print(f"[AIErrorRecovery] Scenario B: real_issue - System Bug")
-                        print(f"[AIErrorRecovery] Explanation: {explanation}")
-                        logger.warning(f"[AIErrorRecovery] Real issue detected: {explanation}")
+                        print(f"[AIErrorRecovery] Explanation: {response.get('explanation', '')}")
+                        logger.warning(f"[AIErrorRecovery] Real issue detected: {response.get('explanation', '')}")
                         
                         return {
                             "scenario": "B",
                             "issue_type": "real_issue",
-                            "explanation": explanation,
-                            "problematic_field_claimed": problematic_field_claimed,
-                            "our_action": our_action,
-                            "problematic_fields": problematic_fields,
-                            "steps": []
+                            "explanation": response.get("explanation", ""),
+                            "problematic_field_claimed": response.get("problematic_field_claimed", ""),
+                            "our_action": response.get("our_action", ""),
+                            "problematic_fields": response.get("problematic_fields", [])
                         }
                     
                     else:  # ai_issue
-                        # AI testing error
-                        alert_steps = alert_response.get("steps", [])
-                        explanation = alert_response.get("explanation", "")
-                        field_requirements = alert_response.get("field_requirements", "")
-                        
-                        if not alert_steps:
-                            print("[AIErrorRecovery] No steps found in ai_issue response")
-                            logger.warning("[AIErrorRecovery] No steps found in ai_issue response")
-                            return {"scenario": "B", "issue_type": "ai_issue", "steps": [], "problematic_fields": [], "field_requirements": ""}
-                        
-                        print(f"[AIErrorRecovery] Successfully parsed {len(alert_steps)} alert handling steps")
-                        print(f"[AIErrorRecovery] Scenario: B (ai_issue)")
-                        print(f"[AIErrorRecovery] Problematic fields: {problematic_fields}")
-                        print(f"[AIErrorRecovery] Field requirements: {field_requirements}")
-                        logger.info(f"[AIErrorRecovery] Scenario B (ai_issue) - {len(alert_steps)} steps")
+                        print(f"[AIErrorRecovery] Scenario B: ai_issue - We missed something")
+                        print(f"[AIErrorRecovery] Problematic fields: {response.get('problematic_fields', [])}")
+                        print(f"[AIErrorRecovery] Field requirements: {response.get('field_requirements', '')}")
+                        logger.info(f"[AIErrorRecovery] AI issue - problematic fields: {response.get('problematic_fields', [])}")
                         
                         return {
                             "scenario": "B",
                             "issue_type": "ai_issue",
-                            "explanation": explanation,
-                            "problematic_fields": problematic_fields,
-                            "field_requirements": field_requirements,
-                            "steps": alert_steps
+                            "explanation": response.get("explanation", ""),
+                            "problematic_fields": response.get("problematic_fields", []),
+                            "field_requirements": response.get("field_requirements", "")
                         }
                 else:
                     print(f"[AIErrorRecovery] Unknown scenario: {scenario}")
-                    return {"scenario": "B", "issue_type": "ai_issue", "steps": []}
+                    return {"scenario": "B", "issue_type": "ai_issue", "problematic_fields": [], "field_requirements": ""}
             else:
-                print("[AIErrorRecovery] No JSON object found in alert handling response")
-                logger.warning("[AIErrorRecovery] No JSON object found in alert handling response")
-                return {"scenario": "B", "steps": []}
+                print("[AIErrorRecovery] No JSON object found in response")
+                logger.warning("[AIErrorRecovery] No JSON object found in response")
+                return {"scenario": "B", "issue_type": "parse_error", "explanation": "No JSON in response"}
                 
         except Exception as e:
-            print(f"[AIErrorRecovery] Error generating alert handling steps: {e}")
-            logger.error(f"[AIErrorRecovery] Error generating alert handling steps: {e}")
-            return {"scenario": "B", "issue_type": "parse_error", "steps": [], "explanation": str(e)}
+            print(f"[AIErrorRecovery] Error analyzing error: {e}")
+            logger.error(f"[AIErrorRecovery] Error analyzing error: {e}")
+            return {"scenario": "B", "issue_type": "parse_error", "explanation": str(e)}
     
-    def _build_alert_handling_prompt(
+    def _build_error_analysis_prompt(
         self,
-        alert_info: Dict,
+        error_info: Dict,
         executed_steps: List[Dict],
         dom_html: str,
-        test_cases: List[Dict],
-        test_context,
-        step_where_alert_appeared: int,
-        include_accept_step: bool = True,  # NEW: Control whether to include accept_alert step
-        gathered_error_info: Optional[Dict] = None  # NEW: Validation errors from DOM detection
+        gathered_error_info: Optional[Dict] = None
     ) -> str:
-        """Build the prompt for alert handling"""
+        """Build the prompt for error analysis"""
         
-        alert_type = alert_info.get('type', 'alert')
-        alert_text = alert_info.get('text', '')
+        error_type = error_info.get('type', 'alert')
+        error_text = error_info.get('text', '')
         
-        # Build executed steps context
-        executed_context = ""
-        if executed_steps:
-            executed_context = f"""
-Steps completed before alert appeared:
-{json.dumps([{"step": i+1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
-"""
+        # Build executed steps context - this is CRITICAL for determining real_issue vs ai_issue
+        executed_steps_json = json.dumps([
+            {
+                "step": i+1, 
+                "action": s.get("action"), 
+                "selector": s.get("selector"), 
+                "value": s.get("value"),
+                "description": s.get("description")
+            } 
+            for i, s in enumerate(executed_steps)
+        ], indent=2)
         
         # Build gathered error info section if provided
         gathered_info_section = ""
         if gathered_error_info:
             error_fields = gathered_error_info.get("error_fields", [])
             error_messages = gathered_error_info.get("error_messages", [])
-            gathered_info_section = f"""
-## GATHERED ERROR INFORMATION (From DOM Analysis):
-**The system has already detected the following validation errors in the DOM:**
-
-- **Error Fields Detected**: {', '.join(error_fields) if error_fields else 'None'}
-- **Error Messages Detected**: {', '.join(error_messages) if error_messages else 'None'}
-
-**IMPORTANT**: This is validation error information we gathered. You should:
-1. Use this as a starting point
-2. Also analyze the DOM yourself for additional error indicators
-3. Also analyze the screenshot (if provided) for visual error indicators
-4. Combine ALL sources to create complete list of problematic fields
-
+            if error_fields or error_messages:
+                gathered_info_section = f"""
+## Additional Error Information (from DOM analysis):
+- Error Fields Detected: {', '.join(error_fields) if error_fields else 'None'}
+- Error Messages Detected: {', '.join(error_messages) if error_messages else 'None'}
 """
         
-        prompt = f"""
-# JAVASCRIPT ALERT HANDLING WITH SMART RECOVERY
+        prompt = f"""# ERROR ANALYSIS TASK
 
-## Context:
-Step {step_where_alert_appeared} was executed successfully, but it triggered a JavaScript alert.
-**IMPORTANT**: The system has ALREADY accepted/dismissed the alert automatically before calling you.
+## Your Goal
+Analyze the error and classify it into one of three categories. You do NOT need to generate any steps.
 
-## Alert Information:
-- **Type**: {alert_type}
-- **Text**: "{alert_text}"
+## Error Information
+- **Type**: {error_type}
+- **Message**: "{error_text}"
+{gathered_info_section}
 
-{gathered_info_section}{executed_context}
+## Steps We Already Executed
+```json
+{executed_steps_json}
+```
 
-## Current DOM (After Alert Was Accepted):
+## Current DOM
 ```html
 {dom_html}
 ```
 
-## Your Task - TWO SCENARIOS:
+---
 
-You must decide which scenario applies and respond accordingly:
+## DECISION PROCESS
+
+### Step 1: Is this a validation error?
+
+Check if the error message complains about:
+- Missing/required fields
+- Invalid field values
+- Format errors (wrong length, wrong characters, etc.)
+
+**If NO** (just a confirmation, success message, warning, or generic notification):
+→ Return **Scenario A**
+
+**If YES** (validation error about fields):
+→ Continue to Step 2
+
+### Step 2: Check executed_steps - Did we fill the problematic field(s)?
+
+For EACH field mentioned in the error:
+1. Search the executed_steps list for any step that filled this field
+2. Look for matching selectors (e.g., if error mentions "Email", look for selectors like `#email`, `input[name="email"]`, `[id*="email"]`, etc.)
+3. Check if the value we used was valid
+
+**Decision:**
+- If we DID fill the field with a valid value → **real_issue** (system bug - it falsely claims field is missing)
+- If we did NOT fill the field, or used invalid value → **ai_issue** (we made a mistake)
 
 ---
 
-### SCENARIO A: Simple Alert (No Validation Errors)
+## RESPONSE FORMAT
 
-**Use this when:** The alert is NOT complaining about missing or invalid fields. It's just a confirmation, success message, navigation warning, or generic notification.
+Return ONLY a JSON object (no other text):
 
-**Your response should:**
-1. Keep all executed steps 1-{step_where_alert_appeared} (they were successful)
-2. {'Start generating steps from ' + str(step_where_alert_appeared + 1) + ' (system already added accept_alert to executed_steps)' if not include_accept_step else 'Add step ' + str(step_where_alert_appeared + 1) + ' as `accept_alert` (documenting what the system already did)'}
-3. Add continuation steps to complete the form based on the current DOM
-
-{f'**CRITICAL:** The system has already accepted the alert AND added it to executed_steps as step {step_where_alert_appeared + 1}. Your first generated step should be numbered {step_where_alert_appeared + 1} and should be the NEXT action after alert (e.g., switch_to_frame, fill, etc.). Do NOT include accept_alert in your response!' if not include_accept_step else f'**CRITICAL FOR STEP NUMBERING:** Steps must start from {step_where_alert_appeared + 1}, NOT from step 1! First step must be accept_alert.'}
-
-**Example response for simple alert (if alert appeared at step 26):**
-```json
-{'[' if True else ''}
-  {{{f'"step_number": {step_where_alert_appeared + 1}, "action": "switch_to_frame", "selector": "iframe#addressIframe", "value": "", "description": "Switch to address iframe"' if not include_accept_step else f'"step_number": {step_where_alert_appeared + 1}, "action": "accept_alert", "selector": "", "value": "", "description": "Alert accepted (already done by system)"'}}},
-  {{{f'"step_number": {step_where_alert_appeared + 2}, "action": "fill", "selector": "input#street", "value": "123 Main St", "description": "Fill street address"' if not include_accept_step else f'"step_number": {step_where_alert_appeared + 2}, "action": "switch_to_frame", "selector": "iframe#addressIframe", "value": "", "description": "Switch to address iframe"'}}},
-  {{{f'"step_number": {step_where_alert_appeared + 3}, "action": "fill", "selector": "input#city", "value": "New York", "description": "Fill city"' if not include_accept_step else f'"step_number": {step_where_alert_appeared + 3}, "action": "fill", "selector": "input#street", "value": "123 Main St", "description": "Fill street address"'}}}
-]
-```
-
----
-
-### SCENARIO B: Validation Alert (Field Problems - Missing or Invalid)
-
-**Use this ONLY when:** The alert is specifically complaining that fields are MISSING, REQUIRED, INVALID, or have ERRORS.
-
-**Step 1: Parse Alert Text**
-Extract ALL problematic field names/descriptions mentioned in the alert.
-
-Example: "Please fill in: Street Address is required, City has invalid format, Emergency Contact Name is required"
-→ Problematic fields: ["Street Address", "City", "Emergency Contact Name"]
-
-**Step 2: Find ADDITIONAL Error Fields from DOM and Screenshot**
-The alert text may not mention ALL fields with errors. Also check:
-
-1. **DOM Analysis** - Look for fields with error indicators:
-   - Classes like: `error`, `invalid`, `has-error`, `is-invalid`, `field-error`, `ng-invalid`, `validation-error`
-   - Attributes like: `aria-invalid="true"`, `data-error="true"`
-   - Error message elements near fields (like `<span class="error-message">` or `<div class="field-error">`)
-   - Red border styles in inline CSS
-
-2. **Screenshot Analysis** (if available):
-   - Fields with red borders or red highlighting
-   - Fields with red text or error icons next to them
-   - Visual error indicators
-
-3. **Combine All Sources**:
-   - Create a COMPLETE list of ALL problematic fields
-   - Include fields from: alert text + DOM error indicators + screenshot visual errors
-   - **IMPORTANT**: Don't count the same field twice (deduplicate by field name/selector)
-
-Example combined list: If alert mentions "Street Address" and "City", but DOM shows `input#phone` has class="error", and screenshot shows Email field has red border:
-→ Complete problematic fields: ["Street Address", "City", "Phone", "Email"]
-
-**Step 3: Analyze DOM Structure**
-To understand the form:
-- Locate where these problematic fields exist in the DOM
-- Identify which tabs/sections/iframes contain them
-- Understand the form structure
-
-**Step 4: Generate Complete New Step List**
-
-Generate a COMPLETE NEW step list starting from step 1 that fills the entire form correctly:
-
+**For Scenario A** (not a validation error):
 ```json
 {{
-  "scenario": "B",
-  "problematic_fields": ["Street Address", "City", "Phone", "Email"],
-  "steps": [
-    {{"step_number": 1, "action": "click", "selector": "...", "description": "Click Details tab"}},
-    {{"step_number": 2, "action": "fill", "selector": "...", "value": "...", "description": "Fill Person Name"}},
-    ...
-    {{"step_number": 65, "action": "click", "selector": "...", "description": "Click Save Form"}}
-  ]
+  "scenario": "A"
 }}
 ```
 
-**CRITICAL for Scenario B:**
-- Return scenario as "B"
-- Return the complete list of ALL problematic fields in `problematic_fields` array
-- Generate COMPLETE step list (steps 1 through N) that fills the entire form from scratch
-- Ensure ALL problematic fields are filled with correct values from test_cases
-- Navigate through tabs/iframes as needed
-- Complete the form properly
-- DO NOT include `accept_alert` step (alert is already handled)
-
-**IMPORTANT: For Scenario B, you must also determine issue_type:**
-
-**Sub-Case 1: real_issue** (System Bug)
-Use this when we filled the fields correctly but the system rejected them:
-- We filled the field that alert complains about
-- The value we used is valid/reasonable
-- This is a bug in the server/frontend validation
-
-Response format:
+**For Scenario B - real_issue** (we filled correctly, system bug):
 ```json
 {{
   "scenario": "B",
   "issue_type": "real_issue",
-  "explanation": "Why this is a system bug (e.g., 'Alert claims Email required but we filled it at step 15 with valid email')",
-  "problematic_field_claimed": "Field name from alert",
-  "our_action": "Step X: filled selector Y with value Z",
-  "problematic_fields": ["Field1", "Field2"],
-  "steps": []
+  "explanation": "Error claims [field] is required, but we filled it at step [N] with selector [selector] and value [value]",
+  "problematic_field_claimed": "Field name from error message",
+  "our_action": "Step N: filled [selector] with [value]",
+  "problematic_fields": ["Field name"]
 }}
 ```
 
-**Sub-Case 2: ai_issue** (AI Testing Error)
-Use this when we made a mistake:
-- We missed filling a required field
-- We used wrong/invalid value
-- The alert is correct about our mistake
-
-Response format:
+**For Scenario B - ai_issue** (we missed or made a mistake):
 ```json
 {{
   "scenario": "B",
   "issue_type": "ai_issue",
-  "explanation": "What we did wrong (e.g., 'We missed filling the Phone field')",
+  "explanation": "We missed filling [field] / We used invalid value for [field]",
   "problematic_fields": ["Field1", "Field2"],
-  "field_requirements": "Clear rewritten requirements extracted from the alert. Write EXACTLY what each field needs. Example:\n1. Tax ID - must be exactly 20 digits\n2. Rating - must select stars (required field)\n3. Email - must be valid email format",
-  "steps": [
-    {{"step_number": 1, "action": "...", "selector": "...", "value": "...", "description": "..."}},
-    ...
-  ]
+  "field_requirements": "1. Field1 - exact requirement (e.g., must be 20 digits)\\n2. Field2 - exact requirement"
 }}
 ```
 
----
-
-## Available Actions:
-- `accept_alert`: Click OK button (no selector needed) - **USE ONLY IN SCENARIO A**
-- `dismiss_alert`: Click Cancel button (no selector needed) - **USE ONLY IN SCENARIO A**
-- `fill`: Fill input/textarea field
-- `clear`: Clear input field
-- `select`: Select dropdown option
-- `click`: Click button/link/checkbox
-- `double_click`: Double-click element
-- `check`: Check checkbox (only if not checked)
-- `uncheck`: Uncheck checkbox (only if checked)
-- `slider`: Set range slider to percentage (value: 0-100)
-- `drag_and_drop`: Drag element to target (selector: source, value: target selector)
-- `press_key`: Send keyboard key (value: ENTER, TAB, ESCAPE, etc.)
-- `wait_for_visible`: Wait for element to appear
-- `wait_for_hidden`: Wait for element to disappear
-- `switch_to_window`: Switch to window by index (value: 0, 1, 2)
-- `switch_to_parent_window`: Return to original window
-- `refresh`: Refresh the page
-- `switch_to_frame`: Switch to iframe
-- `switch_to_default`: Switch back to main content
-- `create_file`: Create test file (pdf, txt, csv, xlsx, docx, json, png, jpg)
-- `upload_file`: Upload file to input[type='file']
-
-## Test Cases (for field values):
-{json.dumps(test_cases, indent=2)}
-
-**CRITICAL: Generate steps for ALL test cases above in ONE continuous JSON array. Do NOT stop after TEST_1!**
-
-**For edit/update tests - COMPLETE WORKFLOW PER FIELD:**
-For each field that needs to be verified and updated, generate this complete sequence:
-1. Navigate to field (switch_to_frame/shadow_root, click tab, hover, wait_for_visible as needed)
-2. Verify original value (action: "verify", value: expected original value from TEST_1)
-3. Clear field (action: "clear" - only for text inputs, skip for select/checkbox/radio/slider)
-4. Update field (action: "fill"/"select"/"check" with new value)
-5. Navigate back (switch_to_default if you entered iframe/shadow_root)
-
-## Response Format:
-
-**CRITICAL: You MUST return a JSON object with two fields:**
-
-```json
-{{
-  "scenario": "A",  // or "B" - which scenario you chose
-  "steps": [...]     // array of step objects
-}}
-```
-
-**For SCENARIO A** (simple alert - no field validation problems):
-```json
-{{
-  "scenario": "A",
-  "steps": [
-    {{"step_number": {step_where_alert_appeared + 1}, "action": "accept_alert", "selector": "", "value": "", "description": "Alert accepted (already done by system)"}},
-    {{"step_number": {step_where_alert_appeared + 2}, "action": "...", "selector": "...", "value": "...", "description": "Continue with next action"}},
-    ...
-  ]
-}}
-```
-
-**For SCENARIO B** (validation error - field problems):
-
-If real_issue (system bug):
-```json
-{{
-  "scenario": "B",
-  "issue_type": "real_issue",
-  "explanation": "...",
-  "problematic_field_claimed": "...",
-  "our_action": "...",
-  "problematic_fields": ["Field Name 1", "Field Name 2"],
-  "steps": []
-}}
-```
-
-If ai_issue (our mistake):
-```json
-{{
-  "scenario": "B",
-  "issue_type": "ai_issue",
-  "explanation": "...",
-  "problematic_fields": ["Field Name 1", "Field Name 2", "Field Name 3"],
-  "field_requirements": "1. Field Name 1 - exact requirement from alert\n2. Field Name 2 - exact requirement from alert\n3. Field Name 3 - exact requirement from alert",
-  "steps": [
-    {{"step_number": 1, "action": "...", "selector": "...", "value": "...", "description": "..."}},
-    {{"step_number": 2, "action": "...", "selector": "...", "value": "...", "description": "..."}},
-    ...
-    {{"step_number": N, "action": "...", "selector": "...", "value": "...", "description": "..."}}
-  ]
-}}
-```
-
-**IMPORTANT:** 
-- For Scenario B, must include `issue_type`: "real_issue" or "ai_issue"
-- `problematic_fields` must be an array of ALL field names/descriptions that have errors
-- `field_requirements` must be a clear rewritten message explaining EXACTLY what each field needs (for ai_issue only)
-- For ai_issue: `steps` must be complete step list from 1 to N
-- For real_issue: `steps` must be empty array []
-
-Return ONLY this JSON object, no other text.
+Return ONLY the JSON object.
 """
         
+        return prompt
+
+    # Keep old method name for backward compatibility
+    def regenerate_steps_after_alert(
+        self,
+        alert_info: Dict,
+        executed_steps: List[Dict],
+        dom_html: str,
+        screenshot_base64: Optional[str],
+        test_cases: List[Dict],
+        test_context,
+        step_where_alert_appeared: int,
+        include_accept_step: bool = True,
+        gathered_error_info: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Backward compatible wrapper - calls analyze_error internally.
+        
+        Note: test_cases, test_context, step_where_alert_appeared, and include_accept_step
+        are no longer used since we don't generate steps anymore.
+        """
+        # Convert alert_info format if needed
+        error_info = {
+            'type': alert_info.get('type', alert_info.get('alert_type', 'alert')),
+            'text': alert_info.get('text', alert_info.get('alert_text', ''))
+        }
+        
+        return self.analyze_error(
+            error_info=error_info,
+            executed_steps=executed_steps,
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64,
+            gathered_error_info=gathered_error_info
+        )
+
+    def analyze_validation_errors(
+            self,
+            executed_steps: List[Dict],
+            dom_html: str,
+            screenshot_base64: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze validation errors visible in DOM/screenshot (red borders, error messages, etc.)
+
+        This method does NOT generate steps - it only classifies the error:
+        - Scenario B real_issue: We filled the field correctly but system shows error (system bug)
+        - Scenario B ai_issue: We missed/incorrectly filled a field (our mistake)
+
+        Args:
+            executed_steps: Steps completed before errors appeared
+            dom_html: Current DOM HTML with validation errors
+            screenshot_base64: Optional screenshot showing the errors
+
+        Returns:
+            Dict with scenario classification and relevant details
+        """
+        try:
+            print(f"[AIErrorRecovery] Analyzing validation errors...")
+
+            # Build the prompt
+            prompt = self._build_validation_error_prompt(
+                executed_steps=executed_steps,
+                dom_html=dom_html
+            )
+
+            result_logger_gui.info("[AIErrorRecovery] Sending validation error analysis request to Claude API...")
+
+            # Build message content
+            message_content = []
+
+            # Add screenshot if available
+            if screenshot_base64:
+                message_content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": screenshot_base64
+                    }
+                })
+
+            # Add text prompt
+            message_content.append({
+                "type": "text",
+                "text": prompt
+            })
+
+            # Call API
+            if screenshot_base64:
+                response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=4000,
+                                                                     max_retries=3)
+            else:
+                response_text = self._call_api_with_retry(prompt, max_tokens=4000, max_retries=3)
+
+            if response_text is None:
+                print("[AIErrorRecovery] ❌ Failed to get validation error analysis response after retries")
+                logger.error("[AIErrorRecovery] Failed to get validation error analysis response after retries")
+                return {"scenario": "B", "issue_type": "api_error", "explanation": "Failed to get API response"}
+
+            print(f"[AIErrorRecovery] Received validation error analysis response ({len(response_text)} chars)")
+            logger.info(
+                f"[AIErrorRecovery] Received validation error analysis response ({len(response_text)} chars)")
+
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                json_str = json_match.group()
+                # Sanitize invalid escape sequences
+                json_str = re.sub(r'\\([^"\\/bfnrtu])', r'\\\\\1', json_str)
+                response = json.loads(json_str)
+
+                issue_type = response.get("issue_type", "ai_issue")
+
+                if issue_type == "real_issue":
+                    print(f"[AIErrorRecovery] Validation Error: real_issue - System Bug")
+                    print(f"[AIErrorRecovery] Explanation: {response.get('explanation', '')}")
+                    logger.warning(f"[AIErrorRecovery] Real issue detected: {response.get('explanation', '')}")
+
+                    return {
+                        "scenario": "B",
+                        "issue_type": "real_issue",
+                        "explanation": response.get("explanation", ""),
+                        "problematic_field_claimed": response.get("problematic_field_claimed", ""),
+                        "our_action": response.get("our_action", ""),
+                        "problematic_fields": response.get("problematic_fields", [])
+                    }
+
+                else:  # ai_issue
+                    print(f"[AIErrorRecovery] Validation Error: ai_issue - We missed something")
+                    print(f"[AIErrorRecovery] Problematic fields: {response.get('problematic_fields', [])}")
+                    print(f"[AIErrorRecovery] Field requirements: {response.get('field_requirements', '')}")
+                    logger.info(
+                        f"[AIErrorRecovery] AI issue - problematic fields: {response.get('problematic_fields', [])}")
+
+                    return {
+                        "scenario": "B",
+                        "issue_type": "ai_issue",
+                        "explanation": response.get("explanation", ""),
+                        "problematic_fields": response.get("problematic_fields", []),
+                        "field_requirements": response.get("field_requirements", "")
+                    }
+            else:
+                print("[AIErrorRecovery] No JSON object found in response")
+                logger.warning("[AIErrorRecovery] No JSON object found in response")
+                return {"scenario": "B", "issue_type": "parse_error", "explanation": "No JSON in response"}
+
+        except Exception as e:
+            print(f"[AIErrorRecovery] Error analyzing validation errors: {e}")
+            logger.error(f"[AIErrorRecovery] Error analyzing validation errors: {e}")
+            return {"scenario": "B", "issue_type": "parse_error", "explanation": str(e)}
+
+    def _build_validation_error_prompt(
+            self,
+            executed_steps: List[Dict],
+            dom_html: str
+    ) -> str:
+        """Build the prompt for validation error analysis"""
+
+        # Build executed steps context
+        executed_steps_json = json.dumps([
+            {
+                "step": i + 1,
+                "action": s.get("action"),
+                "selector": s.get("selector"),
+                "value": s.get("value"),
+                "description": s.get("description")
+            }
+            for i, s in enumerate(executed_steps)
+        ], indent=2)
+
+        prompt = f"""# VALIDATION ERROR ANALYSIS
+
+## Your Goal
+The page is showing validation errors (red borders, error messages, etc.). Analyze these errors and determine if they are caused by a system bug or by our mistake.
+
+## Steps We Already Executed
+```json
+{executed_steps_json}
+```
+
+## Current DOM (with validation errors visible)
+```html
+{dom_html}
+```
+
+---
+
+## YOUR TASK
+
+### Step 1: Find All Validation Errors
+
+Scan the DOM and screenshot for:
+- Fields with error classes: `error`, `invalid`, `has-error`, `is-invalid`, `field-error`, `ng-invalid`, `validation-error`
+- Error message elements near fields
+- Attributes: `aria-invalid="true"`, `data-error="true"`
+- Red border styles
+- Error text/icons in screenshot
+
+List all fields that have errors.
+
+### Step 2: For Each Error Field - Check Executed Steps
+
+For EACH field with an error:
+1. Search executed_steps for any step that filled this field
+2. Look for matching selectors (e.g., if error is on "Email" field, look for `#email`, `input[name="email"]`, etc.)
+3. Check if the value we used was valid
+
+### Step 3: Determine Issue Type
+
+**CRITICAL:** If the error specifies a requirement and our value does NOT meet that requirement - it is ALWAYS **ai_issue**.
+
+**real_issue** (System Bug):
+- We filled the field with a value that MEETS the stated requirement in the error message
+- But system still shows error
+- The validation is incorrectly rejecting valid input
+
+**ai_issue** (Our Mistake):
+- We did NOT fill the field
+- OR our value does NOT meet the requirement stated in the error message (wrong length, wrong format, missing characters, etc.)
+- We need to retry with a value that meets the requirement
+
+---
+
+## RESPONSE FORMAT
+
+Return ONLY a JSON object:
+
+**For real_issue** (we filled correctly, system bug):
+```json
+{{
+  "issue_type": "real_issue",
+  "explanation": "Field [X] shows error, but we filled it at step [N] with selector [selector] and value [value]. The validation is incorrectly rejecting valid input.",
+  "problematic_field_claimed": "Field name showing error",
+  "our_action": "Step N: filled [selector] with [value]",
+  "problematic_fields": ["Field name"]
+}}
+```
+
+**For ai_issue** (we missed or made mistake):
+```json
+{{
+  "issue_type": "ai_issue",
+  "explanation": "We missed filling [field] / We used invalid value for [field]",
+  "problematic_fields": ["Field1", "Field2"],
+  "field_requirements": "1. Field1 - exact requirement\\n2. Field2 - exact requirement"
+}}
+```
+
+Return ONLY the JSON object.
+"""
+
         return prompt

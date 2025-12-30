@@ -562,7 +562,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         **junction_info fields (ALL REQUIRED):**
         - `junction_name`: Use element's `name` or `id` attribute
-        - `all_options`: List ALL available options from DOM
+        - `all_options`: List ALL available options from DOM - for `<select>` dropdowns, ONLY include values from actual `<option>` tags inside the `<select>`. Do NOT infer options from HTML comments, CSS classes, or JavaScript code.
         - `chosen_option`: The option you are selecting
         
         Always include `is_junction: true` and `junction_info` even when following junction instructions.
@@ -1237,21 +1237,35 @@ Do NOT skip fields just because they are not in the required selections list.
             screenshot_section = ""
             if screenshot_base64:
                 screenshot_section = """
-🖼️ CRITICAL - FILL ALL FIELDS (DO NOT SKIP ANY) BY EXAMINING THE DOM AND ALSO VIEWING THE SCREENSHOT:
-1. Extract ALL interactive elements from DOM - inputs, selects, textareas, checkboxes, radio buttons, clickable option cards, toggles, tabs, accordions, repeatable lists with "Add"/"+"/etc buttons, and any element a user would click or fill to complete the form
-2. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
-3. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
-4. Screenshot shows active tab/section and visual layout
-5. BEFORE adding any navigation step (next tab, submit), re-check DOM and screenshot to ensure no field was skipped
-6. **JUNCTION CHECK:** Look for dropdowns/radio buttons/etc in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction: true + junction_info).
-
+🖼️ DOM AND SCREENSHOT GUIDANCE:
+1. FILL ALL FIELDS (DO NOT SKIP ANY) BY EXAMINING THE DOM AND ALSO VIEWING THE SCREENSHOT
+2. Extract ALL interactive elements from DOM - inputs, selects, textareas, checkboxes, radio buttons, clickable option cards, toggles, tabs, accordions, repeatable lists with "Add"/"+"/etc buttons, and any element a user would click or fill to complete the form
+3. CHECK SCREENSHOT TO VIEW PAGE AND SEE ALL THE FIELDS AND LIST ITEMS - MUST NOT SKIP ANY FIELD
+4. Generate steps for EVERY field and list item - do NOT skip any - first all fields in current tab then next tabs
+5. Screenshot shows active tab/section and visual layout
+6. BEFORE adding any navigation step (next tab, submit), re-check DOM and screenshot to ensure no field was skipped
+7. **JUNCTION CHECK:** Look for dropdowns/radio buttons/etc in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction=true + junction_info).
 """
 
             # ==================== BUILD THE PROMPT ====================
 
             prompt = f"""You are a web automation expert generating Selenium WebDriver test steps.
 
+## FIRST: CHECK FOR VALIDATION ERRORS
+
+Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
+
+**If validation errors are visible, return ONLY:**
+```json
+{{{{
+  "validation_errors_detected": true
+}}}}
+```
+
+**If NO validation errors:** Continue with step generation below.
+
 {screenshot_section}{critical_fields_section}{route_planning_section}
+
 ## Current Context:
 
 {executed_context}
@@ -1282,7 +1296,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 - imagine you are a user: what is EVERY click, selection, and input you would make?
 - Make sure you create steps for all of them
 - Note that the trigger step might be at an inner location so you need to look also outside this trigger step's scope
-- **JUNCTION CHECK:** Look for dropdowns/radio buttons/cards in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction: true + junction_info).
+- **JUNCTION CHECK:** Look for dropdowns/radio buttons/cards in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction=true + junction_info).
 - The SCREENSHOT may show only part of whats needed so its in Addition to what you find in DOM
 
 
@@ -1326,7 +1340,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 ---
 
 **force_regenerate field (REQUIRED):**
-- Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
+- Set to `true` for navigation actions: Next, Continue, Edit, Delete, Back to List buttons
 - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
 
 **dont_regenerate field (optional):**
@@ -1393,7 +1407,7 @@ Supported types: pdf, txt, csv, xlsx, docx, json, png, jpg
 
 **junction_info fields (ALL MANDATORY):**
 - `junction_name`: Use element's `name` or `id` attribute
-- `all_options`: List ALL available options from DOM
+- `all_options`: List ALL available options from DOM - for `<select>` dropdowns, ONLY include values from actual `<option>` tags inside the `<select>`. Do NOT infer options from HTML comments, CSS classes, or JavaScript code.
 - `chosen_option`: The option you are selecting
 
 Always include `is_junction: true` and `junction_info` even when following junction instructions.
@@ -1420,6 +1434,7 @@ Always include `is_junction: true` and `junction_info` even when following junct
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
+---
 
 ## VERIFICATION RULES
 
@@ -1427,40 +1442,28 @@ Always include `is_junction: true` and `junction_info` even when following junct
 After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
 - ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
-- ALWAYS examine the CURRENT DOM structure before generating verify selectors
 
-**VERIFY ALL FIELDS ON VIEW/DETAIL PAGES:**
-When on a view/detail page, verify ALL fields that were filled during TEST_1:
-1. Look through "Steps Already Completed" for ALL FILL/SELECT steps
-2. Generate a VERIFY step for EACH field found - count them and verify count matches
-3. Get expected values from the `value` field of those FILL/SELECT steps
-4. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At")
+**⚠️ WHERE TO GET EXPECTED VALUES:**
+- ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
+- ❌ NEVER use values from the current DOM (what is DISPLAYED) as expected values
 
-**⚠️ VERIFY ALL FIELDS ON EACH PAGE - NO SKIPPING:**
-- On LIST page: verify fields visible in the table
-- On VIEW page: verify ALL fields again, even if some were verified on list page
-- Each page is independent - do NOT skip fields because they were verified on a previous page
-- All fields must be verified on BOTH list AND view pages
+**VERIFY ALL FIELDS - NO SKIPPING:**
+1. Generate a VERIFY step for EACH fill/select/check step in "Steps Already Completed"
+2. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At")
+3. **NEVER SKIP** - even if you suspect value might not match or format might differ - verification failures are VALID test results
 
-**⚠️ COMMON FIELDS OFTEN MISSED - DO NOT SKIP:**
-- Date of Birth / Date fields
-- Phone numbers
-- Checkboxes (all checked/unchecked states)
-- File upload filenames
-- Dropdown selections
+**⚠️ SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
+- ✅ `//div[.//label[contains(text(), 'Email')]]//div[@class='value']`
+- ❌ `(//div[@class='field-value'])[3]` - position-only won't work if layout changes
 
-**How verify works:** Selector finds element by LOCATION. The `value` field contains expected text.
+**⚠️ DUPLICATE FIELD NAMES (e.g., two "City" fields):**
+Scope selector to SECTION/PARENT container:
+- ✅ `//div[contains(@class, 'shipping')]//div[.//label[contains(text(), 'City')]]//span`
+- ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - index as last resort
 
-**BUILD SELECTOR FROM THE DOM - Common patterns:**
-- By data attribute: `//div[@data-field='email']`
-- By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
-- By label proximity: `//label[contains(text(), 'Email')]/../div`
-- Table structure: `//tr[contains(., 'Email')]//td[2]`
-
-**❌ WRONG:**
-- `//div[contains(text(), 'john@email.com')]` - expected value in selector!
-- `input#email` on view page - form elements don't exist on view pages!
-- Inventing class names not in DOM
+**❌ WRONG selectors:**
+- `//div[contains(text(), 'john@email.com')]` - value in selector!
+- `input#email` on view page - form elements don't exist!
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 ---
@@ -1531,6 +1534,8 @@ The "screenshot_self_check" field is MANDATORY.
 
             # Call Claude API with retry (with or without screenshot)
             result_logger_gui.info("[AIHelper] Sending regeneration request to Claude API...")
+            #print(f"[AIHelper] DEBUG - Prompt starts with: {prompt[:1700]}")
+            #print(f"[AIHelper] DEBUG - Prompt starts with: {prompt}")
 
             if screenshot_base64:
                 message_content = [
@@ -1596,6 +1601,18 @@ The "screenshot_self_check" field is MANDATORY.
 
             if json_match:
                 response_data = json.loads(json_match.group())
+                print(f"[AIHelper] DEBUG - Response keys: {response_data.keys()}")
+
+                # Check if AI detected validation errors
+                if response_data.get("validation_errors_detected"):
+                    print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
+                    return {
+                        "steps": [],
+                        "validation_errors_detected": True,
+                        "ui_issue": "",
+                        "no_more_paths": False
+                    }
+
                 steps = response_data.get("steps", [])
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
@@ -1658,11 +1675,27 @@ The "screenshot_self_check" field is MANDATORY.
                 screenshot_section = """
 🖼️ SCREENSHOT PROVIDED:
 Use the screenshot to understand the current page layout and identify where field values are displayed.
+**VALIDATION ERROR CHECK:** If you see validation errors (red borders, error messages, error classes like has-error/is-invalid), return ONLY `{"validation_errors_detected": true}`. Empty unfilled fields are NOT errors.
 """
 
             # ==================== BUILD THE VERIFICATION PROMPT ====================
 
             prompt = f"""You are a web automation expert generating Selenium WebDriver VERIFICATION test steps.
+
+## FIRST: CHECK FOR VALIDATION ERRORS
+
+Scan DOM and screenshot for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
+
+**If validation errors are visible, return ONLY:**
+```json
+{{{{
+  "validation_errors_detected": true
+}}}}
+```
+
+**If NO validation errors:** Continue with verification below.
+
+---
 
 ## VERIFICATION MODE - AFTER SAVE/SUBMIT
 
@@ -1727,7 +1760,11 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 3. Each page requires FULL verification - do NOT skip fields verified on a previous page
 4. Get expected values from the `value` field of those fill/select steps
 5. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At", "Saved Date")
-6. Generate verify steps even if you suspect expected value might not match displayed value - verification failures are valid test results, do NOT skip fields to avoid failures
+6. **NEVER SKIP VERIFY STEPS** - Generate verify steps for ALL fields, even if:
+   - You suspect expected value might not match displayed value
+   - The format might differ (e.g., date format differences)
+   - The field seems empty or missing
+   - Verification failures are VALID test results - we WANT to catch mismatches, not hide them
 
 **⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
 - ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
@@ -1747,6 +1784,13 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 Every verify selector MUST include the field name/label as an anchor (e.g., 'Email', 'First Name', 'Phone').
 - ✅ `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[@class='value']`  
 - ❌ `(//div[@class='field-value'])[3]` - position-only without field name won't work if layout changes
+
+**⚠️ DUPLICATE FIELD NAMES (e.g., two "City" fields):**
+When the same field label appears multiple times, scope the selector to the SECTION/PARENT container:
+- ✅ `//div[contains(@class, 'personal-info')]//div[.//label[contains(text(), 'City')]]//span`
+- ✅ `//section[@id='shipping']//div[.//label[contains(text(), 'City')]]//span`
+- ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - use index as last resort
+- ❌ `//label[contains(text(), 'City')]/..//span` - not unique when multiple exist
 
 **TABLE/LIST verification - use POSITIONAL selectors:**
 - First data row, column 1: `//table//tbody//tr[1]//td[1]`
@@ -1857,10 +1901,20 @@ Return ONLY the JSON object.
 
             if json_match:
                 response_data = json.loads(json_match.group())
+
+                # Check if AI detected validation errors
+                if response_data.get("validation_errors_detected"):
+                    print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
+                    return {
+                        "steps": [],
+                        "validation_errors_detected": True,
+                        "ui_issue": "",
+                        "no_more_paths": False
+                    }
+
                 steps = response_data.get("steps", [])
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} verify steps")
-
 
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
@@ -2068,6 +2122,17 @@ Return ONLY the JSON object.
             elif '```' in clean_response:
                 clean_response = clean_response.split('```')[1].split('```')[0]
 
+            # Check if validation errors detected (returns dict instead of array)
+            try:
+                response_obj = json.loads(clean_response.strip())
+                if isinstance(response_obj, dict) and response_obj.get("validation_errors_detected"):
+                    print(
+                        f"[AIHelper] ⚠️ Validation errors detected in step recovery - routing to validation error handler")
+                    logger.warning(f"[AIHelper] ⚠️ Validation errors detected in step recovery")
+                    return {"validation_errors_detected": True}
+            except json.JSONDecodeError:
+                pass  # Not a simple dict, continue with array parsing
+
             # Extract JSON from response
             json_match = re.search(r'\[[\s\S]*\]', clean_response)
             if json_match:
@@ -2132,6 +2197,28 @@ Return ONLY the JSON object.
     """
 
         prompt = f"""# STEP FAILURE RECOVERY
+
+    ## STEP 1: CHECK FOR VALIDATION ERRORS (MANDATORY)
+
+    Scan the DOM for any error elements - look for:
+    - Elements with "error" in class name (error-message, error, validation-error, has-error, is-invalid, field-error)
+    - Text containing "Validation Error", "Please fill", "required", "must be", "invalid"
+    - Red/orange styled error boxes or messages
+
+    **If ANY validation errors exist, return ONLY:**
+    ```json
+    {{{{
+      "validation_errors_detected": true
+    }}}}
+    ```
+
+    **DO NOT generate any steps if validation errors exist.**
+
+    **Only if NO validation errors exist:** Continue to Step 2 below.
+
+    ---
+
+    ## STEP 2: FIX THE FAILED STEP
 
     🖼️ **Screenshot and DOM provided.** DOM is primary source, screenshot for visual verification.
 
@@ -2222,7 +2309,10 @@ Return ONLY the JSON object.
           {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu"}}
         ]
     ```
-
+    
+    ## Important - Save/Submit Buttons:
+    If the recovery step is clicking the FINAL Save or Submit button (the one that submits the entire form, not intermediate saves within sections/modals), set `force_regenerate_verify: true` to trigger verification after form submission.
+    
     ## Important - Junction Detection:
     **Case 1 - Failed step is a junction:**
     If the failed step above shows "IS JUNCTION", your recovery step MUST also include `is_junction: true` and the same `junction_info`.
@@ -2372,11 +2462,13 @@ Return ONLY the JSON object.
     - Current completed paths: {len(completed_paths)}
 
     ## RULES FOR BUILDING next_path
+    
     1. **ONE CHANGE AT A TIME** - Change only ONE junction option per path. Keep all other junctions the same as the path that revealed them.
     2. **USE THE SAME PATH** - To test an untested option, use a path where that junction exists (just change that one option).
     3. Junction names may vary slightly ("A" vs "a" are the same).
     4. **ONLY INCLUDE SEEN JUNCTIONS** - Only include junctions you have SEEN exist together in a previous path. Don't assume a child junction will exist under a different option.
-    5. **GLOBALLY TESTED = DONE** - If an option was already tested in ANY previous path, it is complete. Don't re-test it.
+    5. **GLOBALLY TESTED = DONE** - If an option was already tested in a previous path, it is complete. Don't re-test it.
+    6. ** CRITICAL - WE ARE NOT TESTING ALL COMBINATION. WE ARE JUST TESTING FOR EACH OF THE DIFFERENT JUNCTIONS EACH OF ITS OPTIONS
 
     ## EXAMPLE
 
