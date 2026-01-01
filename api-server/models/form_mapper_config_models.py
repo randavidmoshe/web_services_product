@@ -27,6 +27,13 @@ class FormMapperConfig(BaseModel):
         le=10,
         description="Maximum retry attempts for failed steps"
     )
+
+    ai_parse_max_retries: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Maximum retry attempts for AI JSON parsing failures"
+    )
     
     use_detect_fields_change: bool = Field(
         default=True,
@@ -121,6 +128,7 @@ class FormMapperConfigUpdate(BaseModel):
     test_cases_file: Optional[str] = None
     enable_ui_verification: Optional[bool] = None
     max_retries: Optional[int] = Field(default=None, ge=1, le=10)
+    ai_parse_max_retries: Optional[int] = Field(default=None, ge=1, le=5)
     use_detect_fields_change: Optional[bool] = None
     use_full_dom: Optional[bool] = None
     use_optimized_dom: Optional[bool] = None
@@ -140,6 +148,7 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "test_cases_file": "test_cases1.json",
     "enable_ui_verification": True,
     "max_retries": 3,
+    "ai_parse_max_retries": 2,
     "use_detect_fields_change": True,
     "use_full_dom": True,
     "use_optimized_dom": False,

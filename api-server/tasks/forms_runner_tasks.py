@@ -297,10 +297,15 @@ def execute_runner_step(self, session_id: str) -> Dict:
         stage=current_stage,
         user_id=state["user_id"]
     )
-    
+
     if agent_result.get("success"):
         # Step succeeded - advance
         return _handle_step_success(redis_client, session_id, state)
+    elif agent_result.get("skipped") or agent_result.get("aborted"):
+        # Task was skipped (session cancelled) - don't trigger recovery
+        logger.info(
+            f"[FormsRunner] Task skipped/aborted for session {session_id}: {agent_result.get('reason', agent_result.get('error'))}")
+        return {"success": False, "skipped": True, "reason": agent_result.get("reason", agent_result.get("error"))}
     else:
         # Step failed - handle error
         return _handle_step_failure(redis_client, session_id, state, agent_result)
@@ -320,7 +325,13 @@ def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int) -> Dict:
         "session_id": session_id,
         "payload": {"step": stage}
     }
-    
+
+    # Check session status before pushing (prevent stale tasks after cancel)
+    state = _get_runner_state(redis_client, session_id)
+    if state and state.get("status") == "cancelled":
+        logger.info(f"[FormsRunner] Session {session_id} is {state.get('status')}, skipping task push")
+        return {"success": False, "error": f"Session {state.get('status')}", "skipped": True}
+
     # Push to agent queue
     agent_queue_key = f"agent:{user_id}"
     logger.info(f"[FormsRunner] DEBUG: Pushing to queue {agent_queue_key}")
@@ -335,6 +346,12 @@ def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int) -> Dict:
     poll_interval = 1  # 1 second
     
     for _ in range(timeout_seconds // poll_interval):
+        # Check if session was cancelled while waiting
+        state = _get_runner_state(redis_client, session_id)
+        if state and state.get("status") == "cancelled":
+            logger.info(f"[FormsRunner] Session {session_id} {state.get('status')} during wait, aborting")
+            return {"success": False, "error": f"Session {state.get('status')}", "aborted": True}
+
         result = redis_client.get(result_key)
         if result:
             redis_client.delete(result_key)

@@ -503,6 +503,12 @@ async def agent_task_result(
         
     except Exception as e:
         logger.error(f"[API] Error processing agent result: {e}", exc_info=True)
+        try:
+            session.status = 'failed'
+            session.last_error = str(e)
+            db.commit()
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -18,6 +18,7 @@ from routes import form_mapper
 from routes import company_config  # <-- ADD THIS
 from routes import test_templates
 from passlib.context import CryptContext
+from routes import user_requirements
 
 import logging
 
@@ -135,6 +136,7 @@ app.include_router(company_config.router)  # <-- ADD THIS
 app.include_router(two_fa.router, prefix="/api", tags=["2fa"])  # 2FA router
 app.include_router(users.router)  # Users management router
 app.include_router(test_templates.router)
+app.include_router(user_requirements.router)
 
 @app.get("/")
 async def root():

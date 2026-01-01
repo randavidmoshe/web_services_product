@@ -50,6 +50,7 @@ class FormMapperTaskHandler:
         """
         self.selenium = agent_selenium
         self.active_sessions: Dict[int, Dict] = {}  # Track active sessions
+        self.closed_sessions: set = set()  # Track closed/cancelled sessions
     
     def handle_task(self, task: Dict) -> Dict:
         """
@@ -66,6 +67,15 @@ class FormMapperTaskHandler:
         payload = task.get("payload", {})
         
         logger.info(f"[FormMapper] Handling {task_type} for session {session_id}")
+        # Skip tasks for closed sessions (prevents stale task execution)
+        if session_id and task_type != "form_mapper_close":
+            try:
+                if int(session_id) in self.closed_sessions:
+                    logger.info(f"[FormMapper] Skipping {task_type} for closed session {session_id}")
+                    return {"success": False, "skipped": True, "reason": "session_closed", "task_type": task_type,
+                            "session_id": session_id}
+            except (ValueError, TypeError):
+                pass
         
         handlers = {
             "form_mapper_init": self._handle_init,
@@ -238,6 +248,10 @@ class FormMapperTaskHandler:
             print(f"[FormMapper] Auto-initializing browser for runner")
             logger.info(f"[FormMapper] Auto-initializing browser for runner")
             self.selenium.initialize_browser(browser_type="chrome", headless=False)
+            self.active_sessions[session_id] = {"initialized_at": time.time()}
+
+
+
             # Navigate to base URL if provided
             base_url = payload.get("base_url")
             if base_url:
@@ -254,6 +268,11 @@ class FormMapperTaskHandler:
             try:
                 # Capture DOM
                 dom_html = self.selenium.extract_dom() or ""
+                #dom_result = self.selenium.extract_dom()
+                #print(f"[DEBUG] extract_dom returned type: {type(dom_result)}")
+                #print(f"[DEBUG] extract_dom returned: {str(dom_result)[:200]}")
+                #dom_html = dom_result or ""
+                #print(f"[DEBUG] dom_html type: {type(dom_html)}")
 
                 # Capture full page screenshot
                 screenshot_b64 = ""
@@ -411,6 +430,7 @@ class FormMapperTaskHandler:
             # Remove from active sessions
             if session_id in self.active_sessions:
                 del self.active_sessions[session_id]
+            self.closed_sessions.add(int(session_id))
             
             # Only close if no other active sessions
             if not self.active_sessions:

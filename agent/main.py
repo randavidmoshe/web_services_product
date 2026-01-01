@@ -344,6 +344,11 @@ class FormDiscovererAgent:
                     if self.cancel_requested:
                         self.logger.info("⏹ Cancel requested - closing browser")
                         self.cancel_requested = False
+                        # Mark all active sessions as closed
+                        if hasattr(self, 'form_mapper_handler') and self.form_mapper_handler:
+                            self.form_mapper_handler.closed_sessions.update(
+                                self.form_mapper_handler.active_sessions.keys())
+
                         if self.selenium_agent.driver:
                             self.selenium_agent.close_browser()
                     time.sleep(1)
@@ -413,6 +418,13 @@ class FormDiscovererAgent:
                 if self.cancel_requested:
                     self.logger.info("⏹ Cancel requested - closing browser")
                     self.cancel_requested = False
+                    session_id = task.get("session_id")
+                    if session_id:
+                        try:
+                            self.form_mapper_handler.closed_sessions.add(int(session_id))
+                        except (ValueError, TypeError):
+                            pass
+
                     if self.selenium_agent.driver:
                         self.selenium_agent.close_browser()
                     return
@@ -437,6 +449,12 @@ class FormDiscovererAgent:
                 if self.cancel_requested:
                     self.logger.info("⏹ Cancel requested - closing browser")
                     self.cancel_requested = False
+                    session_id = task.get("session_id")
+                    if session_id:
+                        try:
+                            self.form_mapper_handler.closed_sessions.add(int(session_id))
+                        except (ValueError, TypeError):
+                            pass
                     if self.selenium_agent.driver:
                         self.selenium_agent.close_browser()
                     return

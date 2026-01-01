@@ -166,6 +166,10 @@ class FormPageRoute(Base):
     # Hierarchy
     parent_form_route_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=True)
     is_root = Column(Boolean, default=True)
+
+    # User-provided inputs for form mapping (mandatory values AI can't guess)
+    user_provided_inputs = Column(JSON, nullable=True)
+    user_provided_inputs_raw = Column(Text, nullable=True)
     
     # Verification
     verification_attempts = Column(Integer, default=0)

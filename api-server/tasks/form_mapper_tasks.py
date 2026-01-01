@@ -11,6 +11,7 @@ import logging
 from celery_app import celery
 from celery import shared_task
 from typing import Dict, Optional, List
+from services.ai_form_mapper_main_prompter import AIParseError
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,11 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
             logger.info(f"[FormMapperTask] Agent task queued: {response.get('agent_task_type')}")
         
         return response
+
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Orchestrator crashed in {task_name}: {e}", exc_info=True)
+        sync_mapper_session_status.delay(session_id, "failed", f"Orchestrator error: {e}")
+        return {"success": False, "error": str(e)}
         
     finally:
         db.close()
@@ -196,7 +202,8 @@ def analyze_form_page(
     enable_ui_verification: bool = True,
     critical_fields_checklist: dict = None,
     field_requirements: str = "",
-    junction_instructions: dict = None
+    junction_instructions: dict = None,
+    user_provided_inputs: dict = None
 ) -> Dict:
     """Celery task: Analyze form page with AI (initial step generation)."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -239,6 +246,7 @@ def analyze_form_page(
             field_requirements=field_requirements or "",
             junction_instructions=_build_junction_instructions_text(
                 junction_instructions) if junction_instructions else None,
+            user_provided_inputs=user_provided_inputs or {},
             is_first_iteration=True
         )
 
@@ -274,9 +282,17 @@ def analyze_form_page(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
-        
+
+    except AIParseError as e:
+        logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
+        _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+        return result
+
     except Exception as e:
         logger.error(f"[FormMapperTask] Analysis failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
         
     finally:
@@ -404,6 +420,8 @@ def analyze_failure_and_recover(
         
     except Exception as e:
         logger.error(f"[FormMapperTask] Failure analysis failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
         
     finally:
@@ -498,6 +516,8 @@ def handle_alert_recovery(
         
     except Exception as e:
         logger.error(f"[FormMapperTask] Alert recovery failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
         
     finally:
@@ -574,6 +594,7 @@ def handle_validation_error_recovery(
 
     except Exception as e:
         logger.error(f"[FormMapperTask] Validation error recovery failed: {e}", exc_info=True)
+        sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
         return result
@@ -646,6 +667,8 @@ def verify_ui_visual(
         
     except Exception as e:
         logger.error(f"[FormMapperTask] UI verification failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
         
     finally:
@@ -665,7 +688,8 @@ def regenerate_steps(
     critical_fields_checklist: Optional[Dict] = None,
     field_requirements: Optional[str] = None,
     enable_junction_discovery: bool = True,
-    junction_instructions: str = None
+    junction_instructions: str = None,
+    user_provided_inputs: dict = None
 ) -> Dict:
     """Celery task: Regenerate remaining steps after DOM change."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -712,7 +736,8 @@ def regenerate_steps(
             screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
-            junction_instructions=_build_junction_instructions_text(junction_instructions)
+            junction_instructions=_build_junction_instructions_text(junction_instructions),
+            user_provided_inputs=user_provided_inputs or {}
         )
         print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         for s in ai_result.get('steps', []):
@@ -745,9 +770,17 @@ def regenerate_steps(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "regenerate_steps", result)
         return result
-        
+
+    except AIParseError as e:
+        logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
+        _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+        return result
+
     except Exception as e:
         logger.error(f"[FormMapperTask] Step regeneration failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
         
     finally:
@@ -797,6 +830,9 @@ def regenerate_verify_steps(
             f"!!!! 🔍 Regen VERIFY steps, TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
         print(f"!!!! Regen VERIFY steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         print(f"!!!! Regen VERIFY steps, Already executed: {len(executed_steps)} steps")
+        for step in executed_steps:
+            print(
+                f"    Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}")
 
         ai_result = ai_helper.regenerate_verify_steps(
             dom_html=dom_html,
@@ -833,8 +869,15 @@ def regenerate_verify_steps(
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 
+    except AIParseError as e:
+        logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
     except Exception as e:
         logger.error(f"[FormMapperTask] Verify regeneration error: {e}", exc_info=True)
+        sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
@@ -911,6 +954,7 @@ def evaluate_paths_with_ai(
     except Exception as e:
         logger.error(f"[FormMapperTask] AI path evaluation error: {e}")
         print(f"!!!! ❌ AI Path Evaluation error: {e}")
+        sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "evaluate_paths_with_ai", result)
         return result
@@ -1001,6 +1045,7 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
 
     except Exception as e:
         logger.error(f"[FormMapperTask] Save mapping result failed: {e}", exc_info=True)
+        sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result

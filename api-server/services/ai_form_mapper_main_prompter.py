@@ -9,6 +9,10 @@ import random
 from typing import List, Dict, Optional, Any
 from anthropic._exceptions import OverloadedError, APIError
 
+class AIParseError(Exception):
+    """Raised when AI response cannot be parsed after all retries"""
+    pass
+
 logger = logging.getLogger('init_logger.form_page_test')
 result_logger_gui = logging.getLogger('init_result_logger_gui.form_page_test')
 
@@ -169,6 +173,7 @@ class AIHelper:
             critical_fields_checklist: Optional[Dict[str, str]] = None,
             field_requirements: Optional[str] = None,
             junction_instructions: Optional[str] = None,
+            user_provided_inputs: Optional[Dict] = None,
             # Legacy params - kept for backward compatibility with callers
             previous_steps: Optional[List[Dict]] = None,
             step_where_dom_changed: Optional[int] = None,
@@ -231,6 +236,30 @@ When you have a step for these junctions, use the specified option. If a junctio
 
 
 """
+        # User-provided inputs section
+        user_inputs_section = ""
+        if user_provided_inputs and (
+                user_provided_inputs.get("field_values") or user_provided_inputs.get("file_paths")):
+            field_values = user_provided_inputs.get("field_values", [])
+            file_paths = user_provided_inputs.get("file_paths", [])
+
+            lines = ["📋 USER-PROVIDED INPUTS (MANDATORY)", "=" * 60,
+                     "Use these EXACT values when filling matching fields:", ""]
+
+            if field_values:
+                lines.append("FIELD VALUES:")
+                for fv in field_values:
+                    lines.append(f"- {fv.get('field_hint', 'unknown')} → {fv.get('value', '')}")
+                lines.append("")
+
+            if file_paths:
+                lines.append("FILE PATHS (use for file upload fields):")
+                for fp in file_paths:
+                    lines.append(f"- {fp.get('field_hint', 'unknown')} → {fp.get('path', '')}")
+                lines.append("")
+
+            lines.extend(["=" * 60, ""])
+            user_inputs_section = "\n".join(lines)
 
         # Screenshot emphasis section
         screenshot_section = ""
@@ -255,6 +284,7 @@ When you have a step for these junctions, use the specified option. If a junctio
 {screenshot_section}
 {critical_fields_section}
 {route_planning_section}
+{user_inputs_section}
         === SELECTOR GUIDELINES ===
         
         **CRITICAL THE LOCATOR MUST SUCCEED - IF IN DOUBT → USE XPATH **
@@ -1132,15 +1162,18 @@ When you have a step for these junctions, use the specified option. If a junctio
                 # Failed to parse
                 result_logger_gui.error(f"[AIHelper] Failed to parse JSON: {e}")
                 print(f"[AIHelper] Failed to parse JSON: {e}")
-                print(f"[AIHelper] Response text: {response_text[:500]}")
-                return {"steps": [], "ui_issue": "", "no_more_paths": False}
-            
+                print(f"[AIHelper] Raw response:\n{response_text}")
+                raise AIParseError(f"JSON parse error: {e}")
+
+        except AIParseError:
+            raise
+
         except Exception as e:
             result_logger_gui.error(f"[AIHelper] Error: {e}")
             print(f"[AIHelper] Error: {e}")
             import traceback
             traceback.print_exc()
-            return {"steps": [], "ui_issue": "", "no_more_paths": False}
+            raise AIParseError(f"Unexpected error: {e}")
 
     def regenerate_steps(
             self,
@@ -1151,7 +1184,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             screenshot_base64: Optional[str] = None,
             critical_fields_checklist: Optional[Dict[str, str]] = None,
             field_requirements: Optional[str] = None,
-            junction_instructions: Optional[str] = None
+            junction_instructions: Optional[str] = None,
+            user_provided_inputs: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
         Regenerate remaining steps after DOM change
@@ -1233,6 +1267,31 @@ For ALL OTHER fields (including dropdowns/selections NOT listed above), you MUST
 Do NOT skip fields just because they are not in the required selections list.
 """
 
+            # User-provided inputs section
+            user_inputs_section = ""
+            if user_provided_inputs and (
+                    user_provided_inputs.get("field_values") or user_provided_inputs.get("file_paths")):
+                field_values = user_provided_inputs.get("field_values", [])
+                file_paths = user_provided_inputs.get("file_paths", [])
+
+                lines = ["📋 USER-PROVIDED INPUTS (MANDATORY)", "=" * 60,
+                         "Use these EXACT values when filling matching fields:", ""]
+
+                if field_values:
+                    lines.append("FIELD VALUES:")
+                    for fv in field_values:
+                        lines.append(f"- {fv.get('field_hint', 'unknown')} → {fv.get('value', '')}")
+                    lines.append("")
+
+                if file_paths:
+                    lines.append("FILE PATHS (use for file upload fields):")
+                    for fp in file_paths:
+                        lines.append(f"- {fp.get('field_hint', 'unknown')} → {fp.get('path', '')}")
+                    lines.append("")
+
+                lines.extend(["=" * 60, ""])
+                user_inputs_section = "\n".join(lines)
+
             # Screenshot section
             screenshot_section = ""
             if screenshot_base64:
@@ -1265,6 +1324,7 @@ Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "P
 **If NO validation errors:** Continue with step generation below.
 
 {screenshot_section}{critical_fields_section}{route_planning_section}
+{user_inputs_section}
 
 ## Current Context:
 
@@ -1620,13 +1680,22 @@ The "screenshot_self_check" field is MANDATORY.
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
                 print("[AIHelper] No JSON object found in regeneration response")
-                return {"steps": [], "ui_issue": "", "no_more_paths": False}
+                raise AIParseError("No JSON object found in regeneration response")
+
+
+
+        except json.JSONDecodeError as e:
+            print(f"[AIHelper] JSON parse error: {e}")
+            print(f"[AIHelper] Raw response:\n{response_text}")
+
+        except AIParseError:
+            raise
 
         except Exception as e:
             print(f"[AIHelper] Error regenerating steps: {e}")
             import traceback
             traceback.print_exc()
-            return {"steps": [], "ui_issue": "", "no_more_paths": False}
+            raise AIParseError(f"Unexpected error: {e}")
 
     def regenerate_verify_steps(
             self,
@@ -1635,6 +1704,7 @@ The "screenshot_self_check" field is MANDATORY.
             test_cases: list,
             test_context,
             screenshot_base64: Optional[str] = None,
+            ai_parse_max_retries: int = 2,
     ) -> Dict[str, Any]:
         """
         Regenerate verification steps after Save/Submit - focused on verifying fields
@@ -1895,37 +1965,78 @@ Return ONLY the JSON object.
 
             print(f"[AIHelper] Received verify regeneration response ({len(response_text)} chars)")
 
-            # Parse JSON response
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            # Parse JSON response - find JSON with "steps" key
+            remaining = response_text
+            response_data = None
 
-            if json_match:
-                response_data = json.loads(json_match.group())
+            while remaining:
+                brace_count = 0
+                json_start = -1
+                json_end = 0
+                in_json = False
 
-                # Check if AI detected validation errors
-                if response_data.get("validation_errors_detected"):
-                    print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
-                    return {
-                        "steps": [],
-                        "validation_errors_detected": True,
-                        "ui_issue": "",
-                        "no_more_paths": False
-                    }
+                for i, char in enumerate(remaining):
+                    if char == '{':
+                        if not in_json:
+                            in_json = True
+                            json_start = i
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and in_json:
+                            json_end = i + 1
+                            break
 
+                if json_end == 0 or json_start == -1:
+                    break
+
+                try:
+                    candidate = remaining[json_start:json_end]
+                    parsed = json.loads(candidate)
+
+                    # If validation errors detected, return immediately
+                    if parsed.get("validation_errors_detected") == True:
+                        print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
+                        return {
+                            "steps": [],
+                            "validation_errors_detected": True,
+                            "ui_issue": "",
+                            "no_more_paths": False
+                        }
+
+                    # If this JSON has steps, use it
+                    if "steps" in parsed:
+                        response_data = parsed
+                        break
+
+                    # Otherwise continue searching
+                    remaining = remaining[json_end:]
+
+                except json.JSONDecodeError:
+                    remaining = remaining[json_end:]
+                    continue
+
+            if response_data:
                 steps = response_data.get("steps", [])
-
                 print(f"[AIHelper] Successfully regenerated {len(steps)} verify steps")
-
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
-                print("[AIHelper] No JSON object found in verify regeneration response")
-                return {"steps": [], "ui_issue": "", "no_more_paths": False}
+                print(f"[AIHelper] No JSON with 'steps' key found. Raw response:\n{response_text[:2000]}")
+                raise AIParseError("No JSON with 'steps' key found in verify regeneration response")
+
+        except json.JSONDecodeError as e:
+            print(f"[AIHelper] JSON parse error: {e}")
+            print(f"[AIHelper] Raw response:\n{response_text}")
+            raise AIParseError(f"JSON parse error: {e}")
+
+        except AIParseError:
+            raise
 
         except Exception as e:
             print(f"[AIHelper] Error regenerating verify steps: {e}")
             import traceback
             traceback.print_exc()
-            return {"steps": [], "ui_issue": "", "no_more_paths": False}
+            raise AIParseError(f"Unexpected error: {e}")
 
     def discover_test_scenarios(self, dom_html: str, already_tested: list, max_scenarios: int = 5) -> list:
         """

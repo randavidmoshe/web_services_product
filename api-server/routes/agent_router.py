@@ -327,17 +327,22 @@ async def agent_heartbeat(
         db.commit()
 
     # Check FormMapperSession (Form Mapper)
-    from models.database import FormMapperSession
-    cancelled_mapper = db.query(FormMapperSession).filter(
-        FormMapperSession.user_id == agent.user_id,
-        FormMapperSession.status == 'cancelled',
-        FormMapperSession.updated_at >= cancel_threshold
-    ).first()
+    #from models.database import FormMapperSession
+    #ended_mapper = db.query(FormMapperSession).filter(
+    #    FormMapperSession.user_id == agent.user_id,
+    #    FormMapperSession.status.in_(['cancelled', 'completed', 'failed']),
+    #    FormMapperSession.updated_at >= cancel_threshold
+    #).first()
 
-    if cancelled_mapper:
-        cancel_requested = True
-        cancelled_mapper.status = 'cancelled_ack'
-        db.commit()
+    #if ended_mapper:
+    #    cancel_requested = True
+    #    if ended_mapper.status == 'cancelled':
+    #       ended_mapper.status = 'cancelled_ack'
+    #    elif ended_mapper.status == 'completed':
+    #       ended_mapper.status = 'completed_ack'
+    #    elif ended_mapper.status == 'failed':
+    #        ended_mapper.status = 'failed_ack'
+    #    db.commit()
 
     return {"success": True, "cancel_requested": cancel_requested}
 

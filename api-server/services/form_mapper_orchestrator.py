@@ -183,15 +183,19 @@ class FormMapperOrchestrator:
 
         # Get form page URL from database (do this once at session creation)
         form_page_url = base_url or ""
-        if not form_page_url and form_route_id and self.db:
+        user_provided_inputs = None
+        if form_route_id and self.db:
             try:
                 from models.database import FormPageRoute
                 route = self.db.query(FormPageRoute).filter(FormPageRoute.id == form_route_id).first()
                 if route:
-                    form_page_url = route.url or ""
+                    if not form_page_url:
+                        form_page_url = route.url or ""
                     project_id = route.project_id
+                    if route.user_provided_inputs and route.user_provided_inputs.get("status") == "ready":
+                        user_provided_inputs = route.user_provided_inputs
             except Exception as e:
-                logger.warning(f"[Orchestrator] Failed to get form page URL: {e}")
+                logger.warning(f"[Orchestrator] Failed to get form page data: {e}")
 
         if session_id is None:
             session_id = str(uuid.uuid4())[:8]
@@ -218,6 +222,7 @@ class FormMapperOrchestrator:
             "test_context": json.dumps(test_context), "config": json.dumps(final_config),
             "consecutive_failures": 0, "recovery_failure_history": "[]",
             "critical_fields_checklist": "{}", "field_requirements_for_recovery": "",
+            "user_provided_inputs": json.dumps(user_provided_inputs) if user_provided_inputs else "{}",
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
             "pending_screenshot_base64": "", "pending_new_steps": "[]",
             "final_steps": "[]", "last_error": "",
@@ -250,7 +255,7 @@ class FormMapperOrchestrator:
         json_fields = ["all_steps", "executed_steps", "test_cases",
                       "final_steps", "config", "test_context",
                       "recovery_failure_history", "pending_new_steps"]
-        dict_fields = ["critical_fields_checklist", "pending_alert_info", "pending_validation_errors"]
+        dict_fields = ["critical_fields_checklist", "pending_alert_info", "pending_validation_errors", "user_provided_inputs"]
         int_fields = ["current_step_index", "current_path", "user_id", "company_id",
                      "network_id", "form_route_id", "product_id", "consecutive_failures"]
         for k, v in data.items():
@@ -295,6 +300,12 @@ class FormMapperOrchestrator:
     
     def _push_agent_task(self, session_id: str, task_type: str, payload: Dict) -> Dict:
         session = self.get_session(session_id)
+        # Check if session is cancelled/completed/failed before pushing
+        state = session.get("state") if session else None
+        if state == "cancelled" and task_type != "form_mapper_close":
+            logger.info(f"[Orchestrator] Session {session_id} is {state}, skipping {task_type} push")
+            return {"skipped": True, "reason": f"session_{state}"}
+
         user_id = session.get("user_id", 1) if session else 1
         task = {"task_id": f"mapper_{session_id}_{task_type}_{int(time.time()*1000)}",
                 "task_type": task_type, "session_id": session_id, "payload": payload}
@@ -466,7 +477,8 @@ class FormMapperOrchestrator:
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
                     "critical_fields_checklist": session.get("critical_fields_checklist", {}),
                     "field_requirements": session.get("field_requirements_for_recovery", ""),
-                    "junction_instructions": session.get("junction_instructions", "{}")}}
+                    "junction_instructions": session.get("junction_instructions", "{}"),
+                    "user_provided_inputs": session.get("user_provided_inputs", {})}}
     
     def handle_generate_initial_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
@@ -1152,7 +1164,8 @@ class FormMapperOrchestrator:
                     "critical_fields_checklist": session.get("critical_fields_checklist", {}),
                     "field_requirements": session.get("field_requirements_for_recovery", ""),
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
-                    "junction_instructions": session.get("junction_instructions", "{}")}}
+                    "junction_instructions": session.get("junction_instructions", "{}"),
+                    "user_provided_inputs": session.get("user_provided_inputs", {})}}
 
     def _trigger_regenerate_verify_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
         session = self.get_session(session_id)
@@ -1677,6 +1690,16 @@ class FormMapperOrchestrator:
     
     def cancel_session(self, session_id: str) -> Dict:
         self.transition_to(session_id, MapperState.CANCELLED, completed_at=datetime.utcnow().isoformat())
+        # Push close task to agent to close browser immediately
+        session = self.get_session(session_id)
+        if session:
+            user_id = session.get("user_id")
+            if user_id:
+                self.redis.delete(f"agent:{user_id}")
+                logger.info(f"[Orchestrator] Flushed agent queue for user {user_id}")
+                self._push_agent_task(session_id, "form_mapper_close", {})
+                logger.info(f"[Orchestrator] Pushed close task for session {session_id}")
+
         return {"success": True, "state": "cancelled"}
     
     def get_session_status(self, session_id: str) -> Dict:

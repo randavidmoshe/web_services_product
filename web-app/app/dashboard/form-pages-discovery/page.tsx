@@ -869,6 +869,23 @@ export default function DashboardPage() {
   const startFormMapping = async (formPage: FormPage) => {
     if (!token || !userId) return
     
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+      // Continue anyway if check fails
+    }
+
     // Mark as mapping
     setMappingFormIds(prev => new Set(prev).add(formPage.id))
     setMappingStatus(prev => ({
@@ -937,6 +954,22 @@ export default function DashboardPage() {
     const template = testTemplates.find(t => t.id === selectedTemplateId)
     if (!template) return
     
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
     setShowMapModal(false)
     
     // Mark as mapping
@@ -993,6 +1026,90 @@ export default function DashboardPage() {
     
     setSelectedFormForMapping(null)
   }
+
+  const startMappingFromEditPanel = async () => {
+    if (!editingFormPage || !token || !userId) return
+    
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Use default template (first one) or create_verify if available
+    const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
+    if (!defaultTemplate) {
+      setError('No test template available')
+      return
+    }
+    
+    const formPageId = editingFormPage.id
+    
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPageId))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'starting' }
+    }))
+    
+    try {
+      const response = await fetch('/api/form-mapper/start', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: formPageId,
+          user_id: parseInt(userId),
+          company_id: companyId ? parseInt(companyId) : undefined,
+          network_id: editingFormPage.network_id,
+          test_cases: defaultTemplate.test_cases
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to start mapping')
+      }
+      
+      const data = await response.json()
+      
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: data.session_id }
+      }))
+      
+      // Clear existing paths (they will be refreshed when mapping completes)
+      setCompletedPaths([])
+      
+      startMappingStatusPolling(formPageId, data.session_id)
+      setMessage(`Started mapping: ${editingFormPage.form_name}`)
+      
+    } catch (err: any) {
+      console.error('Failed to start mapping:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPageId)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to start mapping: ${err.message}`)
+    }
+  }
   
   const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
     // Clear any existing polling for this form
@@ -1018,6 +1135,11 @@ export default function DashboardPage() {
             }
           }))
           
+          // Auto-refresh completed paths if edit panel is open for this form (during mapping too)
+          if (editingFormPage && editingFormPage.id === formPageId) {
+            fetchCompletedPaths(formPageId)
+          }
+
           // Stop polling if completed or failed
           if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
             stopMappingStatusPolling(formPageId)
@@ -1026,7 +1148,7 @@ export default function DashboardPage() {
               next.delete(formPageId)
               return next
             })
-            
+
             if (data.status === 'completed') {
               setMessage(`Mapping completed for form page ${formPageId}`)
             } else if (data.status === 'failed') {
@@ -1075,10 +1197,13 @@ export default function DashboardPage() {
         // Stop old polling
         stopMappingStatusPolling(formPageId)
         
+        // Store the sessionId we're cancelling
+        const cancelledSessionId = status.sessionId
+        
         // Start polling until fully stopped (cancelled, failed, or completed)
         const pollUntilStopped = setInterval(async () => {
           try {
-            const statusResponse = await fetch(`/api/form-mapper/sessions/${status.sessionId}/status`, {
+            const statusResponse = await fetch(`/api/form-mapper/sessions/${cancelledSessionId}/status`, {
               headers: { 'Authorization': `Bearer ${token}` }
             })
             if (statusResponse.ok) {
@@ -1088,16 +1213,19 @@ export default function DashboardPage() {
               // Terminal states - fully stopped
               if (['cancelled', 'cancelled_ack', 'failed', 'completed'].includes(sessionStatus)) {
                 clearInterval(pollUntilStopped)
-                setMappingFormIds(prev => {
-                  const next = new Set(prev)
-                  next.delete(formPageId)
-                  return next
+                // Only update UI if no new session started for this form
+                setMappingStatus(prev => {
+                  if (prev[formPageId]?.sessionId === cancelledSessionId) {
+                    setMappingFormIds(prevIds => {
+                      const next = new Set(prevIds)
+                      next.delete(formPageId)
+                      return next
+                    })
+                    setMessage('Mapping stopped')
+                    return { ...prev, [formPageId]: { status: 'cancelled', sessionId: cancelledSessionId } }
+                  }
+                  return prev
                 })
-                setMappingStatus(prev => ({
-                  ...prev,
-                  [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
-                }))
-                setMessage('Mapping stopped')
               }
             }
           } catch (err) {
@@ -1108,15 +1236,18 @@ export default function DashboardPage() {
         // Safety timeout - stop polling after 30 seconds regardless
         setTimeout(() => {
           clearInterval(pollUntilStopped)
-          setMappingFormIds(prev => {
-            const next = new Set(prev)
-            next.delete(formPageId)
-            return next
+          // Only update UI if no new session started for this form
+          setMappingStatus(prev => {
+            if (prev[formPageId]?.sessionId === cancelledSessionId) {
+              setMappingFormIds(prevIds => {
+                const next = new Set(prevIds)
+                next.delete(formPageId)
+                return next
+              })
+              return { ...prev, [formPageId]: { status: 'cancelled', sessionId: cancelledSessionId } }
+            }
+            return prev
           })
-          setMappingStatus(prev => ({
-            ...prev,
-            [formPageId]: { status: 'cancelled', sessionId: status.sessionId }
-          }))
         }, 30000)
         
       } else {
@@ -1445,6 +1576,29 @@ export default function DashboardPage() {
     fetchCompletedPaths(formPage.id) // Fetch completed paths for this form
   }
 
+  const navigateToPreviousFormPage = () => {
+    if (!editingFormPage) return
+    const currentIndex = formPages.findIndex(fp => fp.id === editingFormPage.id)
+    if (currentIndex > 0) {
+      const prevFormPage = formPages[currentIndex - 1]
+      openEditPanel(prevFormPage)
+    }
+  }
+
+  const navigateToNextFormPage = () => {
+    if (!editingFormPage) return
+    const currentIndex = formPages.findIndex(fp => fp.id === editingFormPage.id)
+    if (currentIndex < formPages.length - 1) {
+      const nextFormPage = formPages[currentIndex + 1]
+      openEditPanel(nextFormPage)
+    }
+  }
+
+  const getCurrentFormPageIndex = () => {
+    if (!editingFormPage) return -1
+    return formPages.findIndex(fp => fp.id === editingFormPage.id)
+  }
+
   const updateNavigationStep = (index: number, field: keyof NavigationStep, value: string) => {
     setEditNavigationSteps(prev => {
       const updated = [...prev]
@@ -1554,6 +1708,27 @@ export default function DashboardPage() {
   const handleCancelPathStepEdit = () => {
     setEditingPathStep(null)
     setEditedPathStepData({})
+  }
+
+  const downloadPathJson = (path: CompletedPath) => {
+    const jsonData = {
+      path_number: path.path_number,
+      path_junctions: path.path_junctions,
+      steps: path.steps,
+      steps_count: path.steps?.length || 0,
+      is_verified: path.is_verified,
+      created_at: path.created_at,
+      form_page: editingFormPage?.form_name || 'unknown'
+    }
+    const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `path_${path.path_number}_${editingFormPage?.form_name?.replace(/\s+/g, '_') || 'form'}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   const getDisplaySteps = (steps: any[]): any[] => {
@@ -1697,29 +1872,99 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Back Button */}
-        <button
-          onClick={() => setShowEditPanel(false)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            background: getTheme().colors.cardBg,
-            border: `2px solid ${getTheme().colors.cardBorder}`,
-            color: getTheme().colors.textSecondary,
-            padding: '14px 24px',
-            borderRadius: '14px',
-            fontSize: '16px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            marginBottom: '28px',
-            transition: 'all 0.2s ease',
-            boxShadow: getTheme().colors.cardGlow
-          }}
-        >
-          <span style={{ fontSize: '20px' }}>←</span>
-          Back to Form Pages
-        </button>
+        {/* Back Button and Navigation */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+          <button
+            onClick={() => setShowEditPanel(false)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: getTheme().colors.cardBg,
+              border: `2px solid ${getTheme().colors.cardBorder}`,
+              color: getTheme().colors.textSecondary,
+              padding: '14px 24px',
+              borderRadius: '14px',
+              fontSize: '16px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: getTheme().colors.cardGlow
+            }}
+          >
+            <span style={{ fontSize: '20px' }}>←</span>
+            Back to Form Pages
+          </button>
+
+          {/* Previous / Next Navigation */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={navigateToPreviousFormPage}
+              disabled={getCurrentFormPageIndex() <= 0}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: getCurrentFormPageIndex() <= 0 
+                  ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
+                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
+                border: `1px solid ${getCurrentFormPageIndex() <= 0 
+                  ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
+                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
+                color: getCurrentFormPageIndex() <= 0 
+                  ? getTheme().colors.textSecondary
+                  : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: getCurrentFormPageIndex() <= 0 ? 'not-allowed' : 'pointer',
+                opacity: getCurrentFormPageIndex() <= 0 ? 0.5 : 1,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '16px' }}>←</span>
+              Previous
+            </button>
+
+            <span style={{ 
+              fontSize: '14px', 
+              color: getTheme().colors.textSecondary,
+              padding: '0 8px'
+            }}>
+              {getCurrentFormPageIndex() + 1} / {formPages.length}
+            </span>
+
+            <button
+              onClick={navigateToNextFormPage}
+              disabled={getCurrentFormPageIndex() >= formPages.length - 1}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: getCurrentFormPageIndex() >= formPages.length - 1
+                  ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
+                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
+                border: `1px solid ${getCurrentFormPageIndex() >= formPages.length - 1
+                  ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
+                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
+                color: getCurrentFormPageIndex() >= formPages.length - 1
+                  ? getTheme().colors.textSecondary
+                  : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: getCurrentFormPageIndex() >= formPages.length - 1 ? 'not-allowed' : 'pointer',
+                opacity: getCurrentFormPageIndex() >= formPages.length - 1 ? 0.5 : 1,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Next
+              <span style={{ fontSize: '16px' }}>→</span>
+            </button>
+          </div>
+        </div>
 
         {/* Edit Form Page Card */}
         <div style={{
@@ -1786,11 +2031,17 @@ export default function DashboardPage() {
                 ) : (
                   <button 
                     onClick={() => {
-                      setShowEditPanel(false)
-                      openMapModal(editingFormPage)
+                      if (completedPaths.length > 0) {
+                        // Show warning if paths exist
+                        if (window.confirm(`⚠️ Warning: This form has ${completedPaths.length} existing path(s) that will be deleted.\n\nAre you sure you want to re-map this form page?`)) {
+                          startMappingFromEditPanel()
+                        }
+                      } else {
+                        startMappingFromEditPanel()
+                      }
                     }} 
                     style={{
-                      background: '#0ea5e9',
+                      background: completedPaths.length > 0 ? '#f59e0b' : '#0ea5e9',
                       color: 'white',
                       padding: '10px 20px',
                       border: 'none',
@@ -1800,7 +2051,7 @@ export default function DashboardPage() {
                       cursor: 'pointer'
                     }}
                   >
-                    🗺️ Map Form
+                    {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
                   </button>
                 )
               )}
@@ -2179,7 +2430,7 @@ export default function DashboardPage() {
               }}>
                 <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋</div>
                 <p style={{ fontSize: '16px', margin: 0, color: getTheme().colors.textPrimary }}>No completed paths yet.</p>
-                <p style={{ fontSize: '14px', margin: '8px 0 0', opacity: 0.7 }}>Click "Map Form" to discover paths through this form.</p>
+                <p style={{ fontSize: '14px', margin: '8px 0 0', opacity: 0.7 }}>Click "Map Form Page" to discover paths through this form.</p>
               </div>
             ) : (
               <div style={{ 
@@ -2191,7 +2442,7 @@ export default function DashboardPage() {
                 {/* Table Header */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '80px 1fr 100px 100px 140px',
+                  gridTemplateColumns: '80px 1fr 80px 80px 120px 80px',
                   gap: '12px',
                   padding: '14px 20px',
                   background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.15)',
@@ -2207,6 +2458,7 @@ export default function DashboardPage() {
                   <div style={{ textAlign: 'center' }}>Steps</div>
                   <div style={{ textAlign: 'center' }}>Verified</div>
                   <div>Created</div>
+                  <div style={{ textAlign: 'center' }}>Actions</div>
                 </div>
 
                 {/* Path Rows */}
@@ -2217,7 +2469,7 @@ export default function DashboardPage() {
                       onDoubleClick={() => handlePathRowDoubleClick(path.id)}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '80px 1fr 100px 100px 140px',
+                        gridTemplateColumns: '80px 1fr 80px 80px 120px 80px',
                         gap: '12px',
                         padding: '16px 20px',
                         borderBottom: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.05)'}`,
@@ -2297,6 +2549,27 @@ export default function DashboardPage() {
                       <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary }}>
                         {path.created_at ? new Date(path.created_at).toLocaleDateString() : '-'}
                       </div>
+
+                      {/* Download Button */}
+                      <div style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            downloadPathJson(path)
+                          }}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            border: `1px solid ${isLightTheme() ? '#059669' : '#10b981'}`,
+                            fontWeight: 500,
+                            background: 'transparent',
+                            color: isLightTheme() ? '#059669' : '#10b981'
+                          }}
+                          title="Download path as JSON"
+                        >⬇️ JSON</button>
+                      </div>
                     </div>
 
                     {/* Expanded Content */}
@@ -2342,150 +2615,97 @@ export default function DashboardPage() {
 
                         {/* Steps List */}
                         <div>
-                          <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: isLightTheme() ? '#065f46' : '#6ee7b7', fontWeight: 600 }}>
+                          <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: isLightTheme() ? '#065f46' : '#6ee7b7', fontWeight: 600 }}>
                             📝 Steps ({path.steps?.length || 0})
                           </h4>
-                          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                            {getDisplaySteps(path.steps || []).map((step, idx) => (
-                              <div key={idx} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: '10px 12px',
-                                background: isLightTheme() ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.2)',
-                                borderRadius: '8px',
-                                marginBottom: '8px',
-                                gap: '12px',
-                                border: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.05)'}`
-                              }}>
-                                {/* Step Number */}
-                                <div style={{
-                                  width: '28px',
-                                  height: '28px',
-                                  borderRadius: '50%',
-                                  background: isLightTheme() ? '#0ea5e9' : getTheme().colors.accentPrimary,
-                                  color: '#fff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  flexShrink: 0
-                                }}>{step.step_number || idx + 1}</div>
+                          <div>
+                            {getDisplaySteps(path.steps || []).map((step, idx) => {
+                              const isVerifyStep = step.action?.toLowerCase() === 'verify' || step.action?.toLowerCase().includes('verify')
+                              const isEditing = editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx
+                              return (
+                              <div 
+                                key={idx} 
+                                onClick={() => {
+                                  if (editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx) {
+                                    handleCancelPathStepEdit()
+                                  } else {
+                                    handleEditPathStep(path.id, idx, step)
+                                  }
+                                }}
+                                style={{
+                                  padding: '14px 16px',
+                                  background: isEditing
+                                    ? (isVerifyStep 
+                                        ? (isLightTheme() ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.15)')
+                                        : (isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.15)'))
+                                    : (isLightTheme() ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.2)'),
+                                  borderRadius: '8px',
+                                  marginBottom: '10px',
+                                  border: isEditing
+                                    ? (isVerifyStep
+                                        ? `2px solid ${isLightTheme() ? '#10b981' : '#059669'}`
+                                        : `2px solid ${isLightTheme() ? '#3b82f6' : '#6366f1'}`)
+                                    : `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.05)'}`,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}>
+                                {/* Step Header Row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  {/* Step Number */}
+                                  <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: isVerifyStep 
+                                      ? (isLightTheme() ? '#10b981' : '#059669')
+                                      : (isLightTheme() ? '#0ea5e9' : getTheme().colors.accentPrimary),
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    flexShrink: 0
+                                  }}>{step.step_number || idx + 1}</div>
 
-                                {/* Action Badge */}
-                                <div style={{
-                                  background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)',
-                                  color: isLightTheme() ? '#1e40af' : '#93c5fd',
-                                  padding: '3px 8px',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: 500,
-                                  textTransform: 'uppercase',
-                                  minWidth: '50px',
-                                  textAlign: 'center'
-                                }}>{step.action}</div>
+                                  {/* Action Badge */}
+                                  <div style={{
+                                    background: isVerifyStep
+                                      ? (isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.2)')
+                                      : (isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)'),
+                                    color: isVerifyStep
+                                      ? (isLightTheme() ? '#166534' : '#6ee7b7')
+                                      : (isLightTheme() ? '#1e40af' : '#93c5fd'),
+                                    padding: '5px 12px',
+                                    borderRadius: '4px',
+                                    fontSize: '13px',
+                                    fontWeight: 600,
+                                    textTransform: 'uppercase',
+                                    minWidth: '60px',
+                                    textAlign: 'center'
+                                  }}>{step.action}</div>
 
-                                {/* Step Details or Edit Form */}
-                                {editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx ? (
-                                  <div style={{ flex: 1, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <input
-                                      style={{
-                                        padding: '6px 10px',
-                                        border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                        borderRadius: '4px',
-                                        fontSize: '13px',
-                                        width: '180px',
-                                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
-                                        color: getTheme().colors.textPrimary
-                                      }}
-                                      value={editedPathStepData.selector || ''}
-                                      onChange={e => setEditedPathStepData({ ...editedPathStepData, selector: e.target.value })}
-                                      placeholder="Selector"
-                                    />
-                                    <input
-                                      style={{
-                                        padding: '6px 10px',
-                                        border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                        borderRadius: '4px',
-                                        fontSize: '13px',
-                                        width: '120px',
-                                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
-                                        color: getTheme().colors.textPrimary
-                                      }}
-                                      value={editedPathStepData.value || ''}
-                                      onChange={e => setEditedPathStepData({ ...editedPathStepData, value: e.target.value })}
-                                      placeholder="Value"
-                                    />
-                                    <input
-                                      style={{
-                                        padding: '6px 10px',
-                                        border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                        borderRadius: '4px',
-                                        fontSize: '13px',
-                                        flex: 1,
-                                        minWidth: '150px',
-                                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
-                                        color: getTheme().colors.textPrimary
-                                      }}
-                                      value={editedPathStepData.description || ''}
-                                      onChange={e => setEditedPathStepData({ ...editedPathStepData, description: e.target.value })}
-                                      placeholder="Description"
-                                    />
-                                    <button 
-                                      onClick={() => handleSavePathStep(path.id, idx)}
-                                      style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer',
-                                        border: 'none',
-                                        fontWeight: 500,
-                                        background: '#10b981',
-                                        color: '#fff'
-                                      }}
-                                    >Save</button>
-                                    <button 
-                                      onClick={handleCancelPathStepEdit}
-                                      style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer',
-                                        border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                        fontWeight: 500,
-                                        background: isLightTheme() ? '#f5f5f5' : 'rgba(255,255,255,0.1)',
-                                        color: getTheme().colors.textSecondary
-                                      }}
-                                    >Cancel</button>
+                                  {/* Description */}
+                                  <div style={{ 
+                                    flex: 1, 
+                                    fontSize: '15px', 
+                                    color: getTheme().colors.textPrimary, 
+                                    fontWeight: 500 
+                                  }}>
+                                    {step.description || `${step.action} on element`}
                                   </div>
-                                ) : (
-                                  <>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: '13px', color: getTheme().colors.textPrimary }}>
-                                        {step.description || `${step.action} on ${step.selector}`}
-                                      </div>
-                                      <div style={{ fontSize: '11px', color: getTheme().colors.textSecondary, marginTop: '2px' }}>
-                                        <code style={{ 
-                                          background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.1)', 
-                                          padding: '2px 6px', 
-                                          borderRadius: '3px',
-                                          fontSize: '10px'
-                                        }}>
-                                          {step.selector?.length > 60 ? step.selector.substring(0, 60) + '...' : step.selector}
-                                        </code>
-                                        {step.value && (
-                                          <span style={{ marginLeft: '8px' }}>
-                                            → <strong>{step.value}</strong>
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
+
+                                  {/* Edit Button */}
+                                  {!isEditing && (
                                     <button
-                                      onClick={() => handleEditPathStep(path.id, idx, step)}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleEditPathStep(path.id, idx, step)
+                                      }}
                                       style={{
-                                        padding: '4px 8px',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '13px',
                                         cursor: 'pointer',
                                         border: `1px solid ${isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary}`,
                                         fontWeight: 500,
@@ -2494,10 +2714,138 @@ export default function DashboardPage() {
                                         flexShrink: 0
                                       }}
                                     >✏️ Edit</button>
-                                  </>
+                                  )}
+                                </div>
+
+                                {/* Step Details (non-edit mode) */}
+                                {!(editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx) && (
+                                  <div style={{ marginTop: '10px', marginLeft: '44px' }}>
+                                    <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginBottom: '6px' }}>
+                                      <span style={{ fontWeight: 500, color: isLightTheme() ? '#374151' : '#9ca3af' }}>Selector: </span>
+                                      <code style={{ 
+                                        background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.1)', 
+                                        padding: '4px 10px', 
+                                        borderRadius: '4px',
+                                        fontSize: '13px'
+                                      }}>
+                                        {step.selector || 'N/A'}
+                                      </code>
+                                    </div>
+                                    {step.value && (
+                                      <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary }}>
+                                        <span style={{ fontWeight: 500, color: isLightTheme() ? '#374151' : '#9ca3af' }}>Value: </span>
+                                        <strong style={{ color: getTheme().colors.textPrimary }}>{step.value}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Edit Form (Selector and Description editable, Value read-only) */}
+                                {editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx && (
+                                  <div style={{ marginTop: '16px', marginLeft: '44px' }}>
+                                    {/* Line 1: Selector */}
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Selector</label>
+                                      <input
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                          width: '100%',
+                                          padding: '10px 14px',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                          borderRadius: '6px',
+                                          fontSize: '14px',
+                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
+                                          color: getTheme().colors.textPrimary,
+                                          boxSizing: 'border-box'
+                                        }}
+                                        value={editedPathStepData.selector || ''}
+                                        onChange={e => setEditedPathStepData({ ...editedPathStepData, selector: e.target.value })}
+                                        placeholder="CSS selector or XPath"
+                                      />
+                                    </div>
+
+                                    {/* Line 2: Value (Read-only) */}
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Value <span style={{ fontSize: '11px', opacity: 0.7 }}>(read-only)</span></label>
+                                      <input
+                                        onClick={(e) => e.stopPropagation()}
+                                        readOnly
+                                        style={{
+                                          width: '100%',
+                                          padding: '10px 14px',
+                                          border: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)'}`,
+                                          borderRadius: '6px',
+                                          fontSize: '14px',
+                                          background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.05)',
+                                          color: getTheme().colors.textSecondary,
+                                          boxSizing: 'border-box',
+                                          cursor: 'not-allowed'
+                                        }}
+                                        value={editedPathStepData.value || ''}
+                                        placeholder="No value"
+                                      />
+                                    </div>
+
+                                    {/* Line 3: Description */}
+                                    <div style={{ marginBottom: '16px' }}>
+                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Description</label>
+                                      <input
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                          width: '100%',
+                                          padding: '10px 14px',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                          borderRadius: '6px',
+                                          fontSize: '14px',
+                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
+                                          color: getTheme().colors.textPrimary,
+                                          boxSizing: 'border-box'
+                                        }}
+                                        value={editedPathStepData.description || ''}
+                                        onChange={e => setEditedPathStepData({ ...editedPathStepData, description: e.target.value })}
+                                        placeholder="Step description"
+                                      />
+                                    </div>
+
+                                    {/* Buttons */}
+                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleCancelPathStepEdit()
+                                        }}
+                                        style={{
+                                          padding: '8px 16px',
+                                          borderRadius: '6px',
+                                          fontSize: '13px',
+                                          cursor: 'pointer',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                          fontWeight: 500,
+                                          background: isLightTheme() ? '#f5f5f5' : 'rgba(255,255,255,0.1)',
+                                          color: getTheme().colors.textSecondary
+                                        }}
+                                      >Cancel</button>
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleSavePathStep(path.id, idx)
+                                        }}
+                                        style={{
+                                          padding: '8px 20px',
+                                          borderRadius: '6px',
+                                          fontSize: '13px',
+                                          cursor: 'pointer',
+                                          border: 'none',
+                                          fontWeight: 600,
+                                          background: '#10b981',
+                                          color: '#fff'
+                                        }}
+                                      >Save</button>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-                            ))}
+                            )})}
                           </div>
                         </div>
                       </div>
@@ -2518,7 +2866,7 @@ export default function DashboardPage() {
               textAlign: 'center',
               border: `1px solid ${isLightTheme() ? '#fde047' : 'rgba(250, 204, 21, 0.2)'}`
             }}>
-              💡 Tip: Double-click on a path row to expand and see its steps and junction options
+              💡 Tip: Double-click a path row to expand • Click a step to edit/close it
             </div>
           </div>
 
@@ -3198,7 +3546,7 @@ export default function DashboardPage() {
                     fontSize: '15px',
                     textTransform: 'uppercase',
                     letterSpacing: '1px'
-                  }}>Path Steps</th>
+                  }}>Paths</th>
                   <th style={{
                     textAlign: 'left',
                     padding: '18px 24px',
@@ -3212,7 +3560,7 @@ export default function DashboardPage() {
                     fontSize: '15px',
                     textTransform: 'uppercase',
                     letterSpacing: '1px'
-                  }}>Type</th>
+                  }}>Test Site URL</th>
                   <th 
                     style={{
                       textAlign: 'left',
@@ -3309,44 +3657,35 @@ export default function DashboardPage() {
                     }}>
                       <span style={{
                         background: isLightTheme() 
-                          ? `${getTheme().colors.accentPrimary}18`
-                          : `${getTheme().colors.accentPrimary}25`,
-                        color: getTheme().colors.accentSecondary,
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : 'rgba(16, 185, 129, 0.2)',
+                        color: isLightTheme() ? '#059669' : '#6ee7b7',
                         padding: '8px 16px',
                         borderRadius: '20px',
                         fontSize: '15px',
                         fontWeight: 600,
-                        border: `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '80' : '60'}`,
-                        boxShadow: isLightTheme() ? `0 1px 4px ${getTheme().colors.accentPrimary}25` : getTheme().colors.iconGlow
+                        border: `1px solid ${isLightTheme() ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`,
+                        boxShadow: isLightTheme() ? '0 1px 4px rgba(16, 185, 129, 0.2)' : '0 0 10px rgba(16, 185, 129, 0.15)'
                       }}>
-                        {form.navigation_steps?.length || 0} steps
+                        {(form as any).paths_count || 0} paths
                       </span>
                     </td>
                     <td style={{
                       padding: '20px 24px',
                       borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
                       verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
+                      fontSize: '14px',
+                      color: getTheme().colors.textSecondary,
+                      maxWidth: '250px'
                     }}>
-                      <span style={{
-                        background: form.is_root 
-                          ? (isLightTheme() ? `${getTheme().colors.accentPrimary}15` : `${getTheme().colors.accentPrimary}20`)
-                          : (isLightTheme() ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.2)'),
-                        color: form.is_root ? getTheme().colors.accentSecondary : (isLightTheme() ? '#b45309' : '#fbbf24'),
-                        padding: '8px 14px',
-                        borderRadius: '16px',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        border: form.is_root 
-                          ? `1px solid ${getTheme().colors.accentPrimary}${isLightTheme() ? '70' : '50'}` 
-                          : `1px solid rgba(245, 158, 11, ${isLightTheme() ? '0.6' : '0.4'})`,
-                        boxShadow: form.is_root 
-                          ? (isLightTheme() ? `0 1px 4px ${getTheme().colors.accentPrimary}20` : getTheme().colors.iconGlow)
-                          : (isLightTheme() ? '0 1px 4px rgba(245, 158, 11, 0.2)' : '0 0 10px rgba(245, 158, 11, 0.15)')
-                      }}>
-                        {form.is_root ? 'Root' : 'Child'}
-                      </span>
+                      <div style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        color: isLightTheme() ? '#0369a1' : '#7dd3fc'
+                      }} title={form.url}>
+                        {form.url || '-'}
+                      </div>
                     </td>
                     <td style={{
                       padding: '20px 24px',
@@ -3379,7 +3718,7 @@ export default function DashboardPage() {
                               background: 'rgba(156, 163, 175, 0.2)',
                               color: '#9ca3af',
                               borderRadius: '10px',
-                              fontSize: '15px',
+                              fontSize: '14px',
                               fontWeight: 600,
                               border: '2px solid rgba(156, 163, 175, 0.4)',
                               boxShadow: '0 0 15px rgba(156, 163, 175, 0.3)'
@@ -3393,7 +3732,7 @@ export default function DashboardPage() {
                               background: 'rgba(245, 158, 11, 0.2)',
                               color: '#f59e0b',
                               borderRadius: '10px',
-                              fontSize: '15px',
+                              fontSize: '14px',
                               fontWeight: 600,
                               border: '2px solid rgba(245, 158, 11, 0.4)',
                               boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
@@ -3419,60 +3758,7 @@ export default function DashboardPage() {
                             </button>
                           </div>
                           )
-                        ) : mappingStatus[form.id]?.status === 'completed' ? (
-                          <span style={{
-                            padding: '10px 16px',
-                            background: `${getTheme().colors.statusOnline}20`,
-                            color: getTheme().colors.statusOnline,
-                            borderRadius: '10px',
-                            fontSize: '15px',
-                            fontWeight: 600,
-                            border: `2px solid ${getTheme().colors.statusOnline}50`,
-                            boxShadow: getTheme().colors.statusGlow
-                          }}>
-                            ✅ Mapped
-                          </span>
-                        ) : mappingStatus[form.id]?.status === 'failed' ? (
-                          <button 
-                            onClick={() => openMapModal(form)} 
-                            className="action-btn"
-                            style={{
-                              background: 'rgba(239, 68, 68, 0.2)',
-                              border: '2px solid rgba(239, 68, 68, 0.4)',
-                              borderRadius: '12px',
-                              padding: '16px 18px',
-                              cursor: 'pointer',
-                              fontSize: '20px',
-                              transition: 'all 0.2s ease',
-                              boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
-                            }}
-                            title={`Retry mapping - ${mappingStatus[form.id]?.error || 'Failed'}`}
-                          >
-                            🔄
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => openMapModal(form)} 
-                            className="action-btn"
-                            style={{
-                              background: isLightTheme() 
-                                ? 'rgba(30, 64, 175, 0.08)'
-                                : `${getTheme().colors.accentPrimary}20`,
-                              border: isLightTheme() 
-                                ? '1px solid rgba(30, 64, 175, 0.25)'
-                                : `2px solid ${getTheme().colors.accentPrimary}50`,
-                              borderRadius: '12px',
-                              padding: '16px 18px',
-                              cursor: 'pointer',
-                              fontSize: '20px',
-                              transition: 'all 0.2s ease',
-                              boxShadow: isLightTheme() ? 'none' : getTheme().colors.iconGlow
-                            }}
-                            title="Map this form page"
-                          >
-                            🗺️
-                          </button>
-                        )}
+                        ) : null}
                         <button 
                           onClick={() => openEditPanel(form)} 
                           className="action-btn"
@@ -3521,87 +3807,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Test Template Selection Modal */}
-      {showMapModal && selectedFormForMapping && (
-        <div style={modalOverlayStyle}>
-          <div style={{
-            ...smallModalContentStyle,
-            maxWidth: '500px'
-          }}>
-            <h3 style={{ marginTop: 0, color: '#fff', fontSize: '22px', fontWeight: 700 }}>
-              <span style={{ marginRight: '10px' }}>🗺️</span>
-              Map Form: {selectedFormForMapping.form_name}
-            </h3>
-            
-            <p style={{ fontSize: '15px', color: '#94a3b8', margin: '16px 0' }}>
-              Select a test template to define what tests will be generated:
-            </p>
-            
-            <div style={{ marginBottom: '24px' }}>
-              {testTemplates.map(template => (
-                <label 
-                  key={template.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '16px',
-                    marginBottom: '12px',
-                    background: selectedTemplateId === template.id 
-                      ? 'rgba(99, 102, 241, 0.2)' 
-                      : 'rgba(255,255,255,0.05)',
-                    border: selectedTemplateId === template.id 
-                      ? '2px solid rgba(99, 102, 241, 0.5)' 
-                      : '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="testTemplate"
-                    checked={selectedTemplateId === template.id}
-                    onChange={() => setSelectedTemplateId(template.id)}
-                    style={{ marginTop: '4px' }}
-                  />
-                  <div>
-                    <div style={{ color: '#fff', fontWeight: 600, fontSize: '16px' }}>
-                      {template.display_name}
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '14px', marginTop: '4px' }}>
-                      {template.test_cases.length} test(s): {template.test_cases.map((t: any) => t.test_id).join(', ')}
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => {
-                  setShowMapModal(false)
-                  setSelectedFormForMapping(null)
-                }} 
-                style={secondaryButtonStyle}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={startMappingWithTemplate}
-                style={{
-                  ...primaryButtonStyle,
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)'
-                }}
-                disabled={!selectedTemplateId}
-              >
-                🗺️ Start Mapping
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Delete Form Page Modal */}
       {showDeleteModal && formPageToDelete && (
         <div style={modalOverlayStyle}>
@@ -3625,13 +3830,14 @@ export default function DashboardPage() {
             
             <div style={deleteWarningBoxStyle}>
               <div style={{ display: 'flex', gap: '14px' }}>
-                <span style={{ fontSize: '24px' }}>📝</span>
+                <span style={{ fontSize: '24px' }}>🚨</span>
                 <div>
-                  <strong style={{ fontSize: '15px', color: '#00BBF9' }}>Important Note:</strong>
-                  <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#94a3b8' }}>
-                    The form mapping (if present) will <strong style={{ color: '#fff' }}>NOT</strong> be deleted. 
-                    Only the discovered form page entry will be removed from the list.
-                  </p>
+                  <strong style={{ fontSize: '15px', color: '#ef4444' }}>Warning - This will permanently delete:</strong>
+                  <ul style={{ margin: '8px 0 0', fontSize: '14px', color: '#94a3b8', paddingLeft: '20px' }}>
+                    <li style={{ marginBottom: '4px' }}>All discovered <strong style={{ color: '#fff' }}>paths</strong> for this form</li>
+                    <li style={{ marginBottom: '4px' }}>All <strong style={{ color: '#fff' }}>navigation steps</strong> leading to this form</li>
+                    <li>The form page entry itself</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -3942,7 +4148,7 @@ const statValueStyle: React.CSSProperties = {
 
 const errorBoxStyle: React.CSSProperties = {
   background: 'rgba(239, 68, 68, 0.15)',
-  color: '#fca5a5',
+  color: '#dc2626',
   padding: '20px 28px',
   borderRadius: '18px',
   marginBottom: '28px',
@@ -3950,12 +4156,13 @@ const errorBoxStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '16px',
   fontSize: '17px',
-  border: '1px solid rgba(239, 68, 68, 0.3)'
+  fontWeight: 600,
+  border: '2px solid rgba(239, 68, 68, 0.5)'
 }
 
 const successBoxStyle: React.CSSProperties = {
   background: 'rgba(16, 185, 129, 0.15)',
-  color: '#6ee7b7',
+  color: '#059669',
   padding: '18px 24px',
   borderRadius: '16px',
   marginBottom: '28px',
@@ -3963,7 +4170,8 @@ const successBoxStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '14px',
   fontSize: '16px',
-  border: '1px solid rgba(16, 185, 129, 0.3)'
+  fontWeight: 600,
+  border: '2px solid rgba(16, 185, 129, 0.5)'
 }
 
 const closeButtonStyle: React.CSSProperties = {
