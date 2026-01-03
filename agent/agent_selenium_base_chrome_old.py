@@ -30,7 +30,6 @@ from selenium.common.exceptions import (
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from chrome_manager import ChromeManager
 
 try:
     from reportlab.pdfgen import canvas
@@ -279,7 +278,7 @@ class AgentSelenium:
             Dict with success status and message
         """
         try:
-            if browser_type.lower() == "chrome_obsolete":
+            if browser_type.lower() == "chrome":
                 options = Options()
 
                 if headless:
@@ -300,7 +299,7 @@ class AgentSelenium:
                 selenium_profile_dir = os.path.join(tempfile.gettempdir(), "quattera-selenium-profile")
                 options.add_argument(f"--user-data-dir={selenium_profile_dir}")
 
-
+                
 
                 try:
                     import os
@@ -329,14 +328,7 @@ class AgentSelenium:
                     self.driver = webdriver.Chrome(options=options)
                     self.driver.set_page_load_timeout(40)
                     print("[WebDriver] ✅ Initialized successfully (alternative method)")
-            elif browser_type.lower() == "chrome":
-                chrome_manager = ChromeManager()
-                self.driver = chrome_manager.initialize_driver(
-                    headless=headless,
-                    download_dir=download_dir
-                )
-                print(f"[WebDriver] ✅ Chrome initialized (version: {chrome_manager.chrome_version or 'unknown'})")
-
+                
             elif browser_type.lower() == "firefox":
                 print("[WebDriver] Initializing Firefox browser...")
                 import subprocess

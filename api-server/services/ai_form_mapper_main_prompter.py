@@ -1791,19 +1791,27 @@ Generate steps to VERIFY all fields that were filled during the test, plus any n
 3. If data is on a different page (e.g., need to click "View" button), add navigation steps
 4. Verify ALL fields on EACH page you visit - do NOT skip fields even if verified on a previous page
 
+**⚠️ CRITICAL - YOU MUST GENERATE VERIFY STEPS:**
+- Your job is to OUTPUT verify step JSON objects, NOT to visually confirm data yourself
+- Even if you can SEE the correct values in the DOM/screenshot, you MUST generate verify steps
+- The verify steps will be EXECUTED by automation later - without them, nothing is verified
+- Return `"steps": []` ONLY when verify steps were ALREADY GENERATED in previous calls (check "Steps Already Completed" for existing verify actions)
+- If you see a detail/view page with data but NO verify steps in "Steps Already Completed", you MUST generate verify steps NOW
+
 **Current page detection:**
-- If you see a LIST/TABLE page: Verify visible columns, then click View to see details
-- If you see a VIEW/DETAIL page: Verify ALL fields displayed on this page
+- If you see a LIST/TABLE page, follow this EXACT order:
+  1. **SEARCH (MANDATORY):** Check DOM for search input (`input[type='search']`, `input#search`, `input[placeholder*='Search']`). If exists → Generate fill step to search for record using unique value (name/email). If no search exists → Skip to step 2.
+  2. **VERIFY COLUMNS:** Generate verify steps for visible table columns (use `//tr[1]//td[N]` selectors)
+  3. **CLICK VIEW:** Generate click step for View button with `force_regenerate_verify: true`
+- If you see a VIEW/DETAIL page: Generate `"action": "verify"` steps for ALL fields displayed on this page
 
-**⚠️ CRITICAL - NO LOOPS:**
-Look at "Steps Already Completed". If you see BOTH:
-1. A "click View" step that navigated to a detail page, AND
-2. Verify steps for the detail page fields
+**WHEN TO RETURN EMPTY STEPS `"steps": []`:**
+Return empty ONLY if "Steps Already Completed" already contains `"action": "verify"` steps for the current page's fields.
 
-Then verification is COMPLETE. Generate ONLY `"steps": []` (empty array).
-
-Do NOT generate another "click View" if View was already clicked and detail page was already verified.
-Do NOT create a loop of: List → View → Back to List → View → Back to List...
+**NO GOING BACKWARDS:**
+- If "Steps Already Completed" shows you already clicked "View" and verified the detail page → You are DONE. Return empty steps.
+- Do NOT click "Back to List" after verifying the detail page.
+- The verification flow is ONE DIRECTION: List → View → Done. Never go back.
 
 ## Response Format:
 ```json
@@ -1862,11 +1870,25 @@ When the same field label appears multiple times, scope the selector to the SECT
 - ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - use index as last resort
 - ❌ `//label[contains(text(), 'City')]/..//span` - not unique when multiple exist
 
-**TABLE/LIST verification - use POSITIONAL selectors:**
+**TABLE/LIST verification - MANDATORY FOR IT TO SUCCEED -> SEARCH FIRST:**
+Before generating ANY verify steps for a list/table, check for search input:
+1. Look for search box in DOM: `input[type='search']`, `input#search`, `input[placeholder*='Search']`, `input[placeholder*='Filter']`
+2. If search exists: Generate fill step to search, then wait_for_ready, then verify steps
+3. If NO search exists: Use positional selectors on first row (newly added items typically appear at top)
+
+**Why search first:** Positional selectors like `//tr[1]//td[1]` may fail on re-runs if multiple records exist. Searching isolates your record.
+
+**Example with search:**
+1. `{{"action": "fill", "selector": "input#searchBox", "value": "john@email.com", "description": "Search for created record", "force_regenerate_verify": true}}`
+2. `{{"action": "wait_for_ready", "selector": "table", "description": "Wait for search results"}}`
+3. `{{"action": "verify", "selector": "//table//tbody//tr[1]//td[1]", "value": "John", "description": "Verify name"}}`
+
+**Positional selectors (use after search, or if no search available):**
 - First data row, column 1: `//table//tbody//tr[1]//td[1]`
 - First data row, column 2: `//table//tbody//tr[1]//td[2]`
 - Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
 - By row with unique class: `//tr[contains(@class,'highlight')]//td[1]`
+
 
 **❌ WRONG selectors:**
 - `//div[contains(text(), 'john@email.com')]` - value in selector!
@@ -1883,7 +1905,7 @@ When the same field label appears multiple times, scope the selector to the SECT
 
 ## Navigation Rules (for accessing view pages):
 
-**Available actions:** click, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, switch_to_frame, switch_to_default
+**Available actions:** click, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, select, hover, switch_to_frame, switch_to_default
 
 **Selector preference order:**
 1. ID: `#buttonId` or `button#viewBtn`
@@ -1898,8 +1920,9 @@ When the same field label appears multiple times, scope the selector to the SECT
 **force_regenerate_verify field (stay in verification mode):**
 - Set to `true` for ANY navigation step that leads to a page with MORE fields to verify:
   * Click "View" button to see detail page → `force_regenerate_verify: true`
-  * Click "Back to List" to verify list columns → `force_regenerate_verify: true`
   * Click row in table to see details → `force_regenerate_verify: true`
+  * Fill search box to filter list → `force_regenerate_verify: true`
+  * ANy other action that is related to the list/view pages → `force_regenerate_verify: true`
 - Set to `false` for verify steps, wait steps, and final navigation (no more verification needed)
 - ⚠️ IMPORTANT: If clicking a button will show NEW fields to verify, use `force_regenerate_verify: true`, NOT `force_regenerate: true`
 
@@ -2019,6 +2042,16 @@ Return ONLY the JSON object.
             if response_data:
                 steps = response_data.get("steps", [])
                 print(f"[AIHelper] Successfully regenerated {len(steps)} verify steps")
+
+                # DEBUG: Print full response when 0 steps returned to investigate why
+                if len(steps) == 0:
+                    print("=" * 80)
+                    print("[AIHelper] ⚠️ DEBUG: VERIFY REGENERATE RETURNED 0 STEPS")
+                    print("=" * 80)
+                    print(f"[AIHelper] prompt given to AI:\n{prompt}")
+                    print(f"[AIHelper] Full AI response:\n{response_text}")
+                    print("=" * 80)
+
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
                 print(f"[AIHelper] No JSON with 'steps' key found. Raw response:\n{response_text[:2000]}")

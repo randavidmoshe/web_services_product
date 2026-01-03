@@ -71,6 +71,7 @@ async def upload_user_inputs(
         db.commit()
 
         # Fire Celery task (no wait)
+        from celery_app import celery  # Ensure celery app is loaded first
         from tasks.user_requirements_tasks import parse_user_inputs
         parse_user_inputs.delay(
             form_page_route_id=form_page_route_id,

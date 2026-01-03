@@ -1,0 +1,131 @@
+"""
+POM Generator Celery Tasks
+Generates Page Object Model code using AI
+"""
+
+import os
+import json
+import logging
+from celery import shared_task
+from anthropic import Anthropic
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(name='tasks.generate_pom', bind=True)
+def generate_pom(
+        self,
+        form_page_data: dict,
+        paths_data: list,
+        language: str,
+        framework: str
+):
+    """
+    Generate POM code using Claude AI
+    Returns the generated code as task result
+    """
+    try:
+        # Update state to processing
+        self.update_state(state='PROCESSING', meta={'progress': 10, 'message': 'Building prompt...'})
+
+        # Build the prompt
+        prompt = build_pom_prompt(form_page_data, paths_data, language, framework)
+
+        # Update progress
+        self.update_state(state='PROCESSING', meta={'progress': 30, 'message': 'Calling AI...'})
+
+        # Call Claude API
+        client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        generated_code = response.content[0].text
+
+        # Extract code from response (remove markdown if present)
+        if "```" in generated_code:
+            lines = generated_code.split("\n")
+            code_lines = []
+            in_code_block = False
+            for line in lines:
+                if line.startswith("```") and not in_code_block:
+                    in_code_block = True
+                    continue
+                elif line.startswith("```") and in_code_block:
+                    in_code_block = False
+                    continue
+                elif in_code_block:
+                    code_lines.append(line)
+            generated_code = "\n".join(code_lines)
+
+        logger.info(f"POM generation completed for task {self.request.id}")
+
+        # Return the result (Celery stores it automatically)
+        return {
+            'success': True,
+            'code': generated_code,
+            'language': language,
+            'framework': framework
+        }
+
+    except Exception as e:
+        logger.error(f"POM generation failed: {str(e)}")
+        self.update_state(state='FAILURE', meta={'error': str(e)})
+        raise
+
+
+def build_pom_prompt(form_page_data: dict, paths_data: list, language: str, framework: str) -> str:
+    """Build the prompt for POM generation"""
+
+    navigation_steps = form_page_data.get('navigation_steps', [])
+    has_navigation = navigation_steps and len(navigation_steps) > 0
+
+    prompt = f"""Generate a complete Page Object Model (POM) class for the following form page.
+
+**Language:** {language}
+**Framework:** {framework}
+
+**Form Page Information:**
+- Class Name: {form_page_data.get('form_name', 'FormPage').replace(' ', '')}Page
+- URL: {form_page_data.get('url', '')}
+
+**Navigation Steps to Reach the Form:**
+{json.dumps(navigation_steps, indent=2) if has_navigation else "Direct URL navigation only"}
+
+**Paths (Form Interaction Steps):**
+{json.dumps(paths_data, indent=2)}
+
+**Requirements:**
+1. Create a complete, production-ready POM class
+2. Include a `navigate()` method that:
+   - Navigates to the URL: {form_page_data.get('url', '')}
+   - If navigation steps exist, execute them after URL navigation
+3. Include all locators from both navigation steps and path steps
+4. Create a method for each path (e.g., `complete_path_1()`, `complete_path_2()`)
+5. Each path method should:
+   - Call `navigate()` first (or assume already navigated)
+   - Execute all steps in the path in order
+6. Use proper {language} conventions and {framework} best practices
+7. Include docstrings/comments explaining each method
+8. Handle different action types appropriately:
+   - "fill" -> send_keys / fill / type (input text)
+   - "click" -> click element
+   - "select" -> select dropdown option by visible text
+   - "verify" -> create assertion method (assert element contains expected value)
+   - "hover" -> hover/mouse over element
+   - "wait" -> explicit wait for element
+   - "check" / "uncheck" -> checkbox interactions
+9. For verify steps, create meaningful assertions
+10. Include proper imports at the top
+11. Make locators as class constants/properties
+12. Include a `__init__` method that accepts the driver/page instance
+
+Generate ONLY the code, no explanations before or after. The code should be ready to copy and use.
+"""
+
+    return prompt

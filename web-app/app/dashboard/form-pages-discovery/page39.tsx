@@ -161,9 +161,6 @@ export default function DashboardPage() {
   // Discovery section collapse state (collapsed by default when forms exist)
   const [isDiscoveryExpanded, setIsDiscoveryExpanded] = useState(false)
   
-  // Rediscover form page state
-  const [rediscoverMessage, setRediscoverMessage] = useState<string | null>(null)
-  
   // Test Template Selection state
   const [testTemplates, setTestTemplates] = useState<{id: number, name: string, display_name: string, test_cases: any[]}[]>([])
   const [showMapModal, setShowMapModal] = useState(false)
@@ -819,27 +816,7 @@ export default function DashboardPage() {
       
       if (response.ok) {
         const data = await response.json()
-        
-        // Fetch paths counts for all form pages
-        if (data.length > 0) {
-          const ids = data.map((fp: any) => fp.id).join(',')
-          const countsResponse = await fetch(
-            `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
-            { headers: { 'Authorization': `Bearer ${authToken}` } }
-          )
-          if (countsResponse.ok) {
-            const counts = await countsResponse.json()
-            setFormPages(data.map((fp: any) => ({
-              ...fp,
-              paths_count: counts[String(fp.id)] || 0
-            })))
-          } else {
-            setFormPages(data)
-          }
-        } else {
-          setFormPages(data)
-        }
-        
+        setFormPages(data)
         // Check for active mapping sessions after loading form pages
         checkActiveMappingSessions(authToken)
       }
@@ -1847,43 +1824,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Rediscover form page - deletes and redirects to main page with discovery expanded
-  const rediscoverFormPage = async (formPageId: number) => {
-    if (!token) return
-    
-    try {
-      const response = await fetch(
-        `/api/form-pages/routes/${formPageId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      )
-      
-      if (response.ok) {
-        // Close edit panel
-        setShowEditPanel(false)
-        setEditingFormPage(null)
-        
-        // Expand discovery section
-        setIsDiscoveryExpanded(true)
-        
-        // Show message to user
-        setRediscoverMessage('Form page deleted. Select a test site and click "Start Discovery" to rediscover form pages.')
-        
-        // Reload form pages
-        if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
-        }
-      } else {
-        const errData = await response.json()
-        setError(errData.detail || 'Failed to delete form page')
-      }
-    } catch (err) {
-      setError('Connection error')
-    }
-  }
-
   // No project selected
   if (!activeProjectId) {
     return (
@@ -1953,7 +1893,6 @@ export default function DashboardPage() {
         onSavePathStep={handleSavePathStep}
         onExportPath={downloadPathJson}
         onRefreshPaths={() => fetchCompletedPaths(editingFormPage.id)}
-        onDeleteFormPage={rediscoverFormPage}
         getTheme={getTheme}
         isLightTheme={isLightTheme}
       />
@@ -2134,43 +2073,6 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Rediscover Message */}
-              {rediscoverMessage && (
-                <div style={{
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  padding: '20px 24px',
-                  marginBottom: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  boxShadow: '0 4px 15px rgba(245, 158, 11, 0.4)'
-                }}>
-                  <span style={{ fontSize: '32px' }}>🔄</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, color: '#fff', fontWeight: 600, fontSize: '16px' }}>
-                      {rediscoverMessage}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setRediscoverMessage(null)}
-                    style={{
-                      background: 'rgba(255,255,255,0.2)',
-                      border: 'none',
-                      color: '#fff',
-                      cursor: 'pointer',
-                      fontSize: '18px',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontWeight: 600
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-              
               {/* Network Selection */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>

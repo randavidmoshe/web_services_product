@@ -20,6 +20,10 @@ from models.database import get_db, FormPageRoute
 from models.form_mapper_models import FormMapperSession, FormMapResult, FormMapperSessionLog
 from services.form_mapper_orchestrator import FormMapperOrchestrator, SessionStatus
 
+from celery.result import AsyncResult
+from celery_app import celery
+
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/form-mapper", tags=["Form Mapper"])
@@ -663,6 +667,50 @@ async def get_completed_paths(
     )
 
 
+@router.get("/routes/paths-counts")
+async def get_paths_counts(
+        form_page_route_ids: str = Query(..., description="Comma-separated form page route IDs"),
+        db: Session = Depends(get_db)
+):
+    """Get path counts for multiple form pages at once (scalable batch query)"""
+    from sqlalchemy import func
+
+    ids = [int(id.strip()) for id in form_page_route_ids.split(",") if id.strip()]
+
+    if not ids:
+        return {}
+
+    counts = db.query(
+        FormMapResult.form_page_route_id,
+        func.count(FormMapResult.id)
+    ).filter(
+        FormMapResult.form_page_route_id.in_(ids)
+    ).group_by(FormMapResult.form_page_route_id).all()
+
+    return {str(route_id): count for route_id, count in counts}
+
+
+@router.put("/paths/{path_id}/steps")
+async def update_all_path_steps(
+        path_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """Replace all steps for a path"""
+    result = db.query(FormMapResult).filter(FormMapResult.id == path_id).first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    steps = request.get("steps", [])
+    result.steps = steps
+
+    db.commit()
+    db.refresh(result)
+
+    return {"success": True, "message": "All steps updated", "steps_count": len(steps)}
+
+
 @router.put("/paths/{path_id}/steps/{step_index}")
 async def update_path_step(
         path_id: int,
@@ -748,3 +796,90 @@ async def get_session_logs(
         "session_id": session_id,
         "logs": [log.to_dict() for log in logs]
     }
+
+
+@router.post("/pom/generate")
+async def start_pom_generation(
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Start POM generation task
+    Returns task_id for polling
+    """
+
+    form_page_route_id = request.get("form_page_route_id")
+    language = request.get("language", "python")
+    framework = request.get("framework", "selenium")
+    style = request.get("style", "basic")
+
+    # Get form page data
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    # Get paths for this form page
+    paths = db.query(FormMapResult).filter(
+        FormMapResult.form_page_route_id == form_page_route_id
+    ).all()
+
+    if not paths:
+        raise HTTPException(status_code=400, detail="No paths found for this form page. Map the form first.")
+
+    # Prepare data for task
+    form_page_data = {
+        "form_name": form_page.form_name,
+        "url": form_page.url,
+        "navigation_steps": form_page.navigation_steps or []
+    }
+
+    paths_data = []
+    for path in paths:
+        paths_data.append({
+            "path_number": path.path_number,
+            "path_junctions": path.path_junctions,
+            "steps": path.steps
+        })
+
+    # Queue the task
+    task = celery.send_task(
+        'tasks.generate_pom',
+        kwargs={
+            'form_page_data': form_page_data,
+            'paths_data': paths_data,
+            'language': language,
+            'framework': framework,
+            'style': style
+        }
+    )
+
+    return {"task_id": task.id, "status": "pending"}
+
+
+@router.get("/pom/tasks/{task_id}")
+async def get_pom_task_status(task_id: str):
+    """
+    Get POM generation task status and result
+    """
+    from celery_app import celery
+
+    result = AsyncResult(task_id, app=celery)
+
+    response = {
+        "task_id": task_id,
+        "status": result.state.lower()
+    }
+
+    if result.state == 'PROCESSING':
+        response["progress"] = result.info.get('progress', 0) if result.info else 0
+        response["message"] = result.info.get('message', '') if result.info else ''
+    elif result.state == 'SUCCESS':
+        response["status"] = "completed"
+        response["code"] = result.result.get('code', '') if result.result else ''
+        response["language"] = result.result.get('language', '') if result.result else ''
+        response["framework"] = result.result.get('framework', '') if result.result else ''
+    elif result.state == 'FAILURE':
+        response["status"] = "failed"
+        response["error"] = str(result.info) if result.info else 'Unknown error'
+
+    return response
