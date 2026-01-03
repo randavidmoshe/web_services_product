@@ -883,3 +883,211 @@ async def get_pom_task_status(task_id: str):
         response["error"] = str(result.info) if result.info else 'Unknown error'
 
     return response
+
+# ============================================================================
+# Spec Document Endpoints
+# ============================================================================
+
+@router.post("/routes/{form_page_route_id}/spec")
+async def upload_spec_document(
+        form_page_route_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Upload or replace spec document for a form page
+    Request body: {filename, content_type, content}
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    filename = request.get("filename", "spec.txt")
+    content_type = request.get("content_type", "text/plain")
+    content = request.get("content", "")
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Spec content is required")
+
+    form_page.spec_document = {
+        "filename": filename,
+        "content_type": content_type,
+        "uploaded_at": datetime.utcnow().isoformat()
+    }
+    form_page.spec_document_content = content
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Spec document uploaded successfully",
+        "spec_document": form_page.spec_document
+    }
+
+
+@router.get("/routes/{form_page_route_id}/spec")
+async def get_spec_document(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """
+    Get spec document for a form page
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    if not form_page.spec_document:
+        return {"spec_document": None, "content": None}
+
+    return {
+        "spec_document": form_page.spec_document,
+        "content": form_page.spec_document_content
+    }
+
+
+@router.put("/routes/{form_page_route_id}/spec")
+async def update_spec_document(
+        form_page_route_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Update spec document content (edit)
+    Request body: {content}
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    if not form_page.spec_document:
+        raise HTTPException(status_code=400, detail="No spec document exists. Upload one first.")
+
+    content = request.get("content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="Spec content is required")
+
+    form_page.spec_document_content = content
+    form_page.spec_document["uploaded_at"] = datetime.utcnow().isoformat()
+    # Mark the JSON column as modified
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(form_page, "spec_document")
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Spec document updated successfully",
+        "spec_document": form_page.spec_document
+    }
+
+
+@router.delete("/routes/{form_page_route_id}/spec")
+async def delete_spec_document(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """
+    Delete spec document for a form page
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    form_page.spec_document = None
+    form_page.spec_document_content = None
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Spec document deleted successfully"
+    }
+
+
+# ============================================================================
+# Spec Compliance Generation Endpoints
+# ============================================================================
+
+@router.post("/spec-compliance/generate")
+async def start_spec_compliance_generation(
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Start spec compliance report generation task
+    Returns task_id for polling
+    """
+    form_page_route_id = request.get("form_page_route_id")
+
+    # Get form page data
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    # Check if spec document exists
+    if not form_page.spec_document or not form_page.spec_document_content:
+        raise HTTPException(status_code=400, detail="No spec document found. Upload a spec first.")
+
+    # Get paths for this form page
+    paths = db.query(FormMapResult).filter(
+        FormMapResult.form_page_route_id == form_page_route_id
+    ).all()
+
+    if not paths:
+        raise HTTPException(status_code=400, detail="No paths found for this form page. Map the form first.")
+
+    # Prepare data for task
+    form_page_data = {
+        "form_name": form_page.form_name,
+        "url": form_page.url,
+        "navigation_steps": form_page.navigation_steps or []
+    }
+
+    paths_data = []
+    for path in paths:
+        paths_data.append({
+            "path_number": path.path_number,
+            "path_junctions": path.path_junctions,
+            "steps": path.steps
+        })
+
+    spec_data = {
+        "filename": form_page.spec_document.get("filename", "spec.txt"),
+        "content": form_page.spec_document_content
+    }
+
+    # Queue the task
+    task = celery.send_task(
+        'tasks.generate_spec_compliance',
+        kwargs={
+            'form_page_data': form_page_data,
+            'paths_data': paths_data,
+            'spec_data': spec_data
+        }
+    )
+
+    return {"task_id": task.id, "status": "pending"}
+
+
+@router.get("/spec-compliance/tasks/{task_id}")
+async def get_spec_compliance_task_status(task_id: str):
+    """
+    Get spec compliance generation task status and result
+    """
+    result = AsyncResult(task_id, app=celery)
+
+    response = {
+        "task_id": task_id,
+        "status": result.state.lower()
+    }
+
+    if result.state == 'PROCESSING':
+        response["progress"] = result.info.get('progress', 0) if result.info else 0
+        response["message"] = result.info.get('message', '') if result.info else ''
+    elif result.state == 'SUCCESS':
+        response["status"] = "completed"
+        response["report"] = result.result.get('report', '') if result.result else ''
+        response["summary"] = result.result.get('summary', {}) if result.result else {}
+    elif result.state == 'FAILURE':
+        response["status"] = "failed"
+        response["error"] = str(result.info) if result.info else 'Unknown error'
+
+    return response

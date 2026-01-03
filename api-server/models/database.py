@@ -170,7 +170,11 @@ class FormPageRoute(Base):
     # User-provided inputs for form mapping (mandatory values AI can't guess)
     user_provided_inputs = Column(JSON, nullable=True)
     user_provided_inputs_raw = Column(Text, nullable=True)
-    
+
+    # Spec document for compliance checking
+    spec_document = Column(JSON, nullable=True)  # {filename, content_type, uploaded_at}
+    spec_document_content = Column(Text, nullable=True)  # Actual text content
+
     # Verification
     verification_attempts = Column(Integer, default=0)
     last_verified_at = Column(DateTime)

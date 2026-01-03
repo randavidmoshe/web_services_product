@@ -253,6 +253,7 @@ export default function FormPageEditPanel({
   const [showPomModal, setShowPomModal] = useState(false)
   const [pomLanguage, setPomLanguage] = useState('python')
   const [pomFramework, setPomFramework] = useState('selenium')
+  const [pomStyle, setPomStyle] = useState('basic')
   const [pomTaskId, setPomTaskId] = useState<string | null>(null)
   const [pomStatus, setPomStatus] = useState<string>('idle')
   const [pomCode, setPomCode] = useState<string>('')
@@ -600,7 +601,8 @@ export default function FormPageEditPanel({
         body: JSON.stringify({
           form_page_route_id: editingFormPage.id,
           language: pomLanguage,
-          framework: pomFramework
+          framework: pomFramework,
+          style: pomLanguage === 'java' ? pomStyle : 'basic'
         })
       })
       
@@ -667,7 +669,14 @@ export default function FormPageEditPanel({
   }
 
   const downloadPomFile = () => {
-    const extension = pomLanguage === 'typescript' ? 'ts' : pomLanguage === 'java' ? 'java' : pomLanguage === 'csharp' ? 'cs' : 'py'
+    const extensionMap: Record<string, string> = {
+      'python': 'py',
+      'javascript': 'js',
+      'typescript': 'ts',
+      'java': 'java',
+      'csharp': 'cs'
+    }
+    const extension = extensionMap[pomLanguage] || 'txt'
     const filename = `${editingFormPage.form_name.replace(/\s+/g, '')}Page.${extension}`
     const blob = new Blob([pomCode], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
@@ -1716,7 +1725,7 @@ export default function FormPageEditPanel({
                               onDragOver={(e) => isPathEditable(path.id) && handleDragOver(e, stepIndex)}
                               onDrop={() => isPathEditable(path.id) && handleDrop(path.id, stepIndex, path.steps || [])}
                               onDragEnd={() => { setDraggedStep(null); setDragOverIndex(null); }}
-                              onClick={() => isPathEditable(path.id) && toggleStepExpanded(path.id, stepIndex, step)}
+                              onClick={() => toggleStepExpanded(path.id, stepIndex, step)}
                               style={{
                                 display: 'flex',
                                 alignItems: 'flex-start',
@@ -1727,7 +1736,7 @@ export default function FormPageEditPanel({
                                   : (isLightTheme() ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.15)'),
                                 borderRadius: '8px',
                                 marginBottom: '8px',
-                                cursor: isPathEditable(path.id) ? 'pointer' : 'default',
+                                cursor: 'pointer',
                                 border: isDragOver 
                                   ? '2px dashed #3b82f6'
                                   : isVerify 
@@ -1974,16 +1983,20 @@ export default function FormPageEditPanel({
                                         <select
                                           value={editData.action || step.action || 'click'}
                                           onChange={(e) => updateLocalStepField(path.id, stepIndex, 'action', e.target.value)}
+                                          disabled={!isPathEditable(path.id)}
                                           style={{
                                             width: '100%',
                                             padding: '10px 12px',
                                             fontSize: '15px',
                                             border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                             borderRadius: '6px',
-                                            background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                            background: isPathEditable(path.id) 
+                                              ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                              : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                             color: getTheme().colors.textPrimary,
                                             boxSizing: 'border-box',
-                                            cursor: 'pointer'
+                                            cursor: isPathEditable(path.id) ? 'pointer' : 'not-allowed',
+                                            opacity: isPathEditable(path.id) ? 1 : 0.7
                                           }}
                                         >
                                           {ACTION_TYPES.filter(a => a !== 'verify').map(action => (
@@ -2008,6 +2021,7 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.selector !== undefined ? editData.selector : (step.selector || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'selector', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
@@ -2015,9 +2029,13 @@ export default function FormPageEditPanel({
                                           fontFamily: 'monospace',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
@@ -2037,15 +2055,20 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.value !== undefined ? editData.value : (step.value || step.input_value || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'value', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: isLightTheme() ? '#059669' : '#34d399',
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
@@ -2065,36 +2088,43 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.description !== undefined ? editData.description : (step.description || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'description', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
                                     
-                                    {/* Save single step button */}
-                                    <button
-                                      onClick={() => handleSaveStep(path.id, stepIndex)}
-                                      style={{
-                                        background: 'linear-gradient(135deg, #059669, #047857)',
-                                        color: '#fff',
-                                        border: 'none',
-                                        padding: '10px 20px',
-                                        borderRadius: '6px',
-                                        fontSize: '14px',
-                                        fontWeight: 600,
-                                        cursor: 'pointer',
-                                        alignSelf: 'flex-start'
-                                      }}
-                                    >
-                                      💾 Save This Step
-                                    </button>
+                                    {/* Save single step button - only show when in edit mode */}
+                                    {isPathEditable(path.id) && (
+                                      <button
+                                        onClick={() => handleSaveStep(path.id, stepIndex)}
+                                        style={{
+                                          background: 'linear-gradient(135deg, #059669, #047857)',
+                                          color: '#fff',
+                                          border: 'none',
+                                          padding: '10px 20px',
+                                          borderRadius: '6px',
+                                          fontSize: '14px',
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          alignSelf: 'flex-start'
+                                        }}
+                                      >
+                                        💾 Save This Step
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2295,6 +2325,7 @@ export default function FormPageEditPanel({
                       }}
                     >
                       <option value="python">Python</option>
+                      <option value="javascript">JavaScript</option>
                       <option value="typescript">TypeScript</option>
                       <option value="java">Java</option>
                       <option value="csharp">C#</option>
@@ -2320,9 +2351,35 @@ export default function FormPageEditPanel({
                     >
                       <option value="selenium">Selenium</option>
                       <option value="playwright">Playwright</option>
+                      <option value="cypress">Cypress</option>
                     </select>
                   </div>
                 </div>
+                
+                {/* Style dropdown - only show for Java */}
+                {pomLanguage === 'java' && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textSecondary, fontWeight: 600 }}>
+                      Style
+                    </label>
+                    <select
+                      value={pomStyle}
+                      onChange={(e) => setPomStyle(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${getTheme().colors.cardBorder}`,
+                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                        color: getTheme().colors.textPrimary,
+                        fontSize: '15px'
+                      }}
+                    >
+                      <option value="basic">Basic POM</option>
+                      <option value="pagefactory">Page Factory (@FindBy)</option>
+                    </select>
+                  </div>
+                )}
                 
                 <button
                   onClick={startPomGeneration}

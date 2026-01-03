@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
 
 // ============ INTERFACES ============
@@ -258,6 +258,20 @@ export default function FormPageEditPanel({
   const [pomStatus, setPomStatus] = useState<string>('idle')
   const [pomCode, setPomCode] = useState<string>('')
   const [pomError, setPomError] = useState<string | null>(null)
+  
+  // Spec Compliance state
+  const [specContent, setSpecContent] = useState<string>('')
+  const [specFilename, setSpecFilename] = useState<string>('')
+  const [specLoading, setSpecLoading] = useState(false)
+  const [specExpanded, setSpecExpanded] = useState(false)
+  const [specEditing, setSpecEditing] = useState(false)
+  const [specEditContent, setSpecEditContent] = useState<string>('')
+  const [showSpecComplianceModal, setShowSpecComplianceModal] = useState(false)
+  const [specComplianceTaskId, setSpecComplianceTaskId] = useState<string | null>(null)
+  const [specComplianceStatus, setSpecComplianceStatus] = useState<string>('idle')
+  const [specComplianceReport, setSpecComplianceReport] = useState<string>('')
+  const [specComplianceError, setSpecComplianceError] = useState<string | null>(null)
+  const specFileInputRef = useRef<HTMLInputElement>(null)
   
   // Rediscover confirmation modal state
   const [showRediscoverModal, setShowRediscoverModal] = useState(false)
@@ -686,6 +700,226 @@ export default function FormPageEditPanel({
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  // Spec Compliance functions
+  const loadSpecDocument = async () => {
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.spec_document && data.content) {
+          setSpecContent(data.content)
+          setSpecFilename(data.spec_document.filename || 'spec.txt')
+        } else {
+          setSpecContent('')
+          setSpecFilename('')
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load spec document:', err)
+    }
+  }
+
+  // Load spec on mount
+  useEffect(() => {
+    loadSpecDocument()
+  }, [editingFormPage.id])
+
+  const handleSpecFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSpecLoading(true)
+    try {
+      const content = await file.text()
+      
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'text/plain',
+          content: content
+        })
+      })
+
+      if (response.ok) {
+        setSpecContent(content)
+        setSpecFilename(file.name)
+        setMessage('Spec document uploaded successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to upload spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload spec document')
+    } finally {
+      setSpecLoading(false)
+      if (specFileInputRef.current) {
+        specFileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleSpecEdit = () => {
+    setSpecEditContent(specContent)
+    setSpecEditing(true)
+  }
+
+  const handleSpecSave = async () => {
+    setSpecLoading(true)
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: specEditContent })
+      })
+
+      if (response.ok) {
+        setSpecContent(specEditContent)
+        setSpecEditing(false)
+        setMessage('Spec document updated successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to update spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update spec document')
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  const handleSpecDelete = async () => {
+    if (!confirm('Are you sure you want to delete the spec document?')) return
+
+    setSpecLoading(true)
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        setSpecContent('')
+        setSpecFilename('')
+        setSpecEditing(false)
+        setMessage('Spec document deleted successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to delete spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete spec document')
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  const handleGenerateSpecCompliance = () => {
+    setShowSpecComplianceModal(true)
+    setSpecComplianceStatus('idle')
+    setSpecComplianceReport('')
+    setSpecComplianceError(null)
+    setSpecComplianceTaskId(null)
+  }
+
+  const startSpecComplianceGeneration = async () => {
+    setSpecComplianceStatus('starting')
+    setSpecComplianceError(null)
+
+    try {
+      const response = await fetch('/api/form-mapper/spec-compliance/generate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: editingFormPage.id
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to start compliance check')
+      }
+
+      const data = await response.json()
+      setSpecComplianceTaskId(data.task_id)
+      setSpecComplianceStatus('processing')
+      pollSpecComplianceStatus(data.task_id)
+    } catch (err: any) {
+      setSpecComplianceError(err.message)
+      setSpecComplianceStatus('failed')
+    }
+  }
+
+  const pollSpecComplianceStatus = async (taskId: string) => {
+    const maxAttempts = 60
+    let attempts = 0
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/form-mapper/spec-compliance/tasks/${taskId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to get task status')
+        }
+
+        const data = await response.json()
+
+        if (data.status === 'completed') {
+          setSpecComplianceReport(data.report || '')
+          setSpecComplianceStatus('completed')
+          return
+        } else if (data.status === 'failed') {
+          setSpecComplianceError(data.error || 'Compliance check failed')
+          setSpecComplianceStatus('failed')
+          return
+        }
+
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 2000)
+        } else {
+          setSpecComplianceError('Timeout waiting for compliance check')
+          setSpecComplianceStatus('failed')
+        }
+      } catch (err: any) {
+        setSpecComplianceError(err.message)
+        setSpecComplianceStatus('failed')
+      }
+    }
+
+    poll()
+  }
+
+  const copyComplianceReportToClipboard = () => {
+    navigator.clipboard.writeText(specComplianceReport)
+    setMessage('Compliance report copied to clipboard!')
+  }
+
+  const downloadComplianceReport = () => {
+    const filename = `${editingFormPage.form_name.replace(/\s+/g, '')}_compliance_report.md`
+    const blob = new Blob([specComplianceReport], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   
   // Rediscover form page handler
   const handleRediscoverFormPage = () => {
@@ -963,10 +1197,7 @@ export default function FormPageEditPanel({
                 </button>
               ) : (
                 <button
-                  onClick={() => {
-                    console.log('🛑 Stop Mapping clicked, formPageId:', editingFormPage.id)
-                    onCancelMapping(editingFormPage.id)
-                  }}
+                  onClick={() => onCancelMapping(editingFormPage.id)}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1071,7 +1302,8 @@ export default function FormPageEditPanel({
         <div style={{ display: 'flex' }}>
           {/* Left Column - Form Info */}
           <div style={{
-            width: '380px',
+            flex: 1,
+            minWidth: '450px',
             padding: '28px',
             borderRight: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
             background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)'
@@ -1140,20 +1372,310 @@ export default function FormPageEditPanel({
               </div>
             </div>
 
-            {/* User Provided Inputs */}
+            {/* Two boxes side by side: User Provided Inputs & Spec Document */}
             {token && (
-              <UserProvidedInputsSection
-                formPageId={editingFormPage.id}
-                token={token}
-                apiBase=""
-                isLightTheme={isLightTheme()}
-                themeColors={getTheme().colors}
-              />
+              <div style={{ display: 'flex', gap: '16px', marginTop: '20px' }}>
+                {/* User Provided Inputs - Left Box */}
+                <div style={{ flex: 1 }}>
+                  <UserProvidedInputsSection
+                    formPageId={editingFormPage.id}
+                    token={token}
+                    apiBase=""
+                    isLightTheme={isLightTheme()}
+                    themeColors={getTheme().colors}
+                  />
+                </div>
+
+                {/* Spec Document - Right Box */}
+                <div style={{
+                  flex: 1,
+                  background: isLightTheme() 
+                    ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(168, 85, 247, 0.05))'
+                    : 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.1))',
+                  borderRadius: '10px',
+                  padding: '20px',
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h4 style={{ 
+                      margin: 0, 
+                      fontSize: '15px', 
+                      color: isLightTheme() ? '#6b21a8' : '#a78bfa', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '1px', 
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      📋 Spec Document
+                    </h4>
+                    {specContent && (
+                      <button
+                        onClick={() => setSpecExpanded(!specExpanded)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: isLightTheme() ? '#6b21a8' : '#a78bfa',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: 500
+                        }}
+                      >
+                        {specExpanded ? '▼ Collapse' : '▶ Expand'}
+                      </button>
+                    )}
+                  </div>
+
+                  {!specContent ? (
+                    /* No spec - show upload area */
+                    <div style={{
+                      border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                      borderRadius: '8px',
+                      padding: '24px',
+                      textAlign: 'center',
+                      background: isLightTheme() ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.1)'
+                    }}>
+                      <input
+                        ref={specFileInputRef}
+                        type="file"
+                        accept=".txt,.md,.pdf,.docx"
+                        onChange={handleSpecFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ fontSize: '32px', marginBottom: '12px' }}>📄</div>
+                      <p style={{ color: getTheme().colors.textSecondary, marginBottom: '12px', fontSize: '14px' }}>
+                        Upload a spec document to check compliance
+                      </p>
+                      <button
+                        onClick={() => specFileInputRef.current?.click()}
+                        disabled={specLoading}
+                        style={{
+                          background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '10px 20px',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          cursor: specLoading ? 'not-allowed' : 'pointer',
+                          opacity: specLoading ? 0.7 : 1
+                        }}
+                      >
+                        {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
+                      </button>
+                      <p style={{ 
+                        color: getTheme().colors.textSecondary, 
+                        fontSize: '12px', 
+                        marginTop: '8px',
+                        marginBottom: 0 
+                      }}>
+                        Supports: .txt, .md, .pdf, .docx
+                      </p>
+                    </div>
+                  ) : (
+                    /* Has spec - show content and actions */
+                    <div>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '12px',
+                        padding: '8px 12px',
+                        background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
+                        borderRadius: '6px'
+                      }}>
+                        <span style={{ 
+                          color: getTheme().colors.textPrimary, 
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          📎 {specFilename}
+                        </span>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            ref={specFileInputRef}
+                            type="file"
+                            accept=".txt,.md,.pdf,.docx"
+                            onChange={handleSpecFileUpload}
+                            style={{ display: 'none' }}
+                          />
+                          <button
+                            onClick={() => specFileInputRef.current?.click()}
+                            disabled={specLoading}
+                            style={{
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Replace spec file"
+                          >
+                            🔄 Replace
+                          </button>
+                          <button
+                            onClick={handleSpecEdit}
+                            disabled={specLoading || specEditing}
+                            style={{
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Edit spec content"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={handleSpecDelete}
+                            disabled={specLoading}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Delete spec file"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+
+                      {specExpanded && (
+                        specEditing ? (
+                          /* Edit mode */
+                          <div>
+                            <textarea
+                              value={specEditContent}
+                              onChange={(e) => setSpecEditContent(e.target.value)}
+                              style={{
+                                width: '100%',
+                                minHeight: '150px',
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                color: getTheme().colors.textPrimary,
+                                fontSize: '14px',
+                                fontFamily: 'monospace',
+                                resize: 'vertical',
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                              <button
+                                onClick={handleSpecSave}
+                                disabled={specLoading}
+                                style={{
+                                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  padding: '8px 16px',
+                                  borderRadius: '6px',
+                                  fontSize: '14px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {specLoading ? 'Saving...' : '💾 Save'}
+                              </button>
+                              <button
+                                onClick={() => setSpecEditing(false)}
+                                disabled={specLoading}
+                                style={{
+                                  background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                                  color: getTheme().colors.textPrimary,
+                                  border: 'none',
+                                  padding: '8px 16px',
+                                  borderRadius: '6px',
+                                  fontSize: '14px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* View mode */
+                          <div style={{
+                            background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                          }}>
+                            <pre style={{
+                              margin: 0,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              fontSize: '14px',
+                              color: getTheme().colors.textPrimary,
+                              fontFamily: 'monospace'
+                            }}>
+                              {specContent}
+                            </pre>
+                          </div>
+                        )
+                      )}
+
+                      {/* Generate Compliance Report button */}
+                      {completedPaths.length > 0 && !specEditing && (
+                        <button
+                          onClick={handleGenerateSpecCompliance}
+                          style={{
+                            marginTop: '16px',
+                            background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '12px 20px',
+                            borderRadius: '8px',
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          📊 Generate Compliance Report
+                        </button>
+                      )}
+                      {completedPaths.length === 0 && (
+                        <p style={{ 
+                          color: getTheme().colors.textSecondary, 
+                          fontSize: '13px', 
+                          marginTop: '12px',
+                          marginBottom: 0,
+                          textAlign: 'center'
+                        }}>
+                          ℹ️ Map the form first to generate a compliance report
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
           {/* Right Column - Steps */}
-          <div style={{ flex: 1, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
+          <div style={{ width: '500px', flexShrink: 0, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
             {/* Path to Form Page Banner */}
             <div style={{
               display: 'inline-flex',
@@ -1728,7 +2250,7 @@ export default function FormPageEditPanel({
                               onDragOver={(e) => isPathEditable(path.id) && handleDragOver(e, stepIndex)}
                               onDrop={() => isPathEditable(path.id) && handleDrop(path.id, stepIndex, path.steps || [])}
                               onDragEnd={() => { setDraggedStep(null); setDragOverIndex(null); }}
-                              onClick={() => isPathEditable(path.id) && toggleStepExpanded(path.id, stepIndex, step)}
+                              onClick={() => toggleStepExpanded(path.id, stepIndex, step)}
                               style={{
                                 display: 'flex',
                                 alignItems: 'flex-start',
@@ -1739,7 +2261,7 @@ export default function FormPageEditPanel({
                                   : (isLightTheme() ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.15)'),
                                 borderRadius: '8px',
                                 marginBottom: '8px',
-                                cursor: isPathEditable(path.id) ? 'pointer' : 'default',
+                                cursor: 'pointer',
                                 border: isDragOver 
                                   ? '2px dashed #3b82f6'
                                   : isVerify 
@@ -1986,16 +2508,20 @@ export default function FormPageEditPanel({
                                         <select
                                           value={editData.action || step.action || 'click'}
                                           onChange={(e) => updateLocalStepField(path.id, stepIndex, 'action', e.target.value)}
+                                          disabled={!isPathEditable(path.id)}
                                           style={{
                                             width: '100%',
                                             padding: '10px 12px',
                                             fontSize: '15px',
                                             border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                             borderRadius: '6px',
-                                            background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                            background: isPathEditable(path.id) 
+                                              ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                              : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                             color: getTheme().colors.textPrimary,
                                             boxSizing: 'border-box',
-                                            cursor: 'pointer'
+                                            cursor: isPathEditable(path.id) ? 'pointer' : 'not-allowed',
+                                            opacity: isPathEditable(path.id) ? 1 : 0.7
                                           }}
                                         >
                                           {ACTION_TYPES.filter(a => a !== 'verify').map(action => (
@@ -2020,6 +2546,7 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.selector !== undefined ? editData.selector : (step.selector || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'selector', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
@@ -2027,9 +2554,13 @@ export default function FormPageEditPanel({
                                           fontFamily: 'monospace',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
@@ -2049,15 +2580,20 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.value !== undefined ? editData.value : (step.value || step.input_value || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'value', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: isLightTheme() ? '#059669' : '#34d399',
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
@@ -2077,36 +2613,43 @@ export default function FormPageEditPanel({
                                         type="text"
                                         value={editData.description !== undefined ? editData.description : (step.description || '')}
                                         onChange={(e) => updateLocalStepField(path.id, stepIndex, 'description', e.target.value)}
+                                        readOnly={!isPathEditable(path.id)}
                                         style={{
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
                                           border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                          background: isPathEditable(path.id) 
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                           color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
+                                          boxSizing: 'border-box',
+                                          cursor: isPathEditable(path.id) ? 'text' : 'default',
+                                          opacity: isPathEditable(path.id) ? 1 : 0.7
                                         }}
                                       />
                                     </div>
                                     
-                                    {/* Save single step button */}
-                                    <button
-                                      onClick={() => handleSaveStep(path.id, stepIndex)}
-                                      style={{
-                                        background: 'linear-gradient(135deg, #059669, #047857)',
-                                        color: '#fff',
-                                        border: 'none',
-                                        padding: '10px 20px',
-                                        borderRadius: '6px',
-                                        fontSize: '14px',
-                                        fontWeight: 600,
-                                        cursor: 'pointer',
-                                        alignSelf: 'flex-start'
-                                      }}
-                                    >
-                                      💾 Save This Step
-                                    </button>
+                                    {/* Save single step button - only show when in edit mode */}
+                                    {isPathEditable(path.id) && (
+                                      <button
+                                        onClick={() => handleSaveStep(path.id, stepIndex)}
+                                        style={{
+                                          background: 'linear-gradient(135deg, #059669, #047857)',
+                                          color: '#fff',
+                                          border: 'none',
+                                          padding: '10px 20px',
+                                          borderRadius: '6px',
+                                          fontSize: '14px',
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          alignSelf: 'flex-start'
+                                        }}
+                                      >
+                                        💾 Save This Step
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2483,6 +3026,204 @@ export default function FormPageEditPanel({
                 }}>
                   {pomCode}
                 </pre>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Spec Compliance Modal */}
+      {showSpecComplianceModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowSpecComplianceModal(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '900px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
+                📊 Spec Compliance Report
+              </h3>
+              <button
+                onClick={() => setShowSpecComplianceModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
+              >
+                ×
+              </button>
+            </div>
+            
+            {specComplianceStatus === 'idle' && (
+              <>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                  Generate a compliance report comparing your spec document against the actual form implementation for "{editingFormPage.form_name}".
+                </p>
+                
+                <div style={{
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  marginBottom: '20px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
+                        📋 Spec: {specFilename}
+                      </p>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
+                        {specContent.length} characters
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
+                        🛤️ Paths: {completedPaths.length}
+                      </p>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
+                        {completedPaths.reduce((sum, p) => sum + (p.steps?.length || 0), 0)} total steps
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={startSpecComplianceGeneration}
+                  style={{
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    width: '100%'
+                  }}
+                >
+                  🚀 Generate Compliance Report
+                </button>
+              </>
+            )}
+            
+            {(specComplianceStatus === 'starting' || specComplianceStatus === 'processing') && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚙️</div>
+                <p style={{ color: getTheme().colors.textPrimary, fontSize: '18px', fontWeight: 600 }}>
+                  Analyzing compliance...
+                </p>
+                <p style={{ color: getTheme().colors.textSecondary }}>
+                  AI is comparing your spec against the implementation
+                </p>
+              </div>
+            )}
+            
+            {specComplianceStatus === 'failed' && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
+                <p style={{ color: '#ef4444', fontSize: '18px', fontWeight: 600 }}>
+                  Compliance Check Failed
+                </p>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                  {specComplianceError}
+                </p>
+                <button
+                  onClick={() => setSpecComplianceStatus('idle')}
+                  style={{
+                    background: getTheme().colors.cardBorder,
+                    color: getTheme().colors.textPrimary,
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+            
+            {specComplianceStatus === 'completed' && (
+              <>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                  <button
+                    onClick={copyComplianceReportToClipboard}
+                    style={{
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    📋 Copy to Clipboard
+                  </button>
+                  <button
+                    onClick={downloadComplianceReport}
+                    style={{
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    💾 Download Report
+                  </button>
+                  <button
+                    onClick={() => setSpecComplianceStatus('idle')}
+                    style={{
+                      background: 'transparent',
+                      color: getTheme().colors.textSecondary,
+                      border: `1px solid ${getTheme().colors.cardBorder}`,
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+                
+                <div style={{
+                  background: isLightTheme() ? '#f8fafc' : '#0d1117',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  overflow: 'auto',
+                  maxHeight: '500px'
+                }}>
+                  <pre style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: '14px',
+                    fontFamily: 'Monaco, Consolas, monospace',
+                    color: getTheme().colors.textPrimary,
+                    lineHeight: 1.6
+                  }}>
+                    {specComplianceReport}
+                  </pre>
+                </div>
               </>
             )}
           </div>
