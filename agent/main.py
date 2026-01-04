@@ -774,6 +774,9 @@ class FormDiscovererAgent:
             )
 
             crawler.crawl()
+
+            # Generate logout steps after discovery completes
+            self._generate_logout_steps(driver, api_client)
             
             # Check for page error after crawl completes
             page_error = detect_page_error(driver)
@@ -830,6 +833,83 @@ class FormDiscovererAgent:
                     self.selenium_agent.close_browser()
                 except Exception as e:
                     self.logger.warning(f"Error closing browser: {e}")
+
+    def _generate_logout_steps(self, driver, api_client):
+        """Generate and execute logout steps after discovery (same pattern as login)"""
+        try:
+            self.logger.info("🚪 Generating logout steps...")
+            self.selenium_agent.results_logger.info("🚪 Generating logout steps...")
+
+            screenshot_base64 = driver.get_screenshot_as_base64()
+            page_html = driver.page_source
+
+            logout_steps = api_client.generate_logout_steps(page_html, screenshot_base64)
+
+            if not logout_steps:
+                self.logger.info("⚠️ No logout steps generated")
+                return
+
+            self.logger.info(f"✅ Generated {len(logout_steps)} logout steps")
+
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            max_logout_attempts = 3
+            for attempt in range(1, max_logout_attempts + 1):
+                self.logger.info(f"🚪 Logout attempt {attempt}/{max_logout_attempts}")
+
+                try:
+                    step_failed = False
+                    for step in logout_steps:
+                        action = step.get('action')
+                        selector = step.get('selector')
+                        value = step.get('value', '')
+
+                        try:
+                            if action == 'fill':
+                                element = WebDriverWait(driver, 10).until(
+                                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                                )
+                                element.clear()
+                                element.send_keys(value)
+                                time.sleep(0.3)
+                            elif action == 'click':
+                                element = WebDriverWait(driver, 10).until(
+                                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                                )
+                                element.click()
+                                time.sleep(0.5)
+                            elif action in ('wait_dom_ready', 'verify_login_page'):
+                                time.sleep(1)
+                        except Exception as step_error:
+                            self.logger.warning(f"Logout step failed: {action} on '{selector}': {step_error}")
+                            step_failed = True
+                            break
+
+                    if step_failed:
+                        if attempt < max_logout_attempts:
+                            self.logger.info("Retrying logout...")
+                            time.sleep(2)
+                            continue
+                        break
+
+                    self.logger.info("✅ Logout completed")
+                    self.selenium_agent.results_logger.info("✅ Logout completed")
+                    return
+
+                except Exception as logout_error:
+                    self.logger.error(f"Logout attempt {attempt} failed: {logout_error}")
+                    if attempt < max_logout_attempts:
+                        time.sleep(2)
+                        continue
+                    break
+
+            self.logger.warning("⚠️ Logout failed after all attempts")
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error during logout: {e}")
+
 
 
     def start(self):

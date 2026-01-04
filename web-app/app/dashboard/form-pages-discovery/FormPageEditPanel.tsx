@@ -16,11 +16,14 @@ export interface FormPage {
   form_name: string
   url: string
   network_id: number
+  network_name?: string
+  parent_fields?: Array<{field_name: string, field_label: string, parent_entity: string, field_type?: string}>
   navigation_steps: NavigationStep[]
   is_root: boolean
   parent_form_id: number | null
   parent_form_name?: string
-  children?: FormPage[]
+  parent_network_name?: string
+  children?: Array<{form_id: number, form_name: string, network_name?: string}>
   created_at: string
   mapping_status?: 'not_mapped' | 'mapping' | 'mapped' | 'failed'
   mapping_session_id?: number
@@ -120,6 +123,10 @@ export interface FormPageEditPanelProps {
   // Theme
   getTheme: () => { name: string; colors: ThemeColors }
   isLightTheme: () => boolean
+  
+  // Login/Logout mode (optional)
+  isLoginLogout?: boolean
+  loginLogoutType?: 'login' | 'logout' | null
 }
 
 // ============ STYLES ============
@@ -226,7 +233,9 @@ export default function FormPageEditPanel({
   onRefreshPaths,
   onDeleteFormPage,
   getTheme,
-  isLightTheme
+  isLightTheme,
+  isLoginLogout = false,
+  loginLogoutType = null
 }: FormPageEditPanelProps) {
   
   // Action types available in agent_selenium
@@ -281,6 +290,19 @@ export default function FormPageEditPanel({
   const [editablePathIds, setEditablePathIds] = useState<Set<number>>(new Set())
   const [showEditPathWarning, setShowEditPathWarning] = useState<number | null>(null)
   const [modifiedPathIds, setModifiedPathIds] = useState<Set<number>>(new Set())
+  
+  // Navigation steps editing mode state
+  const [navStepsEditable, setNavStepsEditable] = useState(false)
+  const [showNavStepsEditWarning, setShowNavStepsEditWarning] = useState(false)
+  
+  // Check if navigation steps are editable
+  const isNavStepsEditable = () => navStepsEditable
+  
+  // Enable editing for navigation steps
+  const enableNavStepsEditing = () => {
+    setNavStepsEditable(true)
+    setShowNavStepsEditWarning(false)
+  }
   
   // Check if a path is in edit mode
   const isPathEditable = (pathId: number) => editablePathIds.has(pathId)
@@ -1036,7 +1058,22 @@ export default function FormPageEditPanel({
         </div>
       )}
       {message && (
-        <div style={successBoxStyle}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '16px 20px',
+          background: isLightTheme() 
+            ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))'
+            : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))',
+          border: isLightTheme() 
+            ? '1px solid rgba(34, 197, 94, 0.4)'
+            : '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
+          color: isLightTheme() ? '#16a34a' : '#86efac',
+          marginBottom: '20px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
           <span>✅</span> {message}
           <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
         </div>
@@ -1166,102 +1203,107 @@ export default function FormPageEditPanel({
             alignItems: 'center',
             gap: '12px'
           }}>
-            <span style={{ fontSize: '28px' }}>📄</span>
-            Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span>
+            <span style={{ fontSize: '28px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
+            {isLoginLogout 
+              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence: <span style={{ color: loginLogoutType === 'login' ? '#10b981' : '#ef4444' }}>{editingFormPage.form_name.replace(/^🔐 Login - |^🚪 Logout - /, '')}</span></>
+              : <>Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span></>
+            }
           </h2>
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {/* Mapping Button Logic */}
-            {mappingFormIds.has(editingFormPage.id) ? (
-              mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
-                <button disabled style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  background: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  color: '#fbbf24',
-                  padding: '14px 28px',
-                  borderRadius: '12px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: 'not-allowed'
-                }}>
-                  <span className="spinner" style={{
-                    width: '18px',
-                    height: '18px',
-                    border: '2px solid rgba(251, 191, 36, 0.3)',
-                    borderTopColor: '#fbbf24',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></span>
-                  Stopping...
-                </button>
+            {/* Mapping Button Logic - hidden for login/logout */}
+            {!isLoginLogout && (
+              mappingFormIds.has(editingFormPage.id) ? (
+                mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
+                  <button disabled style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    color: '#fbbf24',
+                    padding: '14px 28px',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'not-allowed'
+                  }}>
+                    <span className="spinner" style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(251, 191, 36, 0.3)',
+                      borderTopColor: '#fbbf24',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }}></span>
+                    Stopping...
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onCancelMapping(editingFormPage.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
+                    }}
+                  >
+                    ⏹️ Stop Mapping
+                  </button>
+                )
               ) : (
-                <button
-                  onClick={() => onCancelMapping(editingFormPage.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
-                  }}
-                >
-                  ⏹️ Stop Mapping
-                </button>
+                <>
+                  {/* Rediscover Form Page Button */}
+                  <button
+                    onClick={handleRediscoverFormPage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)'
+                    }}
+                  >
+                    🔍 Rediscover Form Page
+                  </button>
+                  
+                  {/* Map/Remap Button */}
+                  <button
+                    onClick={() => onStartMapping(editingFormPage.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
+                  </button>
+                </>
               )
-            ) : (
-              <>
-                {/* Rediscover Form Page Button */}
-                <button
-                  onClick={handleRediscoverFormPage}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)'
-                  }}
-                >
-                  🔍 Rediscover Form Page
-                </button>
-                
-                {/* Map/Remap Button */}
-                <button
-                  onClick={() => onStartMapping(editingFormPage.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
-                  }}
-                >
-                  {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
-                </button>
-              </>
             )}
 
             <button
@@ -1310,56 +1352,58 @@ export default function FormPageEditPanel({
             borderRight: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
             background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)'
           }}>
-            {/* Hierarchy Info */}
-            <div style={{
-              background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
-              borderRadius: '10px',
-              padding: '20px',
-              border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
-              marginBottom: '20px'
-            }}>
-              <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
-                <span style={{
-                  background: editingFormPage.is_root 
-                    ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
-                    : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
-                  color: editingFormPage.is_root 
-                    ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
-                    : (isLightTheme() ? '#92400e' : '#fbbf24'),
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 600
-                }}>
-                  {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
-                </span>
-              </div>
-              {editingFormPage.parent_form_name && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
-                  <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}</span>
+            {/* Hierarchy Info - hidden for login/logout */}
+            {!isLoginLogout && (
+              <div style={{
+                background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
+                borderRadius: '10px',
+                padding: '20px',
+                border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
+                marginBottom: '20px'
+              }}>
+                <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
+                  <span style={{
+                    background: editingFormPage.is_root 
+                      ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
+                      : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
+                    color: editingFormPage.is_root 
+                      ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
+                      : (isLightTheme() ? '#92400e' : '#fbbf24'),
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    fontSize: '16px',
+                    fontWeight: 600
+                  }}>
+                    {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
+                  </span>
                 </div>
-              )}
-              {editingFormPage.children && editingFormPage.children.length > 0 && (
-                <div style={{ marginTop: '12px' }}>
-                  <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
-                  <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {editingFormPage.children.map((c, i) => (
-                      <span key={i} style={{
-                        background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
-                        color: isLightTheme() ? '#92400e' : '#fbbf24',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: 500
-                      }}>{c.form_name}</span>
-                    ))}
+                {editingFormPage.parent_form_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}{editingFormPage.parent_network_name && ` (${editingFormPage.parent_network_name})`}</span>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+                {editingFormPage.children && editingFormPage.children.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
+                    <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {editingFormPage.children.map((c, i) => (
+                        <span key={i} style={{
+                          background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
+                          color: isLightTheme() ? '#92400e' : '#fbbf24',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          fontWeight: 500
+                        }}>{c.form_name}{c.network_name && ` (${c.network_name})`}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* URL Info */}
             <div style={{
@@ -1374,8 +1418,8 @@ export default function FormPageEditPanel({
               </div>
             </div>
 
-            {/* Two boxes side by side: User Provided Inputs & Spec Document */}
-            {token && (
+            {/* Two boxes side by side: User Provided Inputs & Spec Document - hidden for login/logout */}
+            {!isLoginLogout && token && (
               <div style={{ display: 'flex', gap: '16px', marginTop: '20px' }}>
                 {/* User Provided Inputs - Left Box */}
                 <div style={{ flex: 1 }}>
@@ -1698,21 +1742,66 @@ export default function FormPageEditPanel({
               <h3 style={{ margin: 0, fontSize: '20px', color: isLightTheme() ? '#1e40af' : getTheme().colors.textPrimary, fontWeight: 600 }}>
                 Steps ({editNavigationSteps.length})
               </h3>
-              <button onClick={addStepAtEnd} style={{
-                background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
-                color: '#fff',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                + Add Step
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {!navStepsEditable ? (
+                  <button 
+                    onClick={() => setShowNavStepsEditWarning(true)}
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    ✏️ Edit Steps
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={addStepAtEnd} style={{
+                      background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      + Add Step
+                    </button>
+                    <button 
+                      onClick={onSave}
+                      disabled={savingFormPage}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: savingFormPage ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        opacity: savingFormPage ? 0.7 : 1
+                      }}
+                    >
+                      {savingFormPage ? '💾 Saving...' : '💾 Save Steps'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Steps List */}
@@ -1812,14 +1901,19 @@ export default function FormPageEditPanel({
                             <select
                               value={step.action}
                               onChange={(e) => updateNavigationStep(index, 'action', e.target.value)}
+                              disabled={!navStepsEditable}
                               style={{
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                background: navStepsEditable 
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                 color: getTheme().colors.textPrimary,
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                cursor: navStepsEditable ? 'pointer' : 'not-allowed',
+                                opacity: navStepsEditable ? 1 : 0.7
                               }}
                             >
                               <option value="click">Click</option>
@@ -1836,16 +1930,21 @@ export default function FormPageEditPanel({
                               type="text"
                               value={step.value || ''}
                               onChange={(e) => updateNavigationStep(index, 'value', e.target.value)}
+                              readOnly={!navStepsEditable}
                               placeholder="Value (if needed)"
                               style={{
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                background: navStepsEditable 
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                 color: getTheme().colors.textPrimary,
                                 fontSize: '14px',
-                                boxSizing: 'border-box'
+                                boxSizing: 'border-box',
+                                cursor: navStepsEditable ? 'text' : 'default',
+                                opacity: navStepsEditable ? 1 : 0.7
                               }}
                             />
                           </div>
@@ -1856,17 +1955,22 @@ export default function FormPageEditPanel({
                             type="text"
                             value={step.selector || ''}
                             onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
+                            readOnly={!navStepsEditable}
                             placeholder="CSS selector or XPath"
                             style={{
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
                               border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              background: navStepsEditable 
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                               color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               fontFamily: 'monospace',
-                              boxSizing: 'border-box'
+                              boxSizing: 'border-box',
+                              cursor: navStepsEditable ? 'text' : 'default',
+                              opacity: navStepsEditable ? 1 : 0.7
                             }}
                           />
                         </div>
@@ -1876,49 +1980,56 @@ export default function FormPageEditPanel({
                             type="text"
                             value={step.description || ''}
                             onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
+                            readOnly={!navStepsEditable}
                             placeholder="Step description"
                             style={{
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
                               border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              background: navStepsEditable 
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                               color: getTheme().colors.textPrimary,
                               fontSize: '14px',
-                              boxSizing: 'border-box'
+                              boxSizing: 'border-box',
+                              cursor: navStepsEditable ? 'text' : 'default',
+                              opacity: navStepsEditable ? 1 : 0.7
                             }}
                           />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => addStepAfter(index)}
-                            style={{
-                              background: 'transparent',
-                              border: `1px solid ${getTheme().colors.accentPrimary}`,
-                              color: getTheme().colors.accentPrimary,
-                              padding: '8px 14px',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            + Add After
-                          </button>
-                          <button
-                            onClick={() => confirmDeleteStep(index)}
-                            style={{
-                              background: 'transparent',
-                              border: '1px solid #ef4444',
-                              color: '#ef4444',
-                              padding: '8px 14px',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
+                        {navStepsEditable && (
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => addStepAfter(index)}
+                              style={{
+                                background: 'transparent',
+                                border: `1px solid ${getTheme().colors.accentPrimary}`,
+                                color: getTheme().colors.accentPrimary,
+                                padding: '8px 14px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              + Add After
+                            </button>
+                            <button
+                              onClick={() => confirmDeleteStep(index)}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid #ef4444',
+                                color: '#ef4444',
+                                padding: '8px 14px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1928,7 +2039,8 @@ export default function FormPageEditPanel({
           </div>
         </div>
 
-        {/* Completed Mapping Paths Section */}
+        {/* Completed Mapping Paths Section - hidden for login/logout */}
+        {!isLoginLogout && (
         <div style={{
           borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
           padding: '28px 32px',
@@ -2666,6 +2778,7 @@ export default function FormPageEditPanel({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Edit Path Steps Warning Modal */}
@@ -2773,6 +2886,129 @@ export default function FormPageEditPanel({
               </button>
               <button
                 onClick={() => enablePathEditing(showEditPathWarning)}
+                style={{
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+                }}
+              >
+                ✏️ I Understand, Enable Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Steps Edit Warning Modal */}
+      {showNavStepsEditWarning && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowNavStepsEditWarning(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '32px',
+            width: '90%',
+            maxWidth: '580px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '28px'
+              }}>
+                ⚠️
+              </div>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '24px', fontWeight: 600 }}>
+                Edit Navigation Steps
+              </h3>
+            </div>
+            
+            {/* Warning Content */}
+            <div style={{
+              background: isLightTheme() ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.15)',
+              border: `1px solid ${isLightTheme() ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.4)'}`,
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{ margin: '0 0 14px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '17px' }}>
+                🛤️ These navigation steps define how to reach this form page.
+              </p>
+              <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+                They were discovered during form discovery and represent the path from the login page to this form.
+              </p>
+            </div>
+            
+            <p style={{ margin: '0 0 14px', color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+              <strong style={{ color: getTheme().colors.textPrimary }}>Before editing, please understand:</strong>
+            </p>
+            
+            <ul style={{ 
+              margin: '0 0 24px', 
+              paddingLeft: '24px',
+              color: getTheme().colors.textSecondary,
+              fontSize: '16px',
+              lineHeight: 2
+            }}>
+              <li><strong>Step order is critical</strong> – Navigation must follow the exact sequence</li>
+              <li><strong>Selectors are site-specific</strong> – Changing them may break navigation</li>
+              <li><strong>Form mapping depends on these</strong> – Wrong navigation = wrong form</li>
+              <li><strong>All paths use these steps</strong> – Changes affect all mapped paths</li>
+            </ul>
+            
+            <p style={{ 
+              margin: '0 0 28px', 
+              padding: '16px',
+              background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)',
+              borderRadius: '10px',
+              color: isLightTheme() ? '#1d4ed8' : '#93c5fd',
+              fontSize: '15px',
+              lineHeight: 1.5
+            }}>
+              💡 <strong>Tip:</strong> If navigation fails after editing, you can use "Rediscover Form Page" to reset the steps.
+            </p>
+            
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowNavStepsEditWarning(false)}
+                style={{
+                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                  color: getTheme().colors.textPrimary,
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={enableNavStepsEditing}
                 style={{
                   background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   border: 'none',

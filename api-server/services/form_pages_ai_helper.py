@@ -227,8 +227,8 @@ IMPORTANT:
 - Every step MUST have action, selector, and value fields
 - ALWAYS include the 2 verification steps at the end
 
-HTML (truncated):
-{page_html[:15000]}"""
+HTML:
+{page_html}"""
 
         if screenshot_base64:
             response = self._call_claude_vision(user_prompt, screenshot_base64, system_prompt)
@@ -402,39 +402,70 @@ Form name:"""
             List of parent reference field dictionaries
         """
         print(f"[FormPagesAIHelper] Extracting parent reference fields for: {form_name}")
-        
-        system_prompt = """You are analyzing a web form to identify parent reference fields.
-Parent reference fields are dropdown/select fields that reference OTHER entities in the system."""
 
-        user_prompt = f"""Analyze this form and identify any PARENT REFERENCE FIELDS.
+        system_prompt = """You are an expert at analyzing web forms to identify parent reference fields.
+You MUST analyze BOTH the screenshot AND the HTML DOM thoroughly. Do not skip any potential parent field."""
+
+        user_prompt = f"""Analyze this form THOROUGHLY to identify ALL parent reference fields.
 
 Form name: {form_name}
 
-Parent reference fields are:
-- Dropdown/select fields that let you choose from EXISTING entities
-- Fields like "Employee", "Department", "Project", "Category", "Event", "Type"
-- NOT text input fields, dates, numbers, or checkboxes
+IMPORTANT INSTRUCTIONS:
+1. Analyze BOTH the screenshot AND the HTML DOM carefully
+2. Do NOT skip any potential parent field - be comprehensive
+3. Look for ALL patterns, not just obvious dropdowns
+4. ONLY include fields that are INSIDE the form - ignore navigation, headers, sidebars, filters, and other page elements
+5. Focus on the main form area visible in the screenshot
 
-Examples of parent reference fields:
-- "Select Employee" dropdown → parent: Employee
-- "Department" dropdown → parent: Department
-- "Event Type" dropdown → parent: Event
+WHAT TO LOOK FOR:
 
-Return a JSON array of parent reference fields found:
+1. SELECT/DROPDOWN fields:
+   - <select> elements with options
+   - Fields labeled "Select...", "Choose..."
+
+2. AUTOCOMPLETE/TYPEAHEAD fields:
+   - Inputs with autocomplete functionality
+   - Fields with search/lookup icons
+   - data-autocomplete, aria-autocomplete attributes
+
+3. LOOKUP/REFERENCE fields:
+   - Input + button combinations for searching
+   - Fields with magnifying glass icons
+   - "Browse...", "Search...", "Find..." buttons
+
+4. HIDDEN ID fields paired with visible name fields:
+   - <input type="hidden" name="*_id">
+   - Read-only text showing selected entity name
+
+5. COMMON NAMING PATTERNS:
+   - *_id, *_code fields
+   - Fields referencing: Employee, Department, Project, Category, Type, Status, Account, Customer, Vendor, etc.
+
+6. VISUAL CLUES IN SCREENSHOT:
+   - Dropdown arrows
+   - Search icons
+   - Lookup buttons
+   - Fields showing "Select..." placeholder
+
+Return a JSON array of ALL parent reference fields found:
 [
-  {{"field_name": "employee", "field_label": "Select Employee", "parent_entity": "Employee"}},
-  {{"field_name": "department", "field_label": "Department", "parent_entity": "Department"}}
+  {{"field_name": "employee_id", "field_label": "Select Employee", "parent_entity": "Employee", "field_type": "dropdown"}},
+  {{"field_name": "department", "field_label": "Department", "parent_entity": "Department", "field_type": "autocomplete"}}
 ]
+
+field_type should be one of: dropdown, autocomplete, lookup, hidden_id, select
 
 If no parent reference fields found, return: []
 
-HTML (truncated):
-{page_html[:15000]}
+Be THOROUGH - missing a parent field will break the hierarchy!
+
+HTML DOM:
+{page_html}
 
 Return ONLY the JSON array:"""
 
         if screenshot_base64:
-            response = self._call_claude_vision(user_prompt, screenshot_base64, system_prompt, max_tokens=500)
+            response = self._call_claude_vision(user_prompt, screenshot_base64, system_prompt, max_tokens=2000)
         else:
             response = self._call_claude(user_prompt, system_prompt)
         
@@ -661,3 +692,67 @@ IMPORTANT: Return ONLY the JSON array, no explanation or markdown."""
         except Exception as e:
             print(f"[FormPagesAIHelper] Error getting navigation clickables: {e}")
             return []
+
+    def build_form_hierarchy(
+            self,
+            forms_data: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Build parent-child hierarchy for all form pages using AI.
+
+        Args:
+            forms_data: List of form data, each containing:
+                - form_name: Name of the form
+                - form_id: Database ID
+                - parent_fields: List of parent reference fields found
+
+        Returns:
+            List of hierarchy relationships:
+            [{"form_id": 1, "form_name": "Finding", "parent_form_id": 2, "parent_form_name": "Engagement"}, ...]
+        """
+        if not forms_data:
+            return []
+
+        print(f"[FormPagesAIHelper] Building hierarchy for {len(forms_data)} forms using AI...")
+
+        # Build form list for prompt
+        forms_summary = []
+        for form in forms_data:
+            parent_fields_str = ", ".join([
+                f.get("parent_entity", f.get("field_label", "unknown"))
+                for f in form.get("parent_fields", [])
+            ]) or "none"
+            forms_summary.append(
+                f"- {form['form_name']} (id={form['form_id']}): parent_fields=[{parent_fields_str}]")
+
+        forms_list = "\n".join(forms_summary)
+
+        system_prompt = """You are an expert at analyzing web application data models and determining parent-child relationships between forms/entities."""
+
+        user_prompt = f"""Analyze these form pages and their parent reference fields to build a complete parent-child hierarchy.
+
+FORMS DISCOVERED:
+{forms_list}
+
+RULES:
+1. A form with a parent_field referencing another entity is a CHILD of that entity's form
+2. Example: "Finding" form has parent_field "Engagement" → Finding is child of Engagement
+3. Forms with no parent_fields are ROOT forms (parent_form_id = null)
+4. Match parent_field names to form names intelligently (e.g., "Employee" field matches "Employees" or "Employee_Management" form)
+5. A form can only have ONE parent (if multiple parent_fields exist, choose the most logical primary parent)
+
+Return a JSON array with the hierarchy:
+[
+  {{"form_id": <id>, "form_name": "<name>", "parent_form_id": <parent_id_or_null>, "parent_form_name": "<parent_name_or_null>"}},
+  ...
+]
+
+Include ALL forms in the response, even root forms with parent_form_id: null.
+
+Return ONLY the JSON array:"""
+
+        response = self._call_claude(user_prompt, system_prompt)
+        hierarchy = self._extract_json_from_response(response)
+
+        print(f"[FormPagesAIHelper] AI built hierarchy with {len(hierarchy)} relationships")
+        return hierarchy

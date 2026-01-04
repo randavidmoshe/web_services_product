@@ -101,6 +101,14 @@ interface DiscoveryQueueItem {
   errorCode?: string
 }
 
+interface LoginLogoutData {
+  login_stages: NavigationStep[]
+  logout_stages: NavigationStep[]
+  network_name: string
+  url: string
+  updated_at: string | null
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [token, setToken] = useState<string | null>(null)
@@ -172,6 +180,16 @@ export default function DashboardPage() {
   
   // Theme state - reads from localStorage to sync with layout
   const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
+  // Login/Logout stages state
+  const [loginLogoutData, setLoginLogoutData] = useState<Record<number, LoginLogoutData>>({})
+  const [editingLoginLogout, setEditingLoginLogout] = useState<{
+    networkId: number
+    type: 'login' | 'logout'
+    steps: NavigationStep[]
+    networkName: string
+    url: string
+  } | null>(null)
 
   // Theme definitions (same as layout.tsx)
   const themes: Record<string, {
@@ -785,6 +803,15 @@ export default function DashboardPage() {
     }
   }, [])
 
+  // Fetch login/logout stages when formPages change
+  useEffect(() => {
+    if (formPages.length > 0 && token) {
+      // Get unique network IDs from form pages
+      const networkIds = [...new Set(formPages.map(fp => fp.network_id))] as number[]
+      fetchLoginLogoutStages(networkIds, token)
+    }
+  }, [formPages, token])
+
   const loadNetworks = async (projectId: string, authToken: string) => {
     setLoadingNetworks(true)
     try {
@@ -884,6 +911,119 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('Failed to check active mapping sessions:', err)
+    }
+  }
+
+  // Fetch login/logout stages for networks
+  const fetchLoginLogoutStages = async (networkIds: number[], authToken: string) => {
+    const results: Record<number, LoginLogoutData> = {}
+    
+    for (const networkId of networkIds) {
+      try {
+        const response = await fetch(
+          `/api/form-pages/networks/${networkId}/login-logout-stages`,
+          {
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        if (response.ok) {
+          const data = await response.json()
+          results[networkId] = {
+            login_stages: data.login_stages || [],
+            logout_stages: data.logout_stages || [],
+            network_name: data.network_name,
+            url: data.url,
+            updated_at: data.updated_at
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to fetch login/logout for network ${networkId}:`, err)
+      }
+    }
+    
+    setLoginLogoutData(results)
+  }
+
+  // Open login/logout edit panel - creates a "fake" FormPage for reusing FormPageEditPanel
+  const openLoginLogoutEditPanel = (networkId: number, type: 'login' | 'logout') => {
+    const data = loginLogoutData[networkId]
+    if (!data) return
+    
+    // Create a fake FormPage object with special negative ID
+    // -1 = login, -2 = logout (we encode networkId in the form_name or use editingLoginLogout state)
+    const fakeFormPage: FormPage = {
+      id: type === 'login' ? -1 : -2,  // Special negative IDs to identify login/logout
+      form_name: type === 'login' ? `🔐 Login - ${data.network_name}` : `🚪 Logout - ${data.network_name}`,
+      url: data.url,
+      network_id: networkId,
+      navigation_steps: type === 'login' ? [...data.login_stages] : [...data.logout_stages],
+      is_root: true,
+      parent_form_id: null,
+      created_at: data.updated_at || new Date().toISOString()
+    }
+    
+    setEditingLoginLogout({
+      networkId,
+      type,
+      steps: type === 'login' ? [...data.login_stages] : [...data.logout_stages],
+      networkName: data.network_name,
+      url: data.url
+    })
+    setEditingFormPage(fakeFormPage)
+    setEditFormName(fakeFormPage.form_name)
+    setEditNavigationSteps(type === 'login' ? [...data.login_stages] : [...data.logout_stages])
+    setExpandedSteps(new Set())
+    setCompletedPaths([])  // No paths for login/logout
+    setShowEditPanel(true)
+  }
+
+  // Save login/logout steps
+  const saveLoginLogoutSteps = async () => {
+    if (!editingLoginLogout || !token) return
+    
+    setSavingFormPage(true)
+    try {
+      const endpoint = editingLoginLogout.type === 'login' 
+        ? `/api/form-pages/networks/${editingLoginLogout.networkId}/login-stages`
+        : `/api/form-pages/networks/${editingLoginLogout.networkId}/logout-stages`
+      
+      const body = editingLoginLogout.type === 'login'
+        ? { login_stages: editNavigationSteps }
+        : { logout_stages: editNavigationSteps }
+      
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      })
+      
+      if (response.ok) {
+        setMessage(`${editingLoginLogout.type === 'login' ? 'Login' : 'Logout'} steps updated successfully!`)
+        
+        // Update local state
+        setLoginLogoutData(prev => ({
+          ...prev,
+          [editingLoginLogout.networkId]: {
+            ...prev[editingLoginLogout.networkId],
+            [editingLoginLogout.type === 'login' ? 'login_stages' : 'logout_stages']: editNavigationSteps
+          }
+        }))
+        
+        setShowEditPanel(false)
+        setEditingLoginLogout(null)
+      } else {
+        setError('Failed to save steps')
+      }
+    } catch (err) {
+      setError('Failed to save steps')
+    } finally {
+      setSavingFormPage(false)
     }
   }
 
@@ -1571,7 +1711,7 @@ export default function DashboardPage() {
         setError(errorDetails)
       }
     } else {
-      setMessage(`Discovery completed! Found ${totalForms} form pages across ${completed} network(s).`)
+      setMessage(`Discovery completed! Found ${totalForms} new form pages across ${completed} network(s).`)
     }
     
     // Reload form pages
@@ -1914,12 +2054,16 @@ export default function DashboardPage() {
 
   // ============ FULL PAGE EDIT VIEW ============
   if (showEditPanel && editingFormPage) {
+    // Determine if this is a login/logout edit (using special negative IDs)
+    const isLoginLogoutEdit = editingFormPage.id < 0
+    const loginLogoutType = editingFormPage.id === -1 ? 'login' : (editingFormPage.id === -2 ? 'logout' : null)
+    
     return (
       <FormPageEditPanel
         editingFormPage={editingFormPage}
         formPages={formPages}
-        completedPaths={completedPaths}
-        loadingPaths={loadingPaths}
+        completedPaths={isLoginLogoutEdit ? [] : completedPaths}
+        loadingPaths={isLoginLogoutEdit ? false : loadingPaths}
         token={token || ''}
         editFormName={editFormName}
         setEditFormName={setEditFormName}
@@ -1944,18 +2088,25 @@ export default function DashboardPage() {
         setError={setError}
         message={message}
         setMessage={setMessage}
-        onClose={() => setShowEditPanel(false)}
-        onSave={saveFormPage}
-        onStartMapping={startMappingFromEditPanel}
+        onClose={() => { 
+          setShowEditPanel(false)
+          if (isLoginLogoutEdit) {
+            setEditingLoginLogout(null)
+          }
+        }}
+        onSave={isLoginLogoutEdit ? saveLoginLogoutSteps : saveFormPage}
+        onStartMapping={isLoginLogoutEdit ? () => {} : startMappingFromEditPanel}
         onCancelMapping={cancelMapping}
         onOpenEditPanel={openEditPanel}
         onDeletePath={(pathId: number) => { /* TODO: implement */ }}
         onSavePathStep={handleSavePathStep}
         onExportPath={downloadPathJson}
-        onRefreshPaths={() => fetchCompletedPaths(editingFormPage.id)}
-        onDeleteFormPage={rediscoverFormPage}
+        onRefreshPaths={() => !isLoginLogoutEdit && fetchCompletedPaths(editingFormPage.id)}
+        onDeleteFormPage={isLoginLogoutEdit ? () => {} : rediscoverFormPage}
         getTheme={getTheme}
         isLightTheme={isLightTheme}
+        isLoginLogout={isLoginLogoutEdit}
+        loginLogoutType={loginLogoutType}
       />
     )
   }
@@ -2137,30 +2288,33 @@ export default function DashboardPage() {
               {/* Rediscover Message */}
               {rediscoverMessage && (
                 <div style={{
-                  background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)',
-                  border: `1px solid ${isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)'}`,
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  border: 'none',
                   borderRadius: '12px',
-                  padding: '16px 20px',
-                  marginBottom: '16px',
+                  padding: '20px 24px',
+                  marginBottom: '20px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px'
+                  gap: '16px',
+                  boxShadow: '0 4px 15px rgba(245, 158, 11, 0.4)'
                 }}>
-                  <span style={{ fontSize: '24px' }}>🔄</span>
+                  <span style={{ fontSize: '32px' }}>🔄</span>
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, color: getTheme().colors.textPrimary, fontWeight: 500 }}>
+                    <p style={{ margin: 0, color: '#fff', fontWeight: 600, fontSize: '16px' }}>
                       {rediscoverMessage}
                     </p>
                   </div>
                   <button
                     onClick={() => setRediscoverMessage(null)}
                     style={{
-                      background: 'transparent',
+                      background: 'rgba(255,255,255,0.2)',
                       border: 'none',
-                      color: getTheme().colors.textSecondary,
+                      color: '#fff',
                       cursor: 'pointer',
                       fontSize: '18px',
-                      padding: '4px'
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontWeight: 600
                     }}
                   >
                     ✕
@@ -2397,8 +2551,34 @@ export default function DashboardPage() {
           borderRadius: '28px',
           padding: '36px',
           boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`,
-          marginTop: '32px'
+          marginTop: '32px',
+          position: 'relative'
         }}>
+          {/* Close button - only show when not discovering */}
+          {!isDiscovering && (
+            <button
+              onClick={() => setDiscoveryQueue([])}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: getTheme().colors.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Close discovery progress"
+            >
+              <span>✕</span> Close
+            </button>
+          )}
           <h2 style={{ marginTop: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700, marginBottom: '28px', letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
             <span style={{ marginRight: '14px' }}>📊</span> Discovery Progress
           </h2>
@@ -2691,200 +2871,305 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...formPages].sort((a, b) => {
-                  if (sortField === 'name') {
-                    const nameA = (a.form_name || '').toLowerCase()
-                    const nameB = (b.form_name || '').toLowerCase()
-                    return sortDirection === 'asc' 
-                      ? nameA.localeCompare(nameB)
-                      : nameB.localeCompare(nameA)
-                  } else {
-                    const dateA = new Date(a.created_at || 0).getTime()
-                    const dateB = new Date(b.created_at || 0).getTime()
-                    return sortDirection === 'asc' 
-                      ? dateA - dateB
-                      : dateB - dateA
-                  }
-                }).map((form, index) => (
-                  <tr 
-                    key={form.id} 
-                    className="table-row"
-                    style={{
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      background: isLightTheme() 
-                        ? (index % 2 === 0 ? 'rgba(242, 246, 250, 0.95)' : 'rgba(236, 241, 248, 0.9)')
-                        : (index % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)')
-                    }}
-                    onDoubleClick={() => openEditPanel(form)}
-                  >
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <strong style={{ fontSize: '17px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
-                      {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
-                          Parent: {form.parent_form_name}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <span style={{
-                        background: isLightTheme() 
-                          ? 'rgba(16, 185, 129, 0.15)'
-                          : 'rgba(16, 185, 129, 0.2)',
-                        color: isLightTheme() ? '#059669' : '#6ee7b7',
-                        padding: '8px 16px',
-                        borderRadius: '20px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        border: `1px solid ${isLightTheme() ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`,
-                        boxShadow: isLightTheme() ? '0 1px 4px rgba(16, 185, 129, 0.2)' : '0 0 10px rgba(16, 185, 129, 0.15)'
-                      }}>
-                        {(form as any).paths_count || 0} paths
-                      </span>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '14px',
-                      color: getTheme().colors.textSecondary,
-                      maxWidth: '250px'
-                    }}>
-                      <div style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        color: isLightTheme() ? '#0369a1' : '#7dd3fc'
-                      }} title={form.url}>
-                        {form.url || '-'}
-                      </div>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <div style={{ fontSize: '15px', color: getTheme().colors.textPrimary }}>
-                        {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
-                      </div>
-                      <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary, marginTop: '2px' }}>
-                        {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
-                      </div>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary,
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                        {/* Map Button or Stop Button */}
-                        {mappingFormIds.has(form.id) ? (
-                          mappingStatus[form.id]?.status === 'stopping' ? (
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(156, 163, 175, 0.2)',
-                              color: '#9ca3af',
-                              borderRadius: '10px',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(156, 163, 175, 0.4)',
-                              boxShadow: '0 0 15px rgba(156, 163, 175, 0.3)'
-                            }}>
-                              ⏳ Stopping...
-                            </span>
-                          ) : (
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(245, 158, 11, 0.2)',
-                              color: '#f59e0b',
-                              borderRadius: '10px',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(245, 158, 11, 0.4)',
-                              boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
-                            }}>
-                              ⏳ Mapping...
-                            </span>
-                            <button 
-                              onClick={() => cancelMapping(form.id)} 
-                              className="action-btn"
+                {/* Group form pages by network_id, then show login/logout at end of each group */}
+                {(() => {
+                  // Get unique network IDs from form pages
+                  const networkIdsFromForms = [...new Set(formPages.map(fp => fp.network_id))]
+                  // Get network IDs from login/logout data
+                  const networkIdsFromLoginLogout = Object.keys(loginLogoutData).map(id => parseInt(id))
+                  // Combine and deduplicate
+                  const allNetworkIds = [...new Set([...networkIdsFromForms, ...networkIdsFromLoginLogout])]
+                  
+                  // Sort form pages
+                  const sortedFormPages = [...formPages].sort((a, b) => {
+                    if (sortField === 'name') {
+                      const nameA = (a.form_name || '').toLowerCase()
+                      const nameB = (b.form_name || '').toLowerCase()
+                      return sortDirection === 'asc' 
+                        ? nameA.localeCompare(nameB)
+                        : nameB.localeCompare(nameA)
+                    } else {
+                      const dateA = new Date(a.created_at || 0).getTime()
+                      const dateB = new Date(b.created_at || 0).getTime()
+                      return sortDirection === 'asc' 
+                        ? dateA - dateB
+                        : dateB - dateA
+                    }
+                  })
+                  
+                  let rowIndex = 0
+                  
+                  return allNetworkIds.map(networkId => {
+                    const networkForms = sortedFormPages.filter(fp => fp.network_id === networkId)
+                    const loginLogout = loginLogoutData[networkId]
+                    
+                    return (
+                      <>
+                        {/* Form pages for this network */}
+                        {networkForms.map((form) => {
+                          const currentIndex = rowIndex++
+                          return (
+                            <tr 
+                              key={form.id} 
+                              className="table-row"
                               style={{
-                                background: 'rgba(239, 68, 68, 0.2)',
-                                border: '2px solid rgba(239, 68, 68, 0.4)',
-                                borderRadius: '12px',
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
                                 transition: 'all 0.2s ease',
-                                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? (currentIndex % 2 === 0 ? 'rgba(219, 234, 254, 0.6)' : 'rgba(191, 219, 254, 0.5)')
+                                  : (currentIndex % 2 === 0 ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.12)')
                               }}
-                              title="Stop mapping"
+                              onDoubleClick={() => openEditPanel(form)}
                             >
-                              ⏹️
-                            </button>
-                          </div>
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
+                                {form.parent_form_name && (
+                                  <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                    Parent: {form.parent_form_name}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <span style={{
+                                  background: isLightTheme() 
+                                    ? 'rgba(16, 185, 129, 0.15)'
+                                    : 'rgba(16, 185, 129, 0.2)',
+                                  color: isLightTheme() ? '#059669' : '#6ee7b7',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {completedPaths.filter(p => p.id === form.id).length > 0 
+                                    ? `${completedPaths.filter(p => p.id === form.id).length} paths`
+                                    : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={form.url}>
+                                  {form.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, color: getTheme().colors.textSecondary }}>
+                                {form.created_at ? (
+                                  <>
+                                    {new Date(form.created_at).toLocaleDateString()}
+                                    <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                                      {new Date(form.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  </>
+                                ) : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                  <button 
+                                    onClick={() => openEditPanel(form)}
+                                    className="action-btn"
+                                    style={{
+                                      background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(99, 102, 241, 0.15)',
+                                      border: `2px solid ${isLightTheme() ? 'rgba(59, 130, 246, 0.2)' : 'rgba(99, 102, 241, 0.3)'}`,
+                                      borderRadius: '12px',
+                                      padding: '16px 18px',
+                                      cursor: 'pointer',
+                                      fontSize: '20px',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    title="Edit form page"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button 
+                                    onClick={() => confirmDeleteFormPage(form)}
+                                    className="action-btn"
+                                    style={{
+                                      background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
+                                      border: `2px solid ${isLightTheme() ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                      borderRadius: '12px',
+                                      padding: '16px 18px',
+                                      cursor: 'pointer',
+                                      fontSize: '20px',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    title="Delete form page"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           )
-                        ) : null}
-                        <button 
-                          onClick={() => openEditPanel(form)} 
-                          className="action-btn"
-                          style={{
-                            background: isLightTheme() 
-                              ? 'rgba(30, 64, 175, 0.08)'
-                              : `${getTheme().colors.accentPrimary}15`,
-                            border: isLightTheme() 
-                              ? '1px solid rgba(30, 64, 175, 0.25)'
-                              : `2px solid ${getTheme().colors.cardBorder}`,
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            cursor: 'pointer',
-                            fontSize: '20px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : `0 0 15px ${getTheme().colors.accentGlow}30`
-                          }}
-                          title="Edit form page"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          onClick={() => openDeleteModal(form)} 
-                          className="action-btn"
-                          style={{
-                            background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
-                            border: isLightTheme() ? '1px solid rgba(239, 68, 68, 0.25)' : '2px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            cursor: 'pointer',
-                            fontSize: '20px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : '0 0 15px rgba(239, 68, 68, 0.2)'
-                          }}
-                          title="Delete form page"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        })}
+                        
+                        {/* Login/Logout rows at end of each network group */}
+                        {loginLogout && (
+                          <>
+                            {/* Login Row */}
+                            <tr 
+                              key={`login-${networkId}`}
+                              className="table-row"
+                              style={{
+                                transition: 'all 0.2s ease',
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? 'rgba(16, 185, 129, 0.08)' 
+                                  : 'rgba(16, 185, 129, 0.1)',
+                                borderLeft: '4px solid #10b981'
+                              }}
+                              onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'login')}
+                            >
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: '#10b981' }}>🔐 Login</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                  {loginLogout.network_name}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}` }}>
+                                <span style={{
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {loginLogout.login_stages.length} steps
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
+                                  {loginLogout.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, color: getTheme().colors.textSecondary }}>
+                                {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => openLoginLogoutEditPanel(networkId, 'login')}
+                                  className="action-btn"
+                                  style={{
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '2px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
+                                    cursor: 'pointer',
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  title="Edit login steps"
+                                >
+                                  ✏️
+                                </button>
+                              </td>
+                            </tr>
+                            
+                            {/* Logout Row */}
+                            <tr 
+                              key={`logout-${networkId}`}
+                              className="table-row"
+                              style={{
+                                transition: 'all 0.2s ease',
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? 'rgba(239, 68, 68, 0.08)' 
+                                  : 'rgba(239, 68, 68, 0.1)',
+                                borderLeft: '4px solid #ef4444'
+                              }}
+                              onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
+                            >
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: '#ef4444' }}>🚪 Logout</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                  {loginLogout.network_name}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}` }}>
+                                <span style={{
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {loginLogout.logout_stages.length} steps
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
+                                  {loginLogout.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, color: getTheme().colors.textSecondary }}>
+                                {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
+                                  className="action-btn"
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    border: '2px solid rgba(239, 68, 68, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
+                                    cursor: 'pointer',
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  title="Edit logout steps"
+                                >
+                                  ✏️
+                                </button>
+                              </td>
+                            </tr>
+                          </>
+                        )}
+                      </>
+                    )
+                  })
+                })()}
               </tbody>
             </table>
           </div>

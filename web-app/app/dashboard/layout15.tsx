@@ -774,7 +774,7 @@ export default function DashboardLayout({
             textShadow: getTheme().colors.textGlow,
             letterSpacing: '-0.5px'
           }}>
-            Quattera AI
+            Quathera
           </span>
         </div>
         

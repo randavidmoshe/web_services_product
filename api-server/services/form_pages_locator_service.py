@@ -17,7 +17,8 @@ from models.database import (
     Network, 
     Project, 
     ApiUsage,
-    CompanyProductSubscription
+    CompanyProductSubscription,
+    ProjectFormHierarchy
 )
 from services.form_pages_ai_helper import FormPagesAIHelper
 
@@ -282,6 +283,7 @@ class FormPagesLocatorService:
         username: str,
         navigation_steps: List[Dict[str, Any]],
         id_fields: List[str] = None,
+        parent_fields: List[Dict[str, Any]] = None,
         is_root: bool = True,
         verification_attempts: int = 1
     ) -> FormPageRoute:
@@ -300,6 +302,7 @@ class FormPagesLocatorService:
             username: Username used for login
             navigation_steps: Array of steps to reach the form
             id_fields: Array of reference field names
+            parent_fields: Full parent reference field objects from AI
             is_root: Whether form has no parent dependencies
             verification_attempts: Number of verification attempts
             
@@ -330,6 +333,7 @@ class FormPagesLocatorService:
             username=username,
             navigation_steps=navigation_steps,
             id_fields=id_fields or [],
+            parent_fields=parent_fields or [],
             is_root=is_root,
             verification_attempts=verification_attempts,
             last_verified_at=datetime.utcnow()
@@ -379,50 +383,96 @@ class FormPagesLocatorService:
             query = query.filter(FormPageRoute.company_id == company_id)
         
         return query.order_by(FormPageRoute.created_at.desc()).all()
-    
+
     def build_hierarchy(self, network_id: int):
         """
-        Build parent-child relationships for form routes in a network.
-        Uses id_fields to determine relationships.
-        
+        Build parent-child relationships for form pages at project level.
+        Uses AI to intelligently match parent reference fields to forms.
+        Saves to ProjectFormHierarchy table.
+
         Args:
-            network_id: Network ID to build hierarchy for
+            network_id: Network ID (used to get project_id and forms)
         """
+        # Get network to find project_id
+        network = self.db.query(Network).filter(Network.id == network_id).first()
+        if not network:
+            print("[FormPagesLocatorService] Network not found")
+            return
+
+        project_id = network.project_id
+
+        # Get ALL form routes for this PROJECT (across all networks)
         routes = self.db.query(FormPageRoute).filter(
-            FormPageRoute.network_id == network_id
+            FormPageRoute.project_id == project_id
         ).all()
-        
-        print(f"[FormPagesLocatorService] Building hierarchy for {len(routes)} routes")
-        
-        relationships_found = 0
-        
+
+        print(f"[FormPagesLocatorService] Building hierarchy for {len(routes)} routes in project {project_id}")
+
+        if not routes:
+            print("[FormPagesLocatorService] No routes found")
+            return
+
+        # Gather all forms with their parent fields (include network_id for context)
+        forms_data = []
         for route in routes:
-            if not route.id_fields:
+            forms_data.append({
+                "form_id": route.id,
+                "form_name": route.form_name,
+                "network_id": route.network_id,
+                "parent_fields": route.parent_fields or []
+            })
+
+        print(f"[FormPagesLocatorService] Sending {len(forms_data)} forms to AI for hierarchy")
+
+        # Call AI to build hierarchy
+        if not self.ai_helper:
+            print("[FormPagesLocatorService] AI not available, skipping hierarchy")
+            return
+
+        hierarchy = self.ai_helper.build_form_hierarchy(forms_data)
+
+        if not hierarchy:
+            print("[FormPagesLocatorService] AI returned no hierarchy")
+            return
+
+        # Clear existing hierarchy for this project
+        self.db.query(ProjectFormHierarchy).filter(
+            ProjectFormHierarchy.project_id == project_id
+        ).delete()
+
+        # Build lookup for form names
+        route_by_id = {r.id: r for r in routes}
+
+        # Save new hierarchy to ProjectFormHierarchy table
+        relationships_found = 0
+        for item in hierarchy:
+            form_id = item.get("form_id")
+            parent_form_id = item.get("parent_form_id")
+
+            if form_id not in route_by_id:
                 continue
-            
-            # Look for parent forms based on id_fields
-            for id_field in route.id_fields:
-                # id_field might be like "employee_id" - look for "employee" form
-                potential_parent = id_field.replace('_id', '').replace('Id', '').lower()
-                
-                for parent_route in routes:
-                    if parent_route.id == route.id:
-                        continue
-                    
-                    parent_name_normalized = parent_route.form_name.lower().replace('_', '')
-                    potential_parent_base = potential_parent.replace('_', '')
-                    
-                    if potential_parent_base in parent_name_normalized or parent_name_normalized in potential_parent_base:
-                        print(f"  🔗 {route.form_name} is child of {parent_route.form_name} (via {id_field})")
-                        
-                        # Set parent relationship
-                        route.parent_form_route_id = parent_route.id
-                        route.is_root = False
-                        relationships_found += 1
-                        break
-        
+
+            form_name = route_by_id[form_id].form_name
+            parent_form_name = route_by_id[
+                parent_form_id].form_name if parent_form_id and parent_form_id in route_by_id else None
+
+            hierarchy_entry = ProjectFormHierarchy(
+                project_id=project_id,
+                form_id=form_id,
+                form_name=form_name,
+                parent_form_id=parent_form_id if parent_form_id and parent_form_id in route_by_id else None,
+                parent_form_name=parent_form_name
+            )
+            self.db.add(hierarchy_entry)
+
+            if parent_form_name:
+                relationships_found += 1
+                print(f"  🔗 {form_name} (id={form_id}) is child of {parent_form_name} (id={parent_form_id})")
+            else:
+                print(f"  📍 {form_name} (id={form_id}) is root form")
+
         self.db.commit()
-        print(f"[FormPagesLocatorService] Found {relationships_found} parent-child relationships")
+        print(f"[FormPagesLocatorService] Saved hierarchy: {relationships_found} parent-child relationships")
     
     # ========== AI OPERATIONS ==========
     

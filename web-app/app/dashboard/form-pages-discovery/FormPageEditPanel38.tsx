@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
 
 // ============ INTERFACES ============
@@ -120,6 +120,10 @@ export interface FormPageEditPanelProps {
   // Theme
   getTheme: () => { name: string; colors: ThemeColors }
   isLightTheme: () => boolean
+  
+  // Login/Logout mode (optional)
+  isLoginLogout?: boolean
+  loginLogoutType?: 'login' | 'logout' | null
 }
 
 // ============ STYLES ============
@@ -226,7 +230,9 @@ export default function FormPageEditPanel({
   onRefreshPaths,
   onDeleteFormPage,
   getTheme,
-  isLightTheme
+  isLightTheme,
+  isLoginLogout = false,
+  loginLogoutType = null
 }: FormPageEditPanelProps) {
   
   // Action types available in agent_selenium
@@ -259,6 +265,20 @@ export default function FormPageEditPanel({
   const [pomCode, setPomCode] = useState<string>('')
   const [pomError, setPomError] = useState<string | null>(null)
   
+  // Spec Compliance state
+  const [specContent, setSpecContent] = useState<string>('')
+  const [specFilename, setSpecFilename] = useState<string>('')
+  const [specLoading, setSpecLoading] = useState(false)
+  const [specExpanded, setSpecExpanded] = useState(false)
+  const [specEditing, setSpecEditing] = useState(false)
+  const [specEditContent, setSpecEditContent] = useState<string>('')
+  const [showSpecComplianceModal, setShowSpecComplianceModal] = useState(false)
+  const [specComplianceTaskId, setSpecComplianceTaskId] = useState<string | null>(null)
+  const [specComplianceStatus, setSpecComplianceStatus] = useState<string>('idle')
+  const [specComplianceReport, setSpecComplianceReport] = useState<string>('')
+  const [specComplianceError, setSpecComplianceError] = useState<string | null>(null)
+  const specFileInputRef = useRef<HTMLInputElement>(null)
+  
   // Rediscover confirmation modal state
   const [showRediscoverModal, setShowRediscoverModal] = useState(false)
   const [deletingFormPage, setDeletingFormPage] = useState(false)
@@ -267,6 +287,19 @@ export default function FormPageEditPanel({
   const [editablePathIds, setEditablePathIds] = useState<Set<number>>(new Set())
   const [showEditPathWarning, setShowEditPathWarning] = useState<number | null>(null)
   const [modifiedPathIds, setModifiedPathIds] = useState<Set<number>>(new Set())
+  
+  // Navigation steps editing mode state
+  const [navStepsEditable, setNavStepsEditable] = useState(false)
+  const [showNavStepsEditWarning, setShowNavStepsEditWarning] = useState(false)
+  
+  // Check if navigation steps are editable
+  const isNavStepsEditable = () => navStepsEditable
+  
+  // Enable editing for navigation steps
+  const enableNavStepsEditing = () => {
+    setNavStepsEditable(true)
+    setShowNavStepsEditWarning(false)
+  }
   
   // Check if a path is in edit mode
   const isPathEditable = (pathId: number) => editablePathIds.has(pathId)
@@ -686,6 +719,228 @@ export default function FormPageEditPanel({
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  // Spec Compliance functions
+  const loadSpecDocument = async () => {
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.spec_document && data.content) {
+          setSpecContent(data.content)
+          setSpecFilename(data.spec_document.filename || 'spec.txt')
+        } else {
+          setSpecContent('')
+          setSpecFilename('')
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load spec document:', err)
+    }
+  }
+
+  // Load spec on mount
+  useEffect(() => {
+    loadSpecDocument()
+  }, [editingFormPage.id])
+
+  const handleSpecFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSpecLoading(true)
+    try {
+      const content = await file.text()
+      
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'text/plain',
+          content: content
+        })
+      })
+
+      if (response.ok) {
+        setSpecContent(content)
+        setSpecFilename(file.name)
+        setMessage('Spec document uploaded successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to upload spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload spec document')
+    } finally {
+      setSpecLoading(false)
+      if (specFileInputRef.current) {
+        specFileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleSpecEdit = () => {
+    setSpecEditContent(specContent)
+    setSpecEditing(true)
+    setSpecExpanded(true)
+  }
+
+  const handleSpecSave = async () => {
+    setSpecLoading(true)
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: specEditContent })
+      })
+
+      if (response.ok) {
+        setSpecContent(specEditContent)
+        setSpecEditing(false)
+        setSpecExpanded(false)
+        setMessage('Spec document updated successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to update spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update spec document')
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  const handleSpecDelete = async () => {
+    if (!confirm('Are you sure you want to delete the spec document?')) return
+
+    setSpecLoading(true)
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        setSpecContent('')
+        setSpecFilename('')
+        setSpecEditing(false)
+        setMessage('Spec document deleted successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to delete spec document')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete spec document')
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  const handleGenerateSpecCompliance = () => {
+    setShowSpecComplianceModal(true)
+    setSpecComplianceStatus('idle')
+    setSpecComplianceReport('')
+    setSpecComplianceError(null)
+    setSpecComplianceTaskId(null)
+  }
+
+  const startSpecComplianceGeneration = async () => {
+    setSpecComplianceStatus('starting')
+    setSpecComplianceError(null)
+
+    try {
+      const response = await fetch('/api/form-mapper/spec-compliance/generate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: editingFormPage.id
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to start compliance check')
+      }
+
+      const data = await response.json()
+      setSpecComplianceTaskId(data.task_id)
+      setSpecComplianceStatus('processing')
+      pollSpecComplianceStatus(data.task_id)
+    } catch (err: any) {
+      setSpecComplianceError(err.message)
+      setSpecComplianceStatus('failed')
+    }
+  }
+
+  const pollSpecComplianceStatus = async (taskId: string) => {
+    const maxAttempts = 60
+    let attempts = 0
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/form-mapper/spec-compliance/tasks/${taskId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to get task status')
+        }
+
+        const data = await response.json()
+
+        if (data.status === 'completed') {
+          setSpecComplianceReport(data.report || '')
+          setSpecComplianceStatus('completed')
+          return
+        } else if (data.status === 'failed') {
+          setSpecComplianceError(data.error || 'Compliance check failed')
+          setSpecComplianceStatus('failed')
+          return
+        }
+
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 2000)
+        } else {
+          setSpecComplianceError('Timeout waiting for compliance check')
+          setSpecComplianceStatus('failed')
+        }
+      } catch (err: any) {
+        setSpecComplianceError(err.message)
+        setSpecComplianceStatus('failed')
+      }
+    }
+
+    poll()
+  }
+
+  const copyComplianceReportToClipboard = () => {
+    navigator.clipboard.writeText(specComplianceReport)
+    setMessage('Compliance report copied to clipboard!')
+  }
+
+  const downloadComplianceReport = () => {
+    const filename = `${editingFormPage.form_name.replace(/\s+/g, '')}_compliance_report.md`
+    const blob = new Blob([specComplianceReport], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   
   // Rediscover form page handler
   const handleRediscoverFormPage = () => {
@@ -800,7 +1055,22 @@ export default function FormPageEditPanel({
         </div>
       )}
       {message && (
-        <div style={successBoxStyle}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '16px 20px',
+          background: isLightTheme() 
+            ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))'
+            : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))',
+          border: isLightTheme() 
+            ? '1px solid rgba(34, 197, 94, 0.4)'
+            : '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
+          color: isLightTheme() ? '#16a34a' : '#86efac',
+          marginBottom: '20px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
           <span>✅</span> {message}
           <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
         </div>
@@ -930,102 +1200,107 @@ export default function FormPageEditPanel({
             alignItems: 'center',
             gap: '12px'
           }}>
-            <span style={{ fontSize: '28px' }}>📄</span>
-            Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span>
+            <span style={{ fontSize: '28px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
+            {isLoginLogout 
+              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence: <span style={{ color: loginLogoutType === 'login' ? '#10b981' : '#ef4444' }}>{editingFormPage.form_name.replace(/^🔐 Login - |^🚪 Logout - /, '')}</span></>
+              : <>Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span></>
+            }
           </h2>
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {/* Mapping Button Logic */}
-            {mappingFormIds.has(editingFormPage.id) ? (
-              mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
-                <button disabled style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  background: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  color: '#fbbf24',
-                  padding: '14px 28px',
-                  borderRadius: '12px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: 'not-allowed'
-                }}>
-                  <span className="spinner" style={{
-                    width: '18px',
-                    height: '18px',
-                    border: '2px solid rgba(251, 191, 36, 0.3)',
-                    borderTopColor: '#fbbf24',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></span>
-                  Stopping...
-                </button>
+            {/* Mapping Button Logic - hidden for login/logout */}
+            {!isLoginLogout && (
+              mappingFormIds.has(editingFormPage.id) ? (
+                mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
+                  <button disabled style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    color: '#fbbf24',
+                    padding: '14px 28px',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'not-allowed'
+                  }}>
+                    <span className="spinner" style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(251, 191, 36, 0.3)',
+                      borderTopColor: '#fbbf24',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }}></span>
+                    Stopping...
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onCancelMapping(editingFormPage.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
+                    }}
+                  >
+                    ⏹️ Stop Mapping
+                  </button>
+                )
               ) : (
-                <button
-                  onClick={() => onCancelMapping(editingFormPage.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
-                  }}
-                >
-                  ⏹️ Stop Mapping
-                </button>
+                <>
+                  {/* Rediscover Form Page Button */}
+                  <button
+                    onClick={handleRediscoverFormPage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)'
+                    }}
+                  >
+                    🔍 Rediscover Form Page
+                  </button>
+                  
+                  {/* Map/Remap Button */}
+                  <button
+                    onClick={() => onStartMapping(editingFormPage.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
+                  </button>
+                </>
               )
-            ) : (
-              <>
-                {/* Rediscover Form Page Button */}
-                <button
-                  onClick={handleRediscoverFormPage}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)'
-                  }}
-                >
-                  🔍 Rediscover Form Page
-                </button>
-                
-                {/* Map/Remap Button */}
-                <button
-                  onClick={() => onStartMapping(editingFormPage.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
-                  }}
-                >
-                  {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
-                </button>
-              </>
             )}
 
             <button
@@ -1068,61 +1343,64 @@ export default function FormPageEditPanel({
         <div style={{ display: 'flex' }}>
           {/* Left Column - Form Info */}
           <div style={{
-            width: '380px',
+            flex: 1,
+            minWidth: '450px',
             padding: '28px',
             borderRight: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
             background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)'
           }}>
-            {/* Hierarchy Info */}
-            <div style={{
-              background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
-              borderRadius: '10px',
-              padding: '20px',
-              border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
-              marginBottom: '20px'
-            }}>
-              <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
-                <span style={{
-                  background: editingFormPage.is_root 
-                    ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
-                    : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
-                  color: editingFormPage.is_root 
-                    ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
-                    : (isLightTheme() ? '#92400e' : '#fbbf24'),
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 600
-                }}>
-                  {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
-                </span>
-              </div>
-              {editingFormPage.parent_form_name && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
-                  <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}</span>
+            {/* Hierarchy Info - hidden for login/logout */}
+            {!isLoginLogout && (
+              <div style={{
+                background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
+                borderRadius: '10px',
+                padding: '20px',
+                border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
+                marginBottom: '20px'
+              }}>
+                <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
+                  <span style={{
+                    background: editingFormPage.is_root 
+                      ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
+                      : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
+                    color: editingFormPage.is_root 
+                      ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
+                      : (isLightTheme() ? '#92400e' : '#fbbf24'),
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    fontSize: '16px',
+                    fontWeight: 600
+                  }}>
+                    {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
+                  </span>
                 </div>
-              )}
-              {editingFormPage.children && editingFormPage.children.length > 0 && (
-                <div style={{ marginTop: '12px' }}>
-                  <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
-                  <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {editingFormPage.children.map((c, i) => (
-                      <span key={i} style={{
-                        background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
-                        color: isLightTheme() ? '#92400e' : '#fbbf24',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: 500
-                      }}>{c.form_name}</span>
-                    ))}
+                {editingFormPage.parent_form_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}</span>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+                {editingFormPage.children && editingFormPage.children.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
+                    <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {editingFormPage.children.map((c, i) => (
+                        <span key={i} style={{
+                          background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
+                          color: isLightTheme() ? '#92400e' : '#fbbf24',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          fontWeight: 500
+                        }}>{c.form_name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* URL Info */}
             <div style={{
@@ -1137,20 +1415,310 @@ export default function FormPageEditPanel({
               </div>
             </div>
 
-            {/* User Provided Inputs */}
-            {token && (
-              <UserProvidedInputsSection
-                formPageId={editingFormPage.id}
-                token={token}
-                apiBase=""
-                isLightTheme={isLightTheme()}
-                themeColors={getTheme().colors}
-              />
+            {/* Two boxes side by side: User Provided Inputs & Spec Document - hidden for login/logout */}
+            {!isLoginLogout && token && (
+              <div style={{ display: 'flex', gap: '16px', marginTop: '20px' }}>
+                {/* User Provided Inputs - Left Box */}
+                <div style={{ flex: 1 }}>
+                  <UserProvidedInputsSection
+                    formPageId={editingFormPage.id}
+                    token={token}
+                    apiBase=""
+                    isLightTheme={isLightTheme()}
+                    themeColors={getTheme().colors}
+                  />
+                </div>
+
+                {/* Spec Document - Right Box */}
+                <div style={{
+                  flex: 1,
+                  background: isLightTheme() 
+                    ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(168, 85, 247, 0.05))'
+                    : 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.1))',
+                  borderRadius: '10px',
+                  padding: '20px',
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h4 style={{ 
+                      margin: 0, 
+                      fontSize: '15px', 
+                      color: isLightTheme() ? '#6b21a8' : '#a78bfa', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '1px', 
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      📋 Spec Document
+                    </h4>
+                    {specContent && (
+                      <button
+                        onClick={() => setSpecExpanded(!specExpanded)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: isLightTheme() ? '#6b21a8' : '#a78bfa',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: 500
+                        }}
+                      >
+                        {specExpanded ? '▼ Collapse' : '▶ Expand'}
+                      </button>
+                    )}
+                  </div>
+
+                  {!specContent ? (
+                    /* No spec - show upload area */
+                    <div style={{
+                      border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                      borderRadius: '8px',
+                      padding: '24px',
+                      textAlign: 'center',
+                      background: isLightTheme() ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.1)'
+                    }}>
+                      <input
+                        ref={specFileInputRef}
+                        type="file"
+                        accept=".txt,.md,.pdf,.docx"
+                        onChange={handleSpecFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ fontSize: '32px', marginBottom: '12px' }}>📄</div>
+                      <p style={{ color: getTheme().colors.textSecondary, marginBottom: '12px', fontSize: '14px' }}>
+                        Upload a spec document to check compliance
+                      </p>
+                      <button
+                        onClick={() => specFileInputRef.current?.click()}
+                        disabled={specLoading}
+                        style={{
+                          background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '10px 20px',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          cursor: specLoading ? 'not-allowed' : 'pointer',
+                          opacity: specLoading ? 0.7 : 1
+                        }}
+                      >
+                        {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
+                      </button>
+                      <p style={{ 
+                        color: getTheme().colors.textSecondary, 
+                        fontSize: '12px', 
+                        marginTop: '8px',
+                        marginBottom: 0 
+                      }}>
+                        Supports: .txt, .md, .pdf, .docx
+                      </p>
+                    </div>
+                  ) : (
+                    /* Has spec - show content and actions */
+                    <div>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '12px',
+                        padding: '8px 12px',
+                        background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
+                        borderRadius: '6px'
+                      }}>
+                        <span style={{ 
+                          color: getTheme().colors.textPrimary, 
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          📎 {specFilename}
+                        </span>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            ref={specFileInputRef}
+                            type="file"
+                            accept=".txt,.md,.pdf,.docx"
+                            onChange={handleSpecFileUpload}
+                            style={{ display: 'none' }}
+                          />
+                          <button
+                            onClick={() => specFileInputRef.current?.click()}
+                            disabled={specLoading}
+                            style={{
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Replace spec file"
+                          >
+                            🔄 Replace
+                          </button>
+                          <button
+                            onClick={handleSpecEdit}
+                            disabled={specLoading || specEditing}
+                            style={{
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Edit spec content"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={handleSpecDelete}
+                            disabled={specLoading}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                            title="Delete spec file"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+
+                      {specExpanded && (
+                        specEditing ? (
+                          /* Edit mode */
+                          <div>
+                            <textarea
+                              value={specEditContent}
+                              onChange={(e) => setSpecEditContent(e.target.value)}
+                              style={{
+                                width: '100%',
+                                minHeight: '150px',
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                color: getTheme().colors.textPrimary,
+                                fontSize: '14px',
+                                fontFamily: 'monospace',
+                                resize: 'vertical',
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                              <button
+                                onClick={handleSpecSave}
+                                disabled={specLoading}
+                                style={{
+                                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  padding: '8px 16px',
+                                  borderRadius: '6px',
+                                  fontSize: '14px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {specLoading ? 'Saving...' : '💾 Save'}
+                              </button>
+                              <button
+                                onClick={() => { setSpecEditing(false); setSpecExpanded(false); }}
+                                disabled={specLoading}
+                                style={{
+                                  background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                                  color: getTheme().colors.textPrimary,
+                                  border: 'none',
+                                  padding: '8px 16px',
+                                  borderRadius: '6px',
+                                  fontSize: '14px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* View mode */
+                          <div style={{
+                            background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                          }}>
+                            <pre style={{
+                              margin: 0,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              fontSize: '14px',
+                              color: getTheme().colors.textPrimary,
+                              fontFamily: 'monospace'
+                            }}>
+                              {specContent}
+                            </pre>
+                          </div>
+                        )
+                      )}
+
+                      {/* Generate Compliance Report button */}
+                      {completedPaths.length > 0 && !specEditing && (
+                        <button
+                          onClick={handleGenerateSpecCompliance}
+                          style={{
+                            marginTop: '16px',
+                            background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '12px 20px',
+                            borderRadius: '8px',
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          📊 Generate Compliance Report
+                        </button>
+                      )}
+                      {completedPaths.length === 0 && (
+                        <p style={{ 
+                          color: getTheme().colors.textSecondary, 
+                          fontSize: '13px', 
+                          marginTop: '12px',
+                          marginBottom: 0,
+                          textAlign: 'center'
+                        }}>
+                          ℹ️ Map the form first to generate a compliance report
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
           {/* Right Column - Steps */}
-          <div style={{ flex: 1, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
+          <div style={{ width: '600px', flexShrink: 0, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
             {/* Path to Form Page Banner */}
             <div style={{
               display: 'inline-flex',
@@ -1171,21 +1739,66 @@ export default function FormPageEditPanel({
               <h3 style={{ margin: 0, fontSize: '20px', color: isLightTheme() ? '#1e40af' : getTheme().colors.textPrimary, fontWeight: 600 }}>
                 Steps ({editNavigationSteps.length})
               </h3>
-              <button onClick={addStepAtEnd} style={{
-                background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
-                color: '#fff',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                + Add Step
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {!navStepsEditable ? (
+                  <button 
+                    onClick={() => setShowNavStepsEditWarning(true)}
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    ✏️ Edit Steps
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={addStepAtEnd} style={{
+                      background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      + Add Step
+                    </button>
+                    <button 
+                      onClick={onSave}
+                      disabled={savingFormPage}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: savingFormPage ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        opacity: savingFormPage ? 0.7 : 1
+                      }}
+                    >
+                      {savingFormPage ? '💾 Saving...' : '💾 Save Steps'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Steps List */}
@@ -1285,14 +1898,19 @@ export default function FormPageEditPanel({
                             <select
                               value={step.action}
                               onChange={(e) => updateNavigationStep(index, 'action', e.target.value)}
+                              disabled={!navStepsEditable}
                               style={{
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                background: navStepsEditable 
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                 color: getTheme().colors.textPrimary,
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                cursor: navStepsEditable ? 'pointer' : 'not-allowed',
+                                opacity: navStepsEditable ? 1 : 0.7
                               }}
                             >
                               <option value="click">Click</option>
@@ -1309,16 +1927,21 @@ export default function FormPageEditPanel({
                               type="text"
                               value={step.value || ''}
                               onChange={(e) => updateNavigationStep(index, 'value', e.target.value)}
+                              readOnly={!navStepsEditable}
                               placeholder="Value (if needed)"
                               style={{
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                background: navStepsEditable 
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                                 color: getTheme().colors.textPrimary,
                                 fontSize: '14px',
-                                boxSizing: 'border-box'
+                                boxSizing: 'border-box',
+                                cursor: navStepsEditable ? 'text' : 'default',
+                                opacity: navStepsEditable ? 1 : 0.7
                               }}
                             />
                           </div>
@@ -1329,17 +1952,22 @@ export default function FormPageEditPanel({
                             type="text"
                             value={step.selector || ''}
                             onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
+                            readOnly={!navStepsEditable}
                             placeholder="CSS selector or XPath"
                             style={{
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
                               border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              background: navStepsEditable 
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                               color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               fontFamily: 'monospace',
-                              boxSizing: 'border-box'
+                              boxSizing: 'border-box',
+                              cursor: navStepsEditable ? 'text' : 'default',
+                              opacity: navStepsEditable ? 1 : 0.7
                             }}
                           />
                         </div>
@@ -1349,49 +1977,56 @@ export default function FormPageEditPanel({
                             type="text"
                             value={step.description || ''}
                             onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
+                            readOnly={!navStepsEditable}
                             placeholder="Step description"
                             style={{
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
                               border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              background: navStepsEditable 
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
                               color: getTheme().colors.textPrimary,
                               fontSize: '14px',
-                              boxSizing: 'border-box'
+                              boxSizing: 'border-box',
+                              cursor: navStepsEditable ? 'text' : 'default',
+                              opacity: navStepsEditable ? 1 : 0.7
                             }}
                           />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => addStepAfter(index)}
-                            style={{
-                              background: 'transparent',
-                              border: `1px solid ${getTheme().colors.accentPrimary}`,
-                              color: getTheme().colors.accentPrimary,
-                              padding: '8px 14px',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            + Add After
-                          </button>
-                          <button
-                            onClick={() => confirmDeleteStep(index)}
-                            style={{
-                              background: 'transparent',
-                              border: '1px solid #ef4444',
-                              color: '#ef4444',
-                              padding: '8px 14px',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
+                        {navStepsEditable && (
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => addStepAfter(index)}
+                              style={{
+                                background: 'transparent',
+                                border: `1px solid ${getTheme().colors.accentPrimary}`,
+                                color: getTheme().colors.accentPrimary,
+                                padding: '8px 14px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              + Add After
+                            </button>
+                            <button
+                              onClick={() => confirmDeleteStep(index)}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid #ef4444',
+                                color: '#ef4444',
+                                padding: '8px 14px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1401,7 +2036,8 @@ export default function FormPageEditPanel({
           </div>
         </div>
 
-        {/* Completed Mapping Paths Section */}
+        {/* Completed Mapping Paths Section - hidden for login/logout */}
+        {!isLoginLogout && (
         <div style={{
           borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
           padding: '28px 32px',
@@ -2139,6 +2775,7 @@ export default function FormPageEditPanel({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Edit Path Steps Warning Modal */}
@@ -2246,6 +2883,129 @@ export default function FormPageEditPanel({
               </button>
               <button
                 onClick={() => enablePathEditing(showEditPathWarning)}
+                style={{
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+                }}
+              >
+                ✏️ I Understand, Enable Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Steps Edit Warning Modal */}
+      {showNavStepsEditWarning && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowNavStepsEditWarning(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '32px',
+            width: '90%',
+            maxWidth: '580px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '28px'
+              }}>
+                ⚠️
+              </div>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '24px', fontWeight: 600 }}>
+                Edit Navigation Steps
+              </h3>
+            </div>
+            
+            {/* Warning Content */}
+            <div style={{
+              background: isLightTheme() ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.15)',
+              border: `1px solid ${isLightTheme() ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.4)'}`,
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{ margin: '0 0 14px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '17px' }}>
+                🛤️ These navigation steps define how to reach this form page.
+              </p>
+              <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+                They were discovered during form discovery and represent the path from the login page to this form.
+              </p>
+            </div>
+            
+            <p style={{ margin: '0 0 14px', color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+              <strong style={{ color: getTheme().colors.textPrimary }}>Before editing, please understand:</strong>
+            </p>
+            
+            <ul style={{ 
+              margin: '0 0 24px', 
+              paddingLeft: '24px',
+              color: getTheme().colors.textSecondary,
+              fontSize: '16px',
+              lineHeight: 2
+            }}>
+              <li><strong>Step order is critical</strong> – Navigation must follow the exact sequence</li>
+              <li><strong>Selectors are site-specific</strong> – Changing them may break navigation</li>
+              <li><strong>Form mapping depends on these</strong> – Wrong navigation = wrong form</li>
+              <li><strong>All paths use these steps</strong> – Changes affect all mapped paths</li>
+            </ul>
+            
+            <p style={{ 
+              margin: '0 0 28px', 
+              padding: '16px',
+              background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)',
+              borderRadius: '10px',
+              color: isLightTheme() ? '#1d4ed8' : '#93c5fd',
+              fontSize: '15px',
+              lineHeight: 1.5
+            }}>
+              💡 <strong>Tip:</strong> If navigation fails after editing, you can use "Rediscover Form Page" to reset the steps.
+            </p>
+            
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowNavStepsEditWarning(false)}
+                style={{
+                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                  color: getTheme().colors.textPrimary,
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={enableNavStepsEditing}
                 style={{
                   background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   border: 'none',
@@ -2501,6 +3261,204 @@ export default function FormPageEditPanel({
                 }}>
                   {pomCode}
                 </pre>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Spec Compliance Modal */}
+      {showSpecComplianceModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowSpecComplianceModal(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '900px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
+                📊 Spec Compliance Report
+              </h3>
+              <button
+                onClick={() => setShowSpecComplianceModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
+              >
+                ×
+              </button>
+            </div>
+            
+            {specComplianceStatus === 'idle' && (
+              <>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                  Generate a compliance report comparing your spec document against the actual form implementation for "{editingFormPage.form_name}".
+                </p>
+                
+                <div style={{
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  marginBottom: '20px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
+                        📋 Spec: {specFilename}
+                      </p>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
+                        {specContent.length} characters
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
+                        🛤️ Paths: {completedPaths.length}
+                      </p>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
+                        {completedPaths.reduce((sum, p) => sum + (p.steps?.length || 0), 0)} total steps
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={startSpecComplianceGeneration}
+                  style={{
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    width: '100%'
+                  }}
+                >
+                  🚀 Generate Compliance Report
+                </button>
+              </>
+            )}
+            
+            {(specComplianceStatus === 'starting' || specComplianceStatus === 'processing') && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚙️</div>
+                <p style={{ color: getTheme().colors.textPrimary, fontSize: '18px', fontWeight: 600 }}>
+                  Analyzing compliance...
+                </p>
+                <p style={{ color: getTheme().colors.textSecondary }}>
+                  AI is comparing your spec against the implementation
+                </p>
+              </div>
+            )}
+            
+            {specComplianceStatus === 'failed' && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
+                <p style={{ color: '#ef4444', fontSize: '18px', fontWeight: 600 }}>
+                  Compliance Check Failed
+                </p>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                  {specComplianceError}
+                </p>
+                <button
+                  onClick={() => setSpecComplianceStatus('idle')}
+                  style={{
+                    background: getTheme().colors.cardBorder,
+                    color: getTheme().colors.textPrimary,
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+            
+            {specComplianceStatus === 'completed' && (
+              <>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                  <button
+                    onClick={copyComplianceReportToClipboard}
+                    style={{
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    📋 Copy to Clipboard
+                  </button>
+                  <button
+                    onClick={downloadComplianceReport}
+                    style={{
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    💾 Download Report
+                  </button>
+                  <button
+                    onClick={() => setSpecComplianceStatus('idle')}
+                    style={{
+                      background: 'transparent',
+                      color: getTheme().colors.textSecondary,
+                      border: `1px solid ${getTheme().colors.cardBorder}`,
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+                
+                <div style={{
+                  background: isLightTheme() ? '#f8fafc' : '#0d1117',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  overflow: 'auto',
+                  maxHeight: '500px'
+                }}>
+                  <pre style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: '14px',
+                    fontFamily: 'Monaco, Consolas, monospace',
+                    color: getTheme().colors.textPrimary,
+                    lineHeight: 1.6
+                  }}>
+                    {specComplianceReport}
+                  </pre>
+                </div>
               </>
             )}
           </div>

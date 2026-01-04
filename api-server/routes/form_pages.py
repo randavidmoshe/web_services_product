@@ -330,20 +330,118 @@ async def list_form_routes(
         project_id=project_id,
         company_id=company_id
     )
-    
+
+    # Get hierarchy data for this project
+    from models.database import ProjectFormHierarchy, Network
+
+    project_ids = set(r.project_id for r in routes if r.project_id)
+
+    # Build hierarchy lookup
+    parent_lookup = {}
+    children_lookup = {}
+
+    for pid in project_ids:
+        hierarchy_entries = db.query(ProjectFormHierarchy).filter(
+            ProjectFormHierarchy.project_id == pid
+        ).all()
+
+        for entry in hierarchy_entries:
+            if entry.parent_form_id:
+                parent_lookup[entry.form_id] = {
+                    "parent_form_id": entry.parent_form_id,
+                    "parent_form_name": entry.parent_form_name
+                }
+
+            if entry.parent_form_id:
+                if entry.parent_form_id not in children_lookup:
+                    children_lookup[entry.parent_form_id] = []
+                children_lookup[entry.parent_form_id].append({
+                    "form_id": entry.form_id,
+                    "form_name": entry.form_name
+                })
+
+    # Get network names
+    network_lookup = {}
+    network_ids = set(r.network_id for r in routes if r.network_id)
+    networks = db.query(Network).filter(Network.id.in_(network_ids)).all()
+    for n in networks:
+        network_lookup[n.id] = n.name
+
+    # Add network_name to children
+    route_network = {r.id: r.network_id for r in routes}
+    for children_list in children_lookup.values():
+        for child in children_list:
+            child_network_id = route_network.get(child["form_id"])
+            child["network_name"] = network_lookup.get(child_network_id, "Unknown")
     return [
         {
             "id": r.id,
             "form_name": r.form_name,
             "url": r.url,
             "navigation_steps": r.navigation_steps,
+            "network_id": r.network_id,
+            "network_name": network_lookup.get(r.network_id, "Unknown"),
             "id_fields": r.id_fields,
+            "parent_fields": r.parent_fields,
             "is_root": r.is_root,
             "parent_form_route_id": r.parent_form_route_id,
+            "parent_form_name": parent_lookup.get(r.id, {}).get("parent_form_name"),
+            "children": children_lookup.get(r.id, []),
             "created_at": r.created_at.isoformat() if r.created_at else None
         }
         for r in routes
     ]
+
+
+@router.get("/networks/{network_id}/login-logout-stages")
+async def get_login_logout_stages(network_id: int, db: Session = Depends(get_db)):
+    """Get login and logout stages for a network"""
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+
+    return {
+        "network_id": network.id,
+        "network_name": network.name,
+        "url": network.url,
+        "login_stages": network.login_stages or [],
+        "logout_stages": network.logout_stages or [],
+        "updated_at": network.updated_at.isoformat() if network.updated_at else None
+    }
+
+
+@router.put("/networks/{network_id}/login-stages")
+async def update_login_stages(
+        network_id: int,
+        data: Dict[str, Any] = Body(...),
+        db: Session = Depends(get_db)
+):
+    """Update login stages for a network"""
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+
+    network.login_stages = data.get("login_stages", [])
+    db.commit()
+
+    return {"success": True, "login_stages": network.login_stages}
+
+
+@router.put("/networks/{network_id}/logout-stages")
+async def update_logout_stages(
+        network_id: int,
+        data: Dict[str, Any] = Body(...),
+        db: Session = Depends(get_db)
+):
+    """Update logout stages for a network"""
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+
+    network.logout_stages = data.get("logout_stages", [])
+    db.commit()
+
+    return {"success": True, "logout_stages": network.logout_stages}
 
 
 @router.post("/routes")

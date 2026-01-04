@@ -365,6 +365,7 @@ class FormPagesAPIClient:
             "username": username or "unknown",
             "navigation_steps": form.get("navigation_steps", []),
             "id_fields": id_fields,
+            "parent_fields": self.current_form_parent_fields,
             "is_root": True,
             "verification_attempts": 1
         })

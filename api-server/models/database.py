@@ -162,6 +162,8 @@ class FormPageRoute(Base):
     # Navigation data
     navigation_steps = Column(JSON)  # Array of steps to reach the form
     id_fields = Column(JSON)  # Array of reference field names
+
+    parent_fields = Column(JSON)  # Full parent reference field objects from AI
     
     # Hierarchy
     parent_form_route_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=True)
@@ -189,6 +191,23 @@ class FormPageRoute(Base):
     # Form Mapper relationships  # <-- ADD THESE
     mapper_sessions = relationship("FormMapperSession", back_populates="form_page_route", cascade="all, delete-orphan")
     map_results = relationship("FormMapResult", back_populates="form_page_route", cascade="all, delete-orphan")
+
+
+class ProjectFormHierarchy(Base):
+    """
+    Stores parent-child relationships between form types at project level.
+    Built by AI after form discovery completes.
+    """
+    __tablename__ = "project_form_hierarchy"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    form_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=False)
+    form_name = Column(String, nullable=False)
+    parent_form_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=True)
+    parent_form_name = Column(String, nullable=True)  # NULL = root form
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 class ApiUsage(Base):
     __tablename__ = "api_usage"

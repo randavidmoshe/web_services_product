@@ -2475,6 +2475,7 @@ class FormPagesCrawler:
         return True
 
 
+
     def close_logger(self):
         """Clean up logger at end of crawl"""
         if hasattr(self, 'log'):
