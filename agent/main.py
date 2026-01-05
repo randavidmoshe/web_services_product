@@ -34,6 +34,7 @@ from web_ui.server import start_server
 from crawler import FormPagesCrawler, FormPagesAPIClient
 from crawler.form_pages_utils import detect_page_error, PageErrorCode, get_error_message
 from form_mapper_handler import FormMapperTaskHandler
+from activity_logger import init_activity_logger, get_activity_logger
 
 # Suppress SSL warnings for self-signed certificates in development
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -50,6 +51,7 @@ class FormDiscovererAgent:
     
     def __init__(self, config_file: Optional[str] = None):
         self.config = AgentConfig(config_file)
+        self.activity_logger = init_activity_logger(self.config)
         self._setup_logging()
         self.selenium_agent = AgentSelenium()  # Uses default Desktop path
         self.is_running = False
@@ -90,7 +92,7 @@ class FormDiscovererAgent:
         ]
         for line in header_lines:
             self.logger.info(line)
-            self.selenium_agent.results_logger.info(line)
+            self.activity_logger.info(line)
     
     def _setup_logging(self):
         # Console-only logger for system messages (not written to file)
@@ -145,6 +147,7 @@ class FormDiscovererAgent:
                 expires_in = result.get('expires_in', 1800)  # Default 30 min
                 self.jwt_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                 self.logger.info(f"✅ JWT token refreshed (expires in {expires_in}s)")
+                self.activity_logger.update_auth(api_key=self.api_key, jwt_token=self.jwt_token)
                 return True
             elif response.status_code == 401:
                 # API key invalidated - another agent took over
@@ -240,6 +243,7 @@ class FormDiscovererAgent:
                     expires_in = result.get('expires_in', 1800)
                     self.jwt_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
                     self.logger.info(f"✅ JWT token received (expires in {expires_in}s)")
+                    self.activity_logger.update_auth(api_key=self.api_key, jwt_token=self.jwt_token)
                 
                 self.logger.info(f"✅ Connected successfully")
                 
@@ -486,13 +490,13 @@ class FormDiscovererAgent:
                 self._update_task_status(task_id, 'failed', error=result.get('error'))
                 self.logger.error(f"❌ Task failed: {result.get('error')}")
                 # Log to results_logger so it shows in web UI logs
-                self.selenium_agent.results_logger.error(f"❌ TASK FAILED: {result.get('error')}")
+                self.activity_logger.error(f"❌ TASK FAILED: {result.get('error')}")
                 
         except Exception as e:
             self.logger.exception(f"Task error: {str(e)}")
             self._update_task_status(task_id, 'failed', error=str(e))
             # Log to results_logger so it shows in web UI logs
-            self.selenium_agent.results_logger.error(f"❌ TASK ERROR: {str(e)}")
+            self.activity_logger.error(f"❌ TASK ERROR: {str(e)}")
         finally:
             self.current_task_id = None
     
@@ -576,6 +580,16 @@ class FormDiscovererAgent:
 
         crawl_session_id = params.get('crawl_session_id')
         self.current_crawl_session_id = crawl_session_id  # Track for cancel detection
+        # Start activity logging session
+        self.activity_logger.start_session(
+            activity_type='discovery',
+            session_id=crawl_session_id,
+            project_id=params.get('project_id'),
+            company_id=params.get('company_id'),
+            user_id=params.get('user_id', 0),
+            network_id=params.get('network_id')
+        )
+        self.activity_logger.info("🔍 Discovery started")
         network_url = params.get('network_url')
         login_url = params.get('login_url', network_url)
         login_username = params.get('login_username')
@@ -633,7 +647,7 @@ class FormDiscovererAgent:
             if page_error:
                 error_msg = get_error_message(page_error)
                 self.logger.error(f"Initial page error: {error_msg}")
-                self.selenium_agent.results_logger.error(f"❌ PAGE ERROR: {error_msg}")
+                self.activity_logger.error(f"❌ PAGE ERROR: {error_msg}")
                 api_client.update_crawl_session(
                     status='failed',
                     error_code=page_error,
@@ -728,6 +742,7 @@ class FormDiscovererAgent:
                         # Login succeeded
                         login_successful = True
                         self.logger.info(f"✅ Login successful on attempt {attempt}")
+                        self.activity_logger.info("✅ Login successful")
                         break
                         
                     except Exception as login_error:
@@ -742,6 +757,7 @@ class FormDiscovererAgent:
                 if not login_successful:
                     error_msg = f"Login failed after {max_login_attempts} attempts"
                     self.logger.error(error_msg)
+                    self.activity_logger.error(f"❌ {error_msg}")
                     api_client.update_crawl_session(
                         status='failed',
                         error_code=PageErrorCode.LOGIN_FAILED,
@@ -799,6 +815,9 @@ class FormDiscovererAgent:
                 forms_found=forms_found
             )
 
+            self.activity_logger.info(f"✅ Discovery complete - {forms_found} forms found")
+            self.activity_logger.complete()
+
             return {
                 "success": True,
                 "forms_found": forms_found,
@@ -808,7 +827,8 @@ class FormDiscovererAgent:
         except Exception as e:
             self.logger.error(f"Form discovery failed: {e}")
             # Log to results_logger so it shows in web UI logs
-            self.selenium_agent.results_logger.error(f"❌ DISCOVERY FAILED: {e}")
+            self.activity_logger.error(f"❌ DISCOVERY FAILED: {e}")
+            self.activity_logger.complete()  # Still send logs even on failure
             # Try to detect page error for better error reporting
             error_code = PageErrorCode.UNKNOWN
             try:
@@ -838,7 +858,7 @@ class FormDiscovererAgent:
         """Generate and execute logout steps after discovery (same pattern as login)"""
         try:
             self.logger.info("🚪 Generating logout steps...")
-            self.selenium_agent.results_logger.info("🚪 Generating logout steps...")
+            self.activity_logger.info("🚪 Generating logout steps...")
 
             screenshot_base64 = driver.get_screenshot_as_base64()
             page_html = driver.page_source
@@ -895,7 +915,7 @@ class FormDiscovererAgent:
                         break
 
                     self.logger.info("✅ Logout completed")
-                    self.selenium_agent.results_logger.info("✅ Logout completed")
+                    self.activity_logger.info("✅ Logout completed")
                     return
 
                 except Exception as logout_error:

@@ -17,7 +17,7 @@ from .form_pages_utils import (
     wait_dom_ready, safe_click, page_has_form_fields, sanitize_filename, visible_text,
     dismiss_all_popups_and_overlays,
 )
-
+from activity_logger import get_activity_logger
 import logging
 
 class RecursiveNavigationState:
@@ -50,6 +50,7 @@ class FormPagesCrawler:
         self.server = server
         self.agent = agent
         self.form_agent = form_agent  # For checking cancel_requested flag
+        self.activity_logger = get_activity_logger()
         
         # Store username and login_url for tagging forms
         self.username = username if username else "no_login"
@@ -805,6 +806,7 @@ class FormPagesCrawler:
                                             return all_forms
 
                                     print(f"{indent}    ✅ Form #{len(all_forms)}: {form_name} (modal)")
+                                    self.activity_logger.info(f"✅ Found form: {form_name}")
                                 else:
                                     print(f"{indent}    ⚠️  Modal form '{form_name}' already discovered - skipping")
                             else:
@@ -829,6 +831,7 @@ class FormPagesCrawler:
                                     print(f"{indent}    ⛔ Server limit reached - stopping discovery")
                                     return all_forms
                             print(f"{indent}    ✅ Form #{len(all_forms)}: {form['form_name']} (new tab)")
+                            self.activity_logger.info(f"✅ Found form: {form['form_name']} (new tab)")
 
                     time.sleep(1.5)
                     wait_dom_ready(self.driver)
@@ -879,6 +882,7 @@ class FormPagesCrawler:
                                 continue
 
                             print(f"{indent}    ✅ Form #{len(all_forms) + 1}: {form_name}")
+                            self.activity_logger.info(f"✅ Found form: {form_name}")
 
                             nav_steps = self._convert_path_to_steps(state.path)
                             nav_steps.append({
@@ -982,6 +986,7 @@ class FormPagesCrawler:
 
         print(f"\n[Explore] Exploration complete. Explored {explored_count} states.")
         print(f"[Explore] Found {len(all_forms)} form pages\n")
+        self.activity_logger.info(f"📊 Exploration complete - found {len(all_forms)} form pages")
         
         return all_forms
 

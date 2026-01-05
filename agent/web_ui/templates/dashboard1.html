@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Quattera AI Agent{% endblock %}
+{% block title %}Dashboard - Form Discoverer Agent{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -8,26 +8,9 @@
         text-align: center;
         margin-bottom: 3rem;
         padding: 2rem;
-        background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 12px;
         color: white;
-    }
-
-    .dashboard-header-logo {
-        width: 64px;
-        height: 64px;
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 16px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 1rem;
-        backdrop-filter: blur(10px);
-    }
-
-    .dashboard-header-logo svg {
-        width: 40px;
-        height: 40px;
     }
 
     .dashboard-header h1 {
@@ -90,13 +73,11 @@
         cursor: pointer;
         transition: all 0.3s;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border: 2px solid transparent;
     }
 
     .action-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-        border-color: var(--primary-light);
     }
 
     .action-icon {
@@ -145,12 +126,7 @@
 
 {% block content %}
 <div class="dashboard-header">
-    <div class="dashboard-header-logo">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="bold" font-family="Arial">Q</text>
-        </svg>
-    </div>
-    <h1>Form Discoverer Agent</h1>
+    <h1>🤖 Form Discoverer Agent</h1>
     <p>AI-Powered Web Testing Platform</p>
 </div>
 

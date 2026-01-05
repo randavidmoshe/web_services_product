@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 import threading
+from activity_logger import get_activity_logger
 import webbrowser
 
 app = Flask(__name__)
@@ -287,55 +288,41 @@ def api_save_settings():
 
 @app.route('/api/logs/stream')
 def api_logs_stream():
-    """Stream logs in real-time using Server-Sent Events"""
+    """Stream logs in real-time using Server-Sent Events from ActivityLogger"""
+
     def generate():
-        log_file = Path(get_env_value('LOG_FOLDER', 'logs')) / 'agent.log'
-        
-        if not log_file.exists():
-            yield f"data: Log file not found: {log_file}\n\n"
-            return
-        
-        with open(log_file, 'r') as f:
-            # Go to end of file
-            f.seek(0, 2)
-            
-            while True:
-                line = f.readline()
-                if line:
-                    yield f"data: {line}\n\n"
-                else:
-                    time.sleep(0.5)
-    
+        logger = get_activity_logger()
+        last_count = 0
+
+        while True:
+            if logger:
+                entries = list(logger.memory_queue.queue)
+                if len(entries) > last_count:
+                    # Send new entries
+                    for entry in entries[last_count:]:
+                        data = json.dumps(entry.to_sse_dict())
+                        yield f"data: {data}\n\n"
+                    last_count = len(entries)
+            time.sleep(0.1)
+
     return Response(generate(), mimetype='text/event-stream')
 
 
 @app.route('/api/logs/history')
 def api_logs_history():
-    """Get last N lines of automation results logs (customer-facing)"""
-    lines = int(request.args.get('lines', 1000))
-    
-    # Get log folder from env, default to ~/Desktop/automation_files/logs
-    default_desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
-    base_folder = get_env_value('BASE_FOLDER', default_desktop)
-    default_log_folder = os.path.join(base_folder, 'automation_files', 'logs')
-    log_folder = Path(get_env_value('LOG_FOLDER', default_log_folder))
-    
-    # Find the most recent results_log file (automation logs, not system logs)
-    try:
-        log_files = sorted(log_folder.glob('results_log_*.log'), key=os.path.getmtime, reverse=True)
-        if not log_files:
-            return jsonify({'logs': ['No automation logs yet. Logs will appear when tests are executed.'], 'error': None})
-        
-        log_file = log_files[0]  # Get most recent
-        
-        with open(log_file, 'r') as f:
-            all_lines = f.readlines()
-            recent_lines = all_lines[-lines:]
-            return jsonify({'logs': recent_lines})
-    except Exception as e:
+    """Get recent log entries from ActivityLogger"""
+    count = int(request.args.get('lines', 100))
+
+    logger = get_activity_logger()
+    if logger:
+        entries = logger.get_recent_entries(count)
+        # Convert to simple text lines for backward compatibility
+        logs = [f"[{e['timestamp']}] [{e['level'].upper()}] {e['message']}" for e in entries]
+        return jsonify({'logs': logs, 'error': None})
+    else:
         return jsonify({
-            'error': f'Failed to read logs: {str(e)}',
-            'logs': []
+            'logs': ['Activity logger not initialized. Start a discovery or mapping task to see logs.'],
+            'error': None
         })
 
 

@@ -134,20 +134,10 @@ class AgentSelenium:
         info_handler.setFormatter(info_formatter)
         self.info_logger.addHandler(info_handler)
         
-        self.results_logger = logging.getLogger('agent_results')
-        self.results_logger.setLevel(logging.INFO)
-        self.results_logger.handlers.clear()
-        self.results_logger.propagate = False  # Don't inherit from root logger
-        
-        results_handler = logging.FileHandler(results_log_path)
-        results_handler.setLevel(logging.INFO)
-        results_formatter = logging.Formatter('%(asctime)s - %(message)s')
-        results_handler.setFormatter(results_formatter)
-        self.results_logger.addHandler(results_handler)
+
         
         self.info_logger.info("Agent logging initialized")
-        self.results_logger.info("Agent results logging initialized")
-    
+
     def log_test_start(self, config: Dict):
         """Log test start configuration to both logs"""
         self.info_logger.info("="*70)
@@ -161,28 +151,15 @@ class AgentSelenium:
         self.info_logger.info(f"Test Cases File: {config.get('test_cases_file', 'N/A')}")
         self.info_logger.info(f"Max Retries: {config.get('max_retries', 'N/A')}")
         self.info_logger.info("="*70)
-        
-        self.results_logger.info("="*70)
-        self.results_logger.info("TEST STARTED")
-        self.results_logger.info(f"Test URL: {config.get('test_url', 'N/A')}")
-        self.results_logger.info(f"Form Page Name: {config.get('form_page_name', 'N/A')}")
-        self.results_logger.info(f"Browser: {config.get('browser', 'N/A')}")
-        self.results_logger.info(f"Headless: {config.get('headless', 'N/A')}")
-        self.results_logger.info(f"UI Verification: {config.get('enable_ui_verification', 'N/A')}")
-        self.results_logger.info(f"Screenshot Folder: {config.get('screenshot_folder', 'N/A')}")
-        self.results_logger.info(f"Test Cases File: {config.get('test_cases_file', 'N/A')}")
-        self.results_logger.info(f"Max Retries: {config.get('max_retries', 'N/A')}")
-        self.results_logger.info("="*70)
-        
+
     def log_message(self, message: str, level: str = "info"):
         """
-        Log a message to both agent loggers
-        
+        Log a message to agent info logger (system/debug log)
+
         Args:
             message: The message to log
             level: Log level - "info", "warning", "error", "debug"
         """
-        # Log to info logger
         if level == "warning":
             self.info_logger.warning(message)
         elif level == "error":
@@ -191,16 +168,6 @@ class AgentSelenium:
             self.info_logger.debug(message)
         else:
             self.info_logger.info(message)
-        
-        # Log to results logger
-        if level == "warning":
-            self.results_logger.warning(message)
-        elif level == "error":
-            self.results_logger.error(message)
-        elif level == "debug":
-            self.results_logger.debug(message)
-        else:
-            self.results_logger.info(message)
         
     def initialize_browser(
         self,
@@ -403,8 +370,8 @@ class AgentSelenium:
                     print("[WebDriver] ✅ Firefox initialized successfully")
                 except Exception as firefox_error:
                     print(f"[WebDriver] ❌ Firefox initialization failed: {firefox_error}")
-                    self.results_logger.error(f"❌ FIREFOX ERROR: {firefox_error}")
-                    self.results_logger.error("💡 TIP: Try switching to Chrome in Settings, or restart the agent")
+                    self.info_logger.error(f"❌ FIREFOX ERROR: {firefox_error}")
+                    self.info_logger.error("💡 TIP: Try switching to Chrome in Settings, or restart the agent")
                     raise firefox_error
                 
             elif browser_type.lower() == "edge":
@@ -485,8 +452,7 @@ class AgentSelenium:
             
         except Exception as e:
             self.info_logger.error(f"Browser initialization failed: {str(e)}")
-            # Log to results_logger so it shows in web UI logs
-            self.results_logger.error(f"❌ BROWSER ERROR: {browser_type} failed to start - {str(e)}")
+            self.info_logger.error(f"❌ BROWSER ERROR: {browser_type} failed to start - {str(e)}")
             return {"success": False, "error": str(e)}
     
     def navigate_to_url(self, url: str) -> Dict:
@@ -1205,7 +1171,7 @@ class AgentSelenium:
         else:
             log_msg = f"Step {step_number}: ⚠️ {action.upper()} - {description}"
         
-        self.results_logger.info(log_msg)
+        self.info_logger.info(log_msg)
         self.info_logger.info(f"Executing step {step_number}: {action} | Selector: {step.get('selector', 'N/A')} | Value: {step.get('value', 'N/A')}")
         
         # STEP 1: Capture old DOM hash BEFORE action
@@ -1287,9 +1253,9 @@ class AgentSelenium:
             # DEBUG: Save screenshot when fields change
             if fields_changed:
                 self.capture_screenshot("fields_changed_debug")
-            
-            self.results_logger.info(f"  ✅ Success")
-            self.results_logger.info("-" * 70)
+
+            self.info_logger.info(f"  ✅ Success")
+            self.info_logger.info("-" * 70)
             self.info_logger.info(f"Step completed successfully: {action}")
             
             return {
@@ -1878,9 +1844,9 @@ class AgentSelenium:
                     print(f"   ❌ VERIFICATION FAILED: Element not found")
                     print(f"      Selector: {selector}")
                     
-                    self.results_logger.error(f"  Selector: {selector}")
-                    self.results_logger.error(f"  -------------------")
-                    self.results_logger.error(f"  VERIFICATION FAILED")
+                    self.info_logger.error(f"  Selector: {selector}")
+                    self.info_logger.error(f"  -------------------")
+                    self.info_logger.error(f"  VERIFICATION FAILED")
                     self.info_logger.error(f"Verification failed: Element not found - {selector}")
                     
                     self.capture_screenshot(
@@ -1902,10 +1868,10 @@ class AgentSelenium:
                 if not element.is_displayed():
                     print(f"   ❌ VERIFICATION FAILED: Element exists but is not visible")
                     print(f"      Selector: {selector}")
-                    
-                    self.results_logger.error(f"  Selector: {selector}")
-                    self.results_logger.error(f"  -------------------")
-                    self.results_logger.error(f"  VERIFICATION FAILED")
+
+                    self.info_logger.error(f"  Selector: {selector}")
+                    self.info_logger.error(f"  -------------------")
+                    self.info_logger.error(f"  VERIFICATION FAILED")
                     self.info_logger.error(f"Verification failed: Element not visible - {selector}")
                     
                     self.capture_screenshot(
@@ -1958,10 +1924,10 @@ class AgentSelenium:
                         print(f"   ❌ VERIFICATION FAILED: Content mismatch")
                         print(f"      Expected: '{expected_value}'")
                         print(f"      Actual: '{actual_value}'")
-                        
-                        self.results_logger.error(f"  Selector: {selector}")
-                        self.results_logger.error(f"  -------------------")
-                        self.results_logger.error(f"  VERIFICATION FAILED")
+
+                        self.info_logger.error(f"  Selector: {selector}")
+                        self.info_logger.error(f"  -------------------")
+                        self.info_logger.error(f"  VERIFICATION FAILED")
                         self.info_logger.error(f"Verification failed: Content mismatch - Expected '{expected_value}', Got '{actual_value}'")
                         
                         self.capture_screenshot(
@@ -2008,7 +1974,7 @@ class AgentSelenium:
         except Exception as e:
             error_msg = f"Step execution failed: {str(e)}"
             self.info_logger.error(error_msg)
-            self.results_logger.error(f"ERROR - {description}: {str(e)}")
+            self.info_logger.error(f"ERROR - {description}: {str(e)}")
             
             self.capture_screenshot(
                 scenario_description=f"{description}_ERROR_{time.strftime('%Y%m%d_%H%M%S')}",
@@ -2016,7 +1982,7 @@ class AgentSelenium:
                 save_to_folder=True
             )
             
-            self.results_logger.info("-" * 70)
+            self.info_logger.info("-" * 70)
             return {"success": False, "error": str(e), "action": action}
     
     def _find_element(self, selector: str, timeout: int = 10):
