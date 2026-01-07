@@ -240,12 +240,12 @@ export default function FormPageEditPanel({
   
   // Action types available in agent_selenium
   const ACTION_TYPES = [
-    'click', 'fill', 'type', 'select', 'hover', 'scroll', 'slider', 'drag_and_drop',
+    'click', 'fill', 'select', 'hover', 'scroll', 'slider', 'drag_and_drop',
     'press_key', 'clear', 'wait_for_visible', 'double_click', 'wait_for_hidden',
     'switch_to_window', 'switch_to_parent_window', 'refresh', 'check', 'uncheck',
-    'wait', 'wait_dom_ready', 'wait_for_ready', 'switch_to_frame', 'switch_to_default', 'switch_to_shadow_root',
+    'wait', 'switch_to_frame', 'switch_to_default', 'switch_to_shadow_root',
     'accept_alert', 'dismiss_alert', 'fill_alert', 'navigate', 'create_file',
-    'upload_file', 'verify', 'verify_login_page'
+    'upload_file', 'verify'
   ]
   
   // Local state for expanded steps (key: pathId-stepIndex)
@@ -1205,7 +1205,7 @@ export default function FormPageEditPanel({
           }}>
             <span style={{ fontSize: '28px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
             {isLoginLogout 
-              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence</>
+              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence: <span style={{ color: loginLogoutType === 'login' ? '#10b981' : '#ef4444' }}>{editingFormPage.form_name.replace(/^🔐 Login - |^🚪 Logout - /, '')}</span></>
               : <>Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span></>
             }
           </h2>
@@ -1722,22 +1722,20 @@ export default function FormPageEditPanel({
 
           {/* Right Column - Steps */}
           <div style={{ width: '600px', flexShrink: 0, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
-            {/* Path to Form Page Banner - hidden for login/logout */}
-            {!isLoginLogout && (
-              <div style={{
-                display: 'inline-flex',
-                gap: '12px',
-                background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
-                border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
-                padding: '12px 20px',
-                borderRadius: '10px',
-                marginBottom: '24px',
-                alignItems: 'center'
-              }}>
-                <span style={{ fontSize: '22px' }}>🛤️</span>
-                <strong style={{ fontSize: '17px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
-              </div>
-            )}
+            {/* Path to Form Page Banner */}
+            <div style={{
+              display: 'inline-flex',
+              gap: '12px',
+              background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
+              border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
+              padding: '12px 20px',
+              borderRadius: '10px',
+              marginBottom: '24px',
+              alignItems: 'center'
+            }}>
+              <span style={{ fontSize: '22px' }}>🛤️</span>
+              <strong style={{ fontSize: '17px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
+            </div>
 
             {/* Path Steps Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -1901,7 +1899,7 @@ export default function FormPageEditPanel({
                           <div>
                             <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: getTheme().colors.textSecondary, fontWeight: 500 }}>Action</label>
                             <select
-                              value={step.action || ''}
+                              value={step.action}
                               onChange={(e) => updateNavigationStep(index, 'action', e.target.value)}
                               disabled={!navStepsEditable}
                               style={{
@@ -1918,10 +1916,12 @@ export default function FormPageEditPanel({
                                 opacity: navStepsEditable ? 1 : 0.7
                               }}
                             >
-                              <option value="">Select action...</option>
-                              {ACTION_TYPES.map(action => (
-                                <option key={action} value={action}>{action}</option>
-                              ))}
+                              <option value="click">Click</option>
+                              <option value="fill">Fill</option>
+                              <option value="type">Type</option>
+                              <option value="select">Select</option>
+                              <option value="hover">Hover</option>
+                              <option value="wait">Wait</option>
                             </select>
                           </div>
                           <div>
@@ -2620,7 +2620,7 @@ export default function FormPageEditPanel({
                                         />
                                       ) : (
                                         <select
-                                          value={editData.action || step.action || ''}
+                                          value={editData.action || step.action || 'click'}
                                           onChange={(e) => updateLocalStepField(path.id, stepIndex, 'action', e.target.value)}
                                           disabled={!isPathEditable(path.id)}
                                           style={{
@@ -2638,7 +2638,6 @@ export default function FormPageEditPanel({
                                             opacity: isPathEditable(path.id) ? 1 : 0.7
                                           }}
                                         >
-                                          <option value="">Select action...</option>
                                           {ACTION_TYPES.filter(a => a !== 'verify').map(action => (
                                             <option key={action} value={action}>{action}</option>
                                           ))}

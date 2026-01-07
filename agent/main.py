@@ -53,7 +53,7 @@ class FormDiscovererAgent:
         self.config = AgentConfig(config_file)
         self.activity_logger = init_activity_logger(self.config)
         self._setup_logging()
-        self.selenium_agent = AgentSelenium()  # Uses default Desktop path
+        self.selenium_agent = AgentSelenium(config=self.config)  # Uses default Desktop path
         self.is_running = False
         self.current_task_id = None
         self.current_crawl_session_id = None  # Track current crawl session for cancel
@@ -62,7 +62,7 @@ class FormDiscovererAgent:
         self.cancel_requested = False  # Set by heartbeat when server requests cancellation
         
         # Initialize Form Mapper handler
-        self.form_mapper_handler = FormMapperTaskHandler(self.selenium_agent)
+        self.form_mapper_handler = FormMapperTaskHandler(self.selenium_agent, self.activity_logger)
         self.logger.info("✓ Form Mapper handler initialized")
         
         # SSL verification setting (False for self-signed certs)
@@ -428,6 +428,10 @@ class FormDiscovererAgent:
                             self.form_mapper_handler.closed_sessions.add(int(session_id))
                         except (ValueError, TypeError):
                             pass
+                    # Send bulk logs before closing
+                    if self.activity_logger and self.activity_logger.session_active:
+                        self.activity_logger.info("⏹️ Mapping cancelled")
+                        self.activity_logger.complete()
 
                     if self.selenium_agent.driver:
                         self.selenium_agent.close_browser()
@@ -459,6 +463,12 @@ class FormDiscovererAgent:
                             self.form_mapper_handler.closed_sessions.add(int(session_id))
                         except (ValueError, TypeError):
                             pass
+
+                    # Send bulk logs before closing
+                    if self.activity_logger and self.activity_logger.session_active:
+                        self.activity_logger.info("⏹️ Mapping cancelled")
+                        self.activity_logger.complete()
+
                     if self.selenium_agent.driver:
                         self.selenium_agent.close_browser()
                     return

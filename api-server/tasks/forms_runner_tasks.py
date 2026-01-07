@@ -118,7 +118,9 @@ def _init_runner_state(
     product_id: int,
     network_id: int,
     form_route_id: int,
-    network_url: str = ""
+    network_url: str = "",
+    log_message: str = None,
+    session_context: dict = None
 ) -> Dict:
     """Initialize runner state in Redis"""
     from datetime import datetime
@@ -140,7 +142,9 @@ def _init_runner_state(
         "recovery_attempts": "0",
         "stages_updated": "false",
         "last_error": "",
-        "started_at": datetime.utcnow().isoformat()
+        "started_at": datetime.utcnow().isoformat(),
+        "log_message": log_message or "",
+        "session_context": json.dumps(session_context) if session_context else ""
     }
     
     key = _get_runner_key(session_id)
@@ -212,7 +216,9 @@ def start_runner_phase(
     product_id: int,
     network_id: int,
     form_route_id: int,
-    network_url: str = ""
+    network_url: str = "",
+    log_message: str = None,
+    session_context: dict = None
 ) -> Dict:
     """
     Start a runner phase (login or navigation).
@@ -249,7 +255,7 @@ def start_runner_phase(
     # Initialize state
     _init_runner_state(
         redis_client, session_id, phase, stages,
-        company_id, user_id, product_id, network_id, form_route_id, network_url
+        company_id, user_id, product_id, network_id, form_route_id, network_url, log_message, session_context
     )
     
     # Queue first step execution
@@ -292,10 +298,15 @@ def execute_runner_step(self, session_id: str) -> Dict:
     logger.info(f"[FormsRunner] Executing {phase} step {current_index + 1}/{len(stages)} for session {session_id}")
     
     # Queue agent task and wait for result
+    log_msg = state.get("log_message") if current_index == 0 else None
+    session_ctx = json.loads(state.get("session_context")) if current_index == 0 and state.get(
+        "session_context") else None
     agent_result = _execute_step_via_agent(
         session_id=session_id,
         stage=current_stage,
-        user_id=state["user_id"]
+        user_id=state["user_id"],
+        log_message=log_msg,
+        session_context=session_ctx
     )
 
     if agent_result.get("success"):
@@ -311,7 +322,7 @@ def execute_runner_step(self, session_id: str) -> Dict:
         return _handle_step_failure(redis_client, session_id, state, agent_result)
 
 
-def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int) -> Dict:
+def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int, log_message: str = None, session_context: dict = None) -> Dict:
     """
     Queue step execution to agent and wait for result.
     Uses Redis for async communication with agent.
@@ -319,11 +330,17 @@ def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int) -> Dict:
     redis_client = _get_redis_client()
     
     # Create agent task
+    payload = {"step": stage}
+    if log_message:
+        payload["log_message"] = log_message
+    if session_context:
+        payload["session_context"] = session_context
+
     task = {
         "task_id": f"runner_{session_id}_{stage.get('step_number', 0)}_{int(time.time())}",
         "task_type": "forms_runner_exec_step",
         "session_id": session_id,
-        "payload": {"step": stage}
+        "payload": payload
     }
 
     # Check session status before pushing (prevent stale tasks after cancel)

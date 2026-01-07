@@ -41,14 +41,16 @@ class FormMapperTaskHandler:
     - form_mapper_save_screenshot_and_log: Save screenshot to file and log UI issue
     """
     
-    def __init__(self, agent_selenium):
+    def __init__(self, agent_selenium, activity_logger=None):
         """
         Initialize with existing AgentSelenium instance.
         
         Args:
             agent_selenium: AgentSelenium instance (shared with Form Pages Locator)
+            activity_logger: ActivityLogger instance for displaying milestones in Web UI
         """
         self.selenium = agent_selenium
+        self.activity_logger = activity_logger
         self.active_sessions: Dict[int, Dict] = {}  # Track active sessions
         self.closed_sessions: set = set()  # Track closed/cancelled sessions
     
@@ -65,6 +67,36 @@ class FormMapperTaskHandler:
         task_type = task.get("task_type", "")
         session_id = task.get("session_id")
         payload = task.get("payload", {})
+
+        # Start session if context provided and not already started
+        session_context = payload.get("session_context")
+        print(
+            f"[DEBUG] task_type={task_type}, session_context={session_context}, session_active={self.activity_logger.session_active if self.activity_logger else 'no_logger'}")
+
+        if session_context and self.activity_logger and not self.activity_logger.session_active:
+            print(f"[DEBUG] Calling start_session for mapping")
+            self.activity_logger.start_session(
+                activity_type=session_context.get("activity_type", "mapping"),
+                session_id=session_context.get("session_id", 0),
+                project_id=session_context.get("project_id", 0),
+                company_id=session_context.get("company_id", 0),
+                user_id=session_context.get("user_id", 0)
+            )
+
+        # Display log_message if present
+        log_message = payload.get("log_message")
+        if log_message and self.activity_logger:
+            log_level = payload.get("log_level", "info")
+            # Handle multiple lines (e.g., "🗺️ Mapping started\n🔐 Login started")
+            for line in log_message.strip().split("\n"):
+                if line.strip():
+                    if log_level == "error":
+                        self.activity_logger.error(line.strip())
+                    elif log_level == "warning":
+                        self.activity_logger.warning(line.strip())
+                    else:
+                        self.activity_logger.info(line.strip())
+
         
         logger.info(f"[FormMapper] Handling {task_type} for session {session_id}")
         # Skip tasks for closed sessions (prevents stale task execution)
@@ -90,7 +122,7 @@ class FormMapperTaskHandler:
             "form_mapper_get_screenshot": self._handle_get_screenshot,
             "form_mapper_extract_dom_for_recovery": self._handle_extract_dom_for_recovery,
             "form_mapper_extract_dom_for_alert": self._handle_extract_dom_for_alert,
-            "form_mapper_save_screenshot_and_log": self._handle_save_screenshot_and_log,
+            "form_mapper_log_bug": self._handle_log_bug,
         }
         
         handler = handlers.get(task_type)
@@ -427,6 +459,13 @@ class FormMapperTaskHandler:
         Close browser and clean up session.
         """
         try:
+            # Send bulk logs to server if requested
+            if payload.get("complete_logging") and self.activity_logger:
+                print(f"[DEBUG] complete_logging=True, calling activity_logger.complete()")
+                print(f"[DEBUG] session_active={self.activity_logger.session_active}")
+                self.activity_logger.complete()
+                print(f"[DEBUG] activity_logger.complete() finished")
+
             # Remove from active sessions
             if session_id in self.active_sessions:
                 del self.active_sessions[session_id]
@@ -445,7 +484,111 @@ class FormMapperTaskHandler:
                 "success": False,
                 "error": f"Close failed: {e}"
             }
-    
+
+    def _handle_log_bug(self, session_id: int, payload: Dict) -> Dict:
+        """
+        Log a bug with screenshot.
+        Captures screenshot and displays message in Agent Web UI.
+
+        Payload:
+            log_message: The bug message to display
+            log_level: 'info', 'warning', 'error' (default: 'error')
+            screenshot: True to capture screenshot
+            bug_type: Type for filename (e.g., 'ui_issue', 'real_bug_alert')
+        """
+        bug_description = payload.get("bug_description", "Bug detected")
+        bug_type = payload.get("bug_type", "bug")
+
+        # Build log message with appropriate prefix
+        if "ui_issue" in bug_type:
+            log_message = f"🐛 UI Issue: {bug_description}"
+        else:
+            log_message = f"🐛 Real bug: {bug_description}"
+
+        log_level = payload.get("log_level", "error")
+        should_screenshot = payload.get("screenshot", False)
+        bug_type = payload.get("bug_type", "bug")
+
+        screenshot_filename = None
+
+        try:
+            # Capture screenshot if requested
+            if should_screenshot:
+                screenshot_filename = self._capture_bug_screenshot(session_id, bug_type)
+                if screenshot_filename:
+                    log_message += f" [Screenshot: {screenshot_filename}]"
+
+            # Display in Agent Web UI
+            if self.activity_logger:
+                if log_level == "error":
+                    self.activity_logger.error(log_message)
+                elif log_level == "warning":
+                    self.activity_logger.warning(log_message)
+                else:
+                    self.activity_logger.info(log_message)
+
+            return {
+                "success": True,
+                "screenshot_filename": screenshot_filename
+            }
+
+        except Exception as e:
+            logger.error(f"[FormMapper] Log bug failed: {e}")
+            return {
+                "success": False,
+                "error": f"Log bug failed: {e}"
+            }
+
+    def _capture_bug_screenshot(self, session_id: int, bug_type: str) -> str:
+        """
+        Capture screenshot for a bug and save locally.
+        Returns filename if successful, None otherwise.
+        """
+        try:
+            import os
+            from datetime import datetime
+
+            # Capture screenshot
+            screenshot_result = self.selenium.capture_screenshot(
+                scenario_description=bug_type,
+                save_to_folder=False
+            )
+            if not screenshot_result.get("success"):
+                logger.warning(f"[FormMapper] Screenshot capture failed: {screenshot_result.get('error')}")
+                return None
+
+            screenshot_b64 = screenshot_result.get("screenshot", "")
+            if not screenshot_b64:
+                return None
+
+            screenshot_bytes = base64.b64decode(screenshot_b64)
+
+            # Save to mapping subfolder
+            screenshot_folder = getattr(self.selenium, 'screenshots_path', None)
+            if not screenshot_folder:
+                logger.warning("[FormMapper] No screenshot_folder configured")
+                return None
+
+            mapping_folder = os.path.join(screenshot_folder, "mapping")
+            os.makedirs(mapping_folder, exist_ok=True)
+
+            # Filename format: mapping_{bug_type}_{session_id}_{timestamp}.png
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_bug_type = "".join(c if c.isalnum() or c in "_-" else "_" for c in bug_type[:20])
+            filename = f"mapping_{safe_bug_type}_{session_id}_{timestamp}.png"
+            filepath = os.path.join(mapping_folder, filename)
+
+            with open(filepath, 'wb') as f:
+                f.write(screenshot_bytes)
+
+            logger.info(f"[FormMapper] Bug screenshot saved: {filepath}")
+            return filename
+
+        except Exception as e:
+            logger.error(f"[FormMapper] Bug screenshot failed: {e}")
+            return None
+
+
     # ========================================================================
     # Step Execution
     # ========================================================================
@@ -790,7 +933,7 @@ class FormMapperTaskHandler:
             screenshot_result = self.selenium.capture_screenshot(scenario_description=scenario, save_to_folder=False)
 
             #### FOR DEBUG ####
-            self.selenium.capture_screenshot("_handle_get_screenshot_debug")
+            #self.selenium.capture_screenshot("_handle_get_screenshot_debug")
 
             if not screenshot_result.get("success"):
                 raise Exception(screenshot_result.get("error", "Screenshot failed"))
@@ -840,7 +983,7 @@ class FormMapperTaskHandler:
                                                                          save_to_folder=False)
 
                     #### FOR DEBUG ####
-                    self.selenium.capture_screenshot("_handle_extract_dom_for_recovery_debug")
+                    #self.selenium.capture_screenshot("_handle_extract_dom_for_recovery_debug")
 
                     screenshot_b64 = screenshot_result.get("screenshot", "") if screenshot_result.get("success") else ""
                     result["screenshot_base64"] = screenshot_b64
@@ -850,7 +993,7 @@ class FormMapperTaskHandler:
                         import os
                         from datetime import datetime
                         
-                        screenshot_folder = getattr(self.selenium.config, 'screenshot_folder', None)
+                        screenshot_folder = getattr(self.selenium, 'screenshots_path', None)
                         if screenshot_folder:
                             os.makedirs(screenshot_folder, exist_ok=True)
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -951,7 +1094,7 @@ class FormMapperTaskHandler:
                 import os
                 from datetime import datetime
                 
-                screenshot_folder = getattr(self.selenium.config, 'screenshot_folder', None)
+                screenshot_folder = getattr(self.selenium, 'screenshots_path', None)
                 if screenshot_folder:
                     os.makedirs(screenshot_folder, exist_ok=True)
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

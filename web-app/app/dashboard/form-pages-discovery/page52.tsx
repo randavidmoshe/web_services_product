@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
+import FormPageEditPanel from './FormPageEditPanel'
 
 interface Network {
   id: number
@@ -100,6 +101,14 @@ interface DiscoveryQueueItem {
   errorCode?: string
 }
 
+interface LoginLogoutData {
+  login_stages: NavigationStep[]
+  logout_stages: NavigationStep[]
+  network_name: string
+  url: string
+  updated_at: string | null
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [token, setToken] = useState<string | null>(null)
@@ -160,6 +169,9 @@ export default function DashboardPage() {
   // Discovery section collapse state (collapsed by default when forms exist)
   const [isDiscoveryExpanded, setIsDiscoveryExpanded] = useState(false)
   
+  // Rediscover form page state
+  const [rediscoverMessage, setRediscoverMessage] = useState<string | null>(null)
+  
   // Test Template Selection state
   const [testTemplates, setTestTemplates] = useState<{id: number, name: string, display_name: string, test_cases: any[]}[]>([])
   const [showMapModal, setShowMapModal] = useState(false)
@@ -168,6 +180,16 @@ export default function DashboardPage() {
   
   // Theme state - reads from localStorage to sync with layout
   const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
+  // Login/Logout stages state
+  const [loginLogoutData, setLoginLogoutData] = useState<Record<number, LoginLogoutData>>({})
+  const [editingLoginLogout, setEditingLoginLogout] = useState<{
+    networkId: number
+    type: 'login' | 'logout'
+    steps: NavigationStep[]
+    networkName: string
+    url: string
+  } | null>(null)
 
   // Theme definitions (same as layout.tsx)
   const themes: Record<string, {
@@ -781,6 +803,15 @@ export default function DashboardPage() {
     }
   }, [])
 
+  // Fetch login/logout stages when formPages change
+  useEffect(() => {
+    if (formPages.length > 0 && token) {
+      // Get unique network IDs from form pages
+      const networkIds = [...new Set(formPages.map(fp => fp.network_id))] as number[]
+      fetchLoginLogoutStages(networkIds, token)
+    }
+  }, [formPages, token])
+
   const loadNetworks = async (projectId: string, authToken: string) => {
     setLoadingNetworks(true)
     try {
@@ -815,7 +846,27 @@ export default function DashboardPage() {
       
       if (response.ok) {
         const data = await response.json()
-        setFormPages(data)
+        
+        // Fetch paths counts for all form pages
+        if (data.length > 0) {
+          const ids = data.map((fp: any) => fp.id).join(',')
+          const countsResponse = await fetch(
+            `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
+            { headers: { 'Authorization': `Bearer ${authToken}` } }
+          )
+          if (countsResponse.ok) {
+            const counts = await countsResponse.json()
+            setFormPages(data.map((fp: any) => ({
+              ...fp,
+              paths_count: counts[String(fp.id)] || 0
+            })))
+          } else {
+            setFormPages(data)
+          }
+        } else {
+          setFormPages(data)
+        }
+        
         // Check for active mapping sessions after loading form pages
         checkActiveMappingSessions(authToken)
       }
@@ -860,6 +911,120 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('Failed to check active mapping sessions:', err)
+    }
+  }
+
+  // Fetch login/logout stages for networks
+  const fetchLoginLogoutStages = async (networkIds: number[], authToken: string) => {
+    const results: Record<number, LoginLogoutData> = {}
+    
+    for (const networkId of networkIds) {
+      try {
+        const response = await fetch(
+          `/api/form-pages/networks/${networkId}/login-logout-stages`,
+          {
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+        if (response.ok) {
+          const data = await response.json()
+          results[networkId] = {
+            login_stages: data.login_stages || [],
+            logout_stages: data.logout_stages || [],
+            network_name: data.network_name,
+            url: data.url,
+            updated_at: data.updated_at
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to fetch login/logout for network ${networkId}:`, err)
+      }
+    }
+    
+    setLoginLogoutData(results)
+  }
+
+  // Open login/logout edit panel - creates a "fake" FormPage for reusing FormPageEditPanel
+  const openLoginLogoutEditPanel = (networkId: number, type: 'login' | 'logout') => {
+    const data = loginLogoutData[networkId]
+    if (!data) return
+    
+    // Create a fake FormPage object with special negative ID
+    // Login IDs: -1000 - networkId (e.g., -1001 for network 1)
+    // Logout IDs: -2000 - networkId (e.g., -2001 for network 1)
+    const fakeFormPage: FormPage = {
+      id: type === 'login' ? (-1000 - networkId) : (-2000 - networkId),
+      form_name: type === 'login' ? `🔐 Login - ${data.network_name}` : `🚪 Logout - ${data.network_name}`,
+      url: data.url,
+      network_id: networkId,
+      navigation_steps: type === 'login' ? [...data.login_stages] : [...data.logout_stages],
+      is_root: true,
+      parent_form_id: null,
+      created_at: data.updated_at || new Date().toISOString()
+    }
+    
+    setEditingLoginLogout({
+      networkId,
+      type,
+      steps: type === 'login' ? [...data.login_stages] : [...data.logout_stages],
+      networkName: data.network_name,
+      url: data.url
+    })
+    setEditingFormPage(fakeFormPage)
+    setEditFormName(fakeFormPage.form_name)
+    setEditNavigationSteps(type === 'login' ? [...data.login_stages] : [...data.logout_stages])
+    setExpandedSteps(new Set())
+    setCompletedPaths([])  // No paths for login/logout
+    setShowEditPanel(true)
+  }
+
+  // Save login/logout steps
+  const saveLoginLogoutSteps = async () => {
+    if (!editingLoginLogout || !token) return
+    
+    setSavingFormPage(true)
+    try {
+      const endpoint = editingLoginLogout.type === 'login' 
+        ? `/api/form-pages/networks/${editingLoginLogout.networkId}/login-stages`
+        : `/api/form-pages/networks/${editingLoginLogout.networkId}/logout-stages`
+      
+      const body = editingLoginLogout.type === 'login'
+        ? { login_stages: editNavigationSteps }
+        : { logout_stages: editNavigationSteps }
+      
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      })
+      
+      if (response.ok) {
+        setMessage(`${editingLoginLogout.type === 'login' ? 'Login' : 'Logout'} steps updated successfully!`)
+        
+        // Update local state
+        setLoginLogoutData(prev => ({
+          ...prev,
+          [editingLoginLogout.networkId]: {
+            ...prev[editingLoginLogout.networkId],
+            [editingLoginLogout.type === 'login' ? 'login_stages' : 'logout_stages']: editNavigationSteps
+          }
+        }))
+        
+        setShowEditPanel(false)
+        setEditingLoginLogout(null)
+      } else {
+        setError('Failed to save steps')
+      }
+    } catch (err) {
+      setError('Failed to save steps')
+    } finally {
+      setSavingFormPage(false)
     }
   }
 
@@ -1031,6 +1196,12 @@ export default function DashboardPage() {
   const startMappingFromEditPanel = async () => {
     if (!editingFormPage || !token || !userId) return
     
+    // Warn if paths exist - they will be deleted on remap
+    if (completedPaths.length > 0) {
+      const confirmed = confirm(`⚠️ This form has ${completedPaths.length} existing path(s). Re-mapping will DELETE all existing paths. Continue?`)
+      if (!confirmed) return
+    }
+    
     // Check if agent is online first
     try {
       const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
@@ -1152,6 +1323,8 @@ export default function DashboardPage() {
 
             if (data.status === 'completed') {
               setMessage(`Mapping completed for form page ${formPageId}`)
+              // Always refresh paths when mapping completes
+              fetchCompletedPaths(formPageId)
             } else if (data.status === 'failed') {
               setError(`Mapping failed: ${data.error || 'Unknown error'}`)
             }
@@ -1539,7 +1712,7 @@ export default function DashboardPage() {
         setError(errorDetails)
       }
     } else {
-      setMessage(`Discovery completed! Found ${totalForms} form pages across ${completed} network(s).`)
+      setMessage(`Discovery completed! Found ${totalForms} new form pages across ${completed} test site(s).`)
     }
     
     // Reload form pages
@@ -1574,30 +1747,110 @@ export default function DashboardPage() {
     setCompletedPaths([]) // Reset paths
     setExpandedPathId(null)
     setShowEditPanel(true)
-    fetchCompletedPaths(formPage.id) // Fetch completed paths for this form
+    if (formPage.id >= 0) {
+      fetchCompletedPaths(formPage.id) // Fetch completed paths for regular forms only
+    }
+  }
+
+  // Build combined list of all navigable items (login/logout + form pages)
+  // This is used for Previous/Next navigation in the edit panel
+  // Order matches the table display: Form pages (sorted) → Login → Logout (per network)
+  const getAllNavigableItems = (): FormPage[] => {
+    const items: FormPage[] = []
+    
+    // Get all network IDs from both form pages and login/logout data
+    const networkIdsFromForms = [...new Set(formPages.map(fp => fp.network_id))]
+    const networkIdsFromLoginLogout = Object.keys(loginLogoutData).map(id => parseInt(id))
+    const allNetworkIds = [...new Set([...networkIdsFromForms, ...networkIdsFromLoginLogout])]
+    
+    // Sort network IDs for consistent ordering
+    allNetworkIds.sort((a, b) => a - b)
+    
+    for (const networkId of allNetworkIds) {
+      const loginLogout = loginLogoutData[networkId]
+      
+      // Add form pages for this network first (sorted by name)
+      const networkFormPages = formPages
+        .filter(fp => fp.network_id === networkId)
+        .sort((a, b) => (a.form_name || '').localeCompare(b.form_name || ''))
+      items.push(...networkFormPages)
+      
+      // Add login entry for this network (if exists)
+      if (loginLogout && loginLogout.login_stages && loginLogout.login_stages.length > 0) {
+        items.push({
+          id: -1000 - networkId, // Unique negative ID per network for login
+          form_name: `🔐 Login - ${loginLogout.network_name}`,
+          url: loginLogout.url,
+          network_id: networkId,
+          navigation_steps: loginLogout.login_stages,
+          is_root: true,
+          parent_form_id: null,
+          created_at: loginLogout.updated_at || new Date().toISOString()
+        })
+      }
+      
+      // Add logout entry for this network (if exists)
+      if (loginLogout && loginLogout.logout_stages && loginLogout.logout_stages.length > 0) {
+        items.push({
+          id: -2000 - networkId, // Unique negative ID per network for logout
+          form_name: `🚪 Logout - ${loginLogout.network_name}`,
+          url: loginLogout.url,
+          network_id: networkId,
+          navigation_steps: loginLogout.logout_stages,
+          is_root: true,
+          parent_form_id: null,
+          created_at: loginLogout.updated_at || new Date().toISOString()
+        })
+      }
+    }
+    
+    return items
   }
 
   const navigateToPreviousFormPage = () => {
     if (!editingFormPage) return
-    const currentIndex = formPages.findIndex(fp => fp.id === editingFormPage.id)
+    const allItems = getAllNavigableItems()
+    const currentIndex = allItems.findIndex(fp => fp.id === editingFormPage.id)
     if (currentIndex > 0) {
-      const prevFormPage = formPages[currentIndex - 1]
-      openEditPanel(prevFormPage)
+      const prevItem = allItems[currentIndex - 1]
+      // Check if it's a login/logout item (negative ID)
+      if (prevItem.id < 0) {
+        // Extract network ID from the special ID
+        const networkId = prevItem.id <= -2000 ? -(prevItem.id + 2000) : -(prevItem.id + 1000)
+        const type = prevItem.id <= -2000 ? 'logout' : 'login'
+        openLoginLogoutEditPanel(networkId, type)
+      } else {
+        openEditPanel(prevItem)
+      }
     }
   }
 
   const navigateToNextFormPage = () => {
     if (!editingFormPage) return
-    const currentIndex = formPages.findIndex(fp => fp.id === editingFormPage.id)
-    if (currentIndex < formPages.length - 1) {
-      const nextFormPage = formPages[currentIndex + 1]
-      openEditPanel(nextFormPage)
+    const allItems = getAllNavigableItems()
+    const currentIndex = allItems.findIndex(fp => fp.id === editingFormPage.id)
+    if (currentIndex < allItems.length - 1) {
+      const nextItem = allItems[currentIndex + 1]
+      // Check if it's a login/logout item (negative ID)
+      if (nextItem.id < 0) {
+        // Extract network ID from the special ID
+        const networkId = nextItem.id <= -2000 ? -(nextItem.id + 2000) : -(nextItem.id + 1000)
+        const type = nextItem.id <= -2000 ? 'logout' : 'login'
+        openLoginLogoutEditPanel(networkId, type)
+      } else {
+        openEditPanel(nextItem)
+      }
     }
   }
 
   const getCurrentFormPageIndex = () => {
     if (!editingFormPage) return -1
-    return formPages.findIndex(fp => fp.id === editingFormPage.id)
+    const allItems = getAllNavigableItems()
+    return allItems.findIndex(fp => fp.id === editingFormPage.id)
+  }
+
+  const getTotalNavigableItems = () => {
+    return getAllNavigableItems().length
   }
 
   const updateNavigationStep = (index: number, field: keyof NavigationStep, value: string) => {
@@ -1675,8 +1928,9 @@ export default function DashboardPage() {
     })
   }
 
-  const handleSavePathStep = async (pathId: number, stepIndex: number) => {
+  const handleSavePathStep = async (pathId: number, stepIndex: number, stepData?: any) => {
     if (!token) return
+    const dataToSave = stepData || editedPathStepData
     try {
       const response = await fetch(
         `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
@@ -1686,14 +1940,14 @@ export default function DashboardPage() {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(editedPathStepData)
+          body: JSON.stringify(dataToSave)
         }
       )
       if (response.ok) {
         setCompletedPaths(completedPaths.map(path => {
           if (path.id === pathId) {
             const updatedSteps = [...path.steps]
-            updatedSteps[stepIndex] = { ...updatedSteps[stepIndex], ...editedPathStepData }
+            updatedSteps[stepIndex] = { ...updatedSteps[stepIndex], ...dataToSave }
             return { ...path, steps: updatedSteps }
           }
           return path
@@ -1814,6 +2068,43 @@ export default function DashboardPage() {
     }
   }
 
+  // Rediscover form page - deletes and redirects to main page with discovery expanded
+  const rediscoverFormPage = async (formPageId: number) => {
+    if (!token) return
+    
+    try {
+      const response = await fetch(
+        `/api/form-pages/routes/${formPageId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+      
+      if (response.ok) {
+        // Close edit panel
+        setShowEditPanel(false)
+        setEditingFormPage(null)
+        
+        // Expand discovery section
+        setIsDiscoveryExpanded(true)
+        
+        // Show message to user
+        setRediscoverMessage('Form page deleted. Select a test site and click "Start Discovery" to rediscover form pages.')
+        
+        // Reload form pages
+        if (activeProjectId) {
+          loadFormPages(activeProjectId, token)
+        }
+      } else {
+        const errData = await response.json()
+        setError(errData.detail || 'Failed to delete form page')
+      }
+    } catch (err) {
+      setError('Connection error')
+    }
+  }
+
   // No project selected
   if (!activeProjectId) {
     return (
@@ -1844,1084 +2135,67 @@ export default function DashboardPage() {
 
   // ============ FULL PAGE EDIT VIEW ============
   if (showEditPanel && editingFormPage) {
+    // Determine if this is a login/logout edit (using special negative IDs)
+    // Login IDs: -1001, -1002, etc (for network 1, 2, etc)
+    // Logout IDs: -2001, -2002, etc (for network 1, 2, etc)
+    const isLoginLogoutEdit = editingFormPage.id < 0
+    const loginLogoutType = (editingFormPage.id <= -1000 && editingFormPage.id > -2000) 
+      ? 'login' 
+      : (editingFormPage.id <= -2000 ? 'logout' : null)
+    
     return (
-      <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
-        {/* CSS Animations */}
-        <style>{`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+      <FormPageEditPanel
+        editingFormPage={editingFormPage}
+        formPages={getAllNavigableItems()}
+        completedPaths={isLoginLogoutEdit ? [] : completedPaths}
+        loadingPaths={isLoginLogoutEdit ? false : loadingPaths}
+        token={token || ''}
+        editFormName={editFormName}
+        setEditFormName={setEditFormName}
+        editNavigationSteps={editNavigationSteps}
+        setEditNavigationSteps={setEditNavigationSteps}
+        savingFormPage={savingFormPage}
+        expandedSteps={expandedSteps}
+        setExpandedSteps={setExpandedSteps}
+        mappingFormIds={mappingFormIds}
+        mappingStatus={mappingStatus}
+        expandedPathId={expandedPathId}
+        setExpandedPathId={setExpandedPathId}
+        editingPathStep={editingPathStep}
+        setEditingPathStep={setEditingPathStep}
+        editedPathStepData={editedPathStepData}
+        setEditedPathStepData={setEditedPathStepData}
+        showDeleteStepConfirm={showDeleteStepConfirm}
+        setShowDeleteStepConfirm={setShowDeleteStepConfirm}
+        stepToDeleteIndex={stepToDeleteIndex}
+        setStepToDeleteIndex={setStepToDeleteIndex}
+        error={error}
+        setError={setError}
+        message={message}
+        setMessage={setMessage}
+        onClose={() => { 
+          setShowEditPanel(false)
+          if (isLoginLogoutEdit) {
+            setEditingLoginLogout(null)
           }
-          .step-card:hover {
-            border-color: ${getTheme().colors.accentPrimary}66 !important;
-          }
-          .expand-btn:hover {
-            background: ${getTheme().colors.accentPrimary}25 !important;
-          }
-        `}</style>
-
-        {error && (
-          <div style={errorBoxStyle}>
-            <span>❌</span> {error}
-            <button onClick={() => setError(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-        {message && (
-          <div style={successBoxStyle}>
-            <span>✅</span> {message}
-            <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
-          </div>
-        )}
-
-        {/* Back Button and Navigation */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
-          <button
-            onClick={() => setShowEditPanel(false)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '10px',
-              background: getTheme().colors.cardBg,
-              border: `2px solid ${getTheme().colors.cardBorder}`,
-              color: getTheme().colors.textSecondary,
-              padding: '14px 24px',
-              borderRadius: '14px',
-              fontSize: '16px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: getTheme().colors.cardGlow
-            }}
-          >
-            <span style={{ fontSize: '20px' }}>←</span>
-            Back to Form Pages
-          </button>
-
-          {/* Previous / Next Navigation */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              onClick={navigateToPreviousFormPage}
-              disabled={getCurrentFormPageIndex() <= 0}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: getCurrentFormPageIndex() <= 0 
-                  ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
-                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
-                border: `1px solid ${getCurrentFormPageIndex() <= 0 
-                  ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
-                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
-                color: getCurrentFormPageIndex() <= 0 
-                  ? getTheme().colors.textSecondary
-                  : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
-                padding: '10px 18px',
-                borderRadius: '10px',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: getCurrentFormPageIndex() <= 0 ? 'not-allowed' : 'pointer',
-                opacity: getCurrentFormPageIndex() <= 0 ? 0.5 : 1,
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <span style={{ fontSize: '16px' }}>←</span>
-              Previous
-            </button>
-
-            <span style={{ 
-              fontSize: '14px', 
-              color: getTheme().colors.textSecondary,
-              padding: '0 8px'
-            }}>
-              {getCurrentFormPageIndex() + 1} / {formPages.length}
-            </span>
-
-            <button
-              onClick={navigateToNextFormPage}
-              disabled={getCurrentFormPageIndex() >= formPages.length - 1}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: getCurrentFormPageIndex() >= formPages.length - 1
-                  ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
-                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
-                border: `1px solid ${getCurrentFormPageIndex() >= formPages.length - 1
-                  ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
-                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
-                color: getCurrentFormPageIndex() >= formPages.length - 1
-                  ? getTheme().colors.textSecondary
-                  : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
-                padding: '10px 18px',
-                borderRadius: '10px',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: getCurrentFormPageIndex() >= formPages.length - 1 ? 'not-allowed' : 'pointer',
-                opacity: getCurrentFormPageIndex() >= formPages.length - 1 ? 0.5 : 1,
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Next
-              <span style={{ fontSize: '16px' }}>→</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Edit Form Page Card */}
-        <div style={{
-          background: isLightTheme() 
-            ? 'linear-gradient(135deg, rgba(242, 246, 250, 0.98) 0%, rgba(242, 246, 250, 0.95) 100%)'
-            : 'rgba(255,255,255,0.03)',
-          border: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.2)' : 'rgba(255,255,255,0.1)'}`,
-          borderRadius: '12px',
-          overflow: 'hidden',
-          boxShadow: isLightTheme() 
-            ? '0 4px 20px rgba(0,0,0,0.1)'
-            : '0 4px 12px rgba(0,0,0,0.3)',
-          animation: 'fadeIn 0.3s ease'
-        }}>
-          {/* Header with buttons */}
-          <div style={{
-            padding: '16px 24px',
-            borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <h1 style={{ margin: 0, fontSize: '24px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
-              <span style={{ color: getTheme().colors.textSecondary, fontWeight: 400 }}>Form Page: </span>
-              {editingFormPage.form_name}
-            </h1>
-            {/* Action Buttons - Top Right */}
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              {editingFormPage && (
-                mappingFormIds.has(editingFormPage.id) ? (
-                  mappingStatus[editingFormPage.id]?.status === 'stopping' ? (
-                    <button 
-                      disabled
-                      style={{
-                        background: '#9ca3af',
-                        color: 'white',
-                        padding: '12px 24px',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        cursor: 'not-allowed'
-                      }}
-                    >
-                      ⏳ Stopping...
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => cancelMapping(editingFormPage.id)} 
-                      style={{
-                        background: '#ef4444',
-                        color: 'white',
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      ⏹️ Stop Mapping
-                    </button>
-                  )
-                ) : (
-                  <button 
-                    onClick={() => {
-                      if (completedPaths.length > 0) {
-                        // Show warning if paths exist
-                        if (window.confirm(`⚠️ Warning: This form has ${completedPaths.length} existing path(s) that will be deleted.\n\nAre you sure you want to re-map this form page?`)) {
-                          startMappingFromEditPanel()
-                        }
-                      } else {
-                        startMappingFromEditPanel()
-                      }
-                    }} 
-                    style={{
-                      background: completedPaths.length > 0 ? '#f59e0b' : '#0ea5e9',
-                      color: 'white',
-                      padding: '10px 20px',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
-                  </button>
-                )
-              )}
-              <button 
-                onClick={() => setShowEditPanel(false)} 
-                style={{
-                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
-                  color: getTheme().colors.textSecondary,
-                  padding: '10px 20px',
-                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={saveFormPage} 
-                style={{
-                  background: '#10b981',
-                  color: 'white',
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-                disabled={savingFormPage}
-              >
-                {savingFormPage ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-
-          {/* Content - Two Column Layout */}
-          <div style={{ display: 'flex', gap: '0', minHeight: '500px' }}>
-            {/* Left Column - Form Info */}
-            <div style={{ 
-              width: '340px', 
-              minWidth: '340px',
-              padding: '28px',
-              borderRight: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
-              background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)'
-            }}>
-              {/* Hierarchy Info */}
-              <div style={{
-                background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
-                borderRadius: '10px',
-                padding: '20px',
-                border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
-                marginBottom: '20px'
-              }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
-                  <span style={{
-                    background: editingFormPage.is_root 
-                      ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
-                      : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
-                    color: editingFormPage.is_root 
-                      ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
-                      : (isLightTheme() ? '#92400e' : '#fbbf24'),
-                    padding: '8px 14px',
-                    borderRadius: '6px',
-                    fontSize: '16px',
-                    fontWeight: 600
-                  }}>
-                    {editingFormPage.is_root ? 'Root Form' : 'Child Form'}
-                  </span>
-                </div>
-                {editingFormPage.parent_form_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
-                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}</span>
-                  </div>
-                )}
-                {editingFormPage.children && editingFormPage.children.length > 0 && (
-                  <div style={{ marginTop: '12px' }}>
-                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
-                    <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {editingFormPage.children.map((c, i) => (
-                        <span key={i} style={{
-                          background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
-                          color: isLightTheme() ? '#92400e' : '#fbbf24',
-                          padding: '6px 12px',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          fontWeight: 500
-                        }}>{c.form_name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* URL Info */}
-              <div style={{
-                background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.1)',
-                borderRadius: '10px',
-                padding: '20px',
-                border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.2)'}`
-              }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: isLightTheme() ? '#92400e' : '#fbbf24', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>URL</h4>
-                <div style={{ fontSize: '16px', color: getTheme().colors.textPrimary, wordBreak: 'break-all', lineHeight: 1.6 }}>
-                  {editingFormPage.url}
-                </div>
-              </div>
-
-              {/* User Provided Inputs */}
-              {token && (
-                <UserProvidedInputsSection
-                  formPageId={editingFormPage.id}
-                  token={token}
-                  apiBase=""
-                  isLightTheme={isLightTheme()}
-                  themeColors={getTheme().colors}
-                />
-              )}
-            </div>
-
-            {/* Right Column - Steps */}
-            <div style={{ flex: 1, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
-              {/* Path to Form Page Banner - 30% width */}
-              <div style={{
-                display: 'inline-flex',
-                gap: '10px',
-                background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
-                border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                marginBottom: '24px',
-                alignItems: 'center'
-              }}>
-                <span style={{ fontSize: '18px' }}>🛤️</span>
-                <strong style={{ fontSize: '14px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
-              </div>
-
-              {/* Path Steps Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: '20px', color: isLightTheme() ? '#1e40af' : getTheme().colors.textPrimary, fontWeight: 600 }}>
-                  Steps ({editNavigationSteps.length})
-                </h3>
-                <button onClick={addStepAtEnd} style={{
-                  background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
-                  color: '#fff',
-                  border: 'none',
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  + Add Step
-                </button>
-              </div>
-
-              {/* Steps List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {editNavigationSteps.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '50px 30px', color: getTheme().colors.textSecondary, background: isLightTheme() ? '#e0f2fe' : 'rgba(59, 130, 246, 0.1)', borderRadius: '10px', border: `2px dashed ${isLightTheme() ? '#7dd3fc' : 'rgba(59, 130, 246, 0.3)'}` }}>
-                    <p style={{ fontSize: '16px', marginBottom: '20px' }}>No path steps defined.</p>
-                    <button onClick={addStepAtEnd} style={{
-                      background: '#3b82f6',
-                      color: '#fff',
-                      border: 'none',
-                      padding: '12px 24px',
-                      borderRadius: '8px',
-                      fontSize: '15px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}>+ Add First Step</button>
-                  </div>
-                ) : (
-                  editNavigationSteps.map((step, index) => (
-                    <div 
-                      key={index} 
-                      className="step-card"
-                      style={{
-                        background: expandedSteps.has(index) 
-                          ? (isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.15)')
-                          : (isLightTheme() ? 'rgba(242, 246, 250, 0.95)' : 'rgba(255,255,255,0.03)'),
-                        border: expandedSteps.has(index) 
-                          ? `2px solid ${isLightTheme() ? '#60a5fa' : '#3b82f6'}`
-                          : `1px solid ${isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)'}`,
-                        borderRadius: '10px',
-                        overflow: 'hidden',
-                        transition: 'all 0.2s ease',
-                        boxShadow: isLightTheme() ? '0 2px 4px rgba(59, 130, 246, 0.1)' : 'none'
-                      }}
-                    >
-                      {/* Step Header - Always Visible */}
-                      <div 
-                        onClick={() => toggleStepExpansion(index)}
-                        className="expand-btn"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <div style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: '50%',
-                          background: isLightTheme() ? '#0ea5e9' : getTheme().colors.accentPrimary,
-                          color: '#fff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: 700,
-                          flexShrink: 0
-                        }}>{index + 1}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '16px', fontWeight: 600, color: getTheme().colors.textPrimary, marginBottom: '4px' }}>
-                            {step.description || `Step ${index + 1}`}
-                          </div>
-                          <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary }}>
-                            {step.action || 'click'} • {step.selector ? (step.selector.length > 50 ? step.selector.substring(0, 50) + '...' : step.selector) : 'No selector'}
-                          </div>
-                        </div>
-                        <span style={{ 
-                          fontSize: '22px', 
-                          color: getTheme().colors.textSecondary,
-                          transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease'
-                        }}>▼</span>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {expandedSteps.has(index) && (
-                        <div style={{ padding: '0 24px 24px', borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', padding: '16px 0' }}>
-                            <button 
-                              onClick={() => addStepAfter(index)} 
-                              style={{
-                                background: isLightTheme() ? 'rgba(37, 99, 235, 0.08)' : 'rgba(99, 102, 241, 0.15)',
-                                border: isLightTheme() ? '1px solid rgba(37, 99, 235, 0.25)' : `1px solid ${getTheme().colors.accentPrimary}30`,
-                                color: isLightTheme() ? '#2563eb' : getTheme().colors.accentSecondary,
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Insert After</button>
-                            <button 
-                              onClick={() => confirmDeleteStep(index)} 
-                              style={{
-                                background: isLightTheme() ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.15)',
-                                border: `1px solid rgba(239, 68, 68, ${isLightTheme() ? '0.4' : '0.3'})`,
-                                color: isLightTheme() ? '#dc2626' : '#f87171',
-                                padding: '12px 20px',
-                                borderRadius: '10px',
-                                fontSize: '15px',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                              }}
-                            >Delete</button>
-                          </div>
-                          <div style={{ display: 'flex', gap: '18px', marginBottom: '18px' }}>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Action</label>
-                              <input
-                                type="text"
-                                value={step.action || ''}
-                                disabled
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.02)',
-                                  color: getTheme().colors.textSecondary,
-                                  cursor: 'not-allowed'
-                                }}
-                              />
-                            </div>
-                            <div style={{ flex: 2 }}>
-                              <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Description</label>
-                              <input
-                                type="text"
-                                value={step.description || ''}
-                                onChange={(e) => updateNavigationStep(index, 'description', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '16px 20px',
-                                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'}`,
-                                  borderRadius: '12px',
-                                  fontSize: '16px',
-                                  boxSizing: 'border-box',
-                                  background: isLightTheme() ? 'rgba(242, 246, 250, 0.9)' : 'rgba(255,255,255,0.05)',
-                                  color: getTheme().colors.textPrimary,
-                                  outline: 'none'
-                                }}
-                                placeholder="Describe this action"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '12px', fontSize: '15px', color: getTheme().colors.textSecondary }}>Selector (Locator)</label>
-                            <input
-                              type="text"
-                              value={step.selector || ''}
-                              onChange={(e) => updateNavigationStep(index, 'selector', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '16px 20px',
-                                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)'}`,
-                                borderRadius: '12px',
-                                fontSize: '16px',
-                                boxSizing: 'border-box',
-                                background: isLightTheme() ? 'rgba(242, 246, 250, 0.9)' : 'rgba(255,255,255,0.05)',
-                                color: getTheme().colors.textPrimary,
-                                outline: 'none'
-                              }}
-                              placeholder="CSS selector or XPath"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Completed Mapping Paths Section */}
-          <div style={{ 
-            padding: '28px', 
-            background: isLightTheme() ? '#ecfdf5' : 'rgba(16, 185, 129, 0.08)',
-            borderTop: `1px solid ${isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)'}`
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <div style={{
-                display: 'inline-flex',
-                gap: '10px',
-                background: isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)',
-                border: isLightTheme() ? '1px solid #6ee7b7' : '1px solid rgba(16, 185, 129, 0.3)',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                alignItems: 'center'
-              }}>
-                <span style={{ fontSize: '18px' }}>📊</span>
-                <strong style={{ fontSize: '14px', color: isLightTheme() ? '#065f46' : '#6ee7b7' }}>Completed Mapping Paths</strong>
-                <span style={{
-                  background: isLightTheme() ? '#059669' : '#10b981',
-                  color: '#fff',
-                  padding: '2px 10px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 600
-                }}>{completedPaths.length}</span>
-              </div>
-            </div>
-
-            {loadingPaths ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: getTheme().colors.textSecondary }}>
-                Loading paths...
-              </div>
-            ) : completedPaths.length === 0 ? (
-              <div style={{ 
-                textAlign: 'center', 
-                padding: '50px 30px', 
-                color: getTheme().colors.textSecondary, 
-                background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.1)', 
-                borderRadius: '10px', 
-                border: `2px dashed ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.3)'}` 
-              }}>
-                <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋</div>
-                <p style={{ fontSize: '16px', margin: 0, color: getTheme().colors.textPrimary }}>No completed paths yet.</p>
-                <p style={{ fontSize: '14px', margin: '8px 0 0', opacity: 0.7 }}>Click "Map Form Page" to discover paths through this form.</p>
-              </div>
-            ) : (
-              <div style={{ 
-                background: isLightTheme() ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.2)', 
-                borderRadius: '12px', 
-                overflow: 'hidden',
-                border: `1px solid ${isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)'}`
-              }}>
-                {/* Table Header */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '80px 1fr 80px 80px 120px 80px',
-                  gap: '12px',
-                  padding: '14px 20px',
-                  background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.15)',
-                  borderBottom: `1px solid ${isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)'}`,
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: isLightTheme() ? '#065f46' : '#6ee7b7',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  <div>Path #</div>
-                  <div>Junction Options</div>
-                  <div style={{ textAlign: 'center' }}>Steps</div>
-                  <div style={{ textAlign: 'center' }}>Verified</div>
-                  <div>Created</div>
-                  <div style={{ textAlign: 'center' }}>Actions</div>
-                </div>
-
-                {/* Path Rows */}
-                {completedPaths.map(path => (
-                  <div key={path.id}>
-                    {/* Path Row */}
-                    <div
-                      onDoubleClick={() => handlePathRowDoubleClick(path.id)}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '80px 1fr 80px 80px 120px 80px',
-                        gap: '12px',
-                        padding: '16px 20px',
-                        borderBottom: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.05)'}`,
-                        cursor: 'pointer',
-                        background: expandedPathId === path.id 
-                          ? (isLightTheme() ? '#ecfdf5' : 'rgba(16, 185, 129, 0.1)')
-                          : 'transparent',
-                        transition: 'background 0.2s'
-                      }}
-                      title="Double-click to expand"
-                    >
-                      {/* Path Number */}
-                      <div>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                          background: isLightTheme() ? '#059669' : '#10b981',
-                          color: '#fff',
-                          fontWeight: 600,
-                          fontSize: '14px'
-                        }}>
-                          {path.path_number}
-                        </span>
-                      </div>
-
-                      {/* Junction Options */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                        {path.path_junctions && path.path_junctions.length > 0 ? (
-                          path.path_junctions.map((j, idx) => (
-                            <span key={idx} style={{
-                              display: 'inline-block',
-                              background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)',
-                              color: isLightTheme() ? '#1e40af' : '#93c5fd',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              border: `1px solid ${isLightTheme() ? '#93c5fd' : 'rgba(59, 130, 246, 0.3)'}`
-                            }}>
-                              {j.junction_name}: <strong>{j.option}</strong>
-                            </span>
-                          ))
-                        ) : (
-                          <span style={{ color: getTheme().colors.textSecondary, fontStyle: 'italic', fontSize: '13px' }}>
-                            No junctions
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Steps Count */}
-                      <div style={{ textAlign: 'center' }}>
-                        <span style={{
-                          background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.2)',
-                          color: isLightTheme() ? '#166534' : '#6ee7b7',
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '13px',
-                          fontWeight: 500
-                        }}>
-                          {path.steps_count || path.steps?.length || 0}
-                        </span>
-                      </div>
-
-                      {/* Verified */}
-                      <div style={{ textAlign: 'center' }}>
-                        {path.is_verified ? (
-                          <span style={{ color: '#10b981', fontSize: '18px' }}>✓</span>
-                        ) : (
-                          <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>○</span>
-                        )}
-                      </div>
-
-                      {/* Created Date */}
-                      <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary }}>
-                        {path.created_at ? new Date(path.created_at).toLocaleDateString() : '-'}
-                      </div>
-
-                      {/* Download Button */}
-                      <div style={{ textAlign: 'center' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            downloadPathJson(path)
-                          }}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            border: `1px solid ${isLightTheme() ? '#059669' : '#10b981'}`,
-                            fontWeight: 500,
-                            background: 'transparent',
-                            color: isLightTheme() ? '#059669' : '#10b981'
-                          }}
-                          title="Download path as JSON"
-                        >⬇️ JSON</button>
-                      </div>
-                    </div>
-
-                    {/* Expanded Content */}
-                    {expandedPathId === path.id && (
-                      <div style={{
-                        padding: '20px',
-                        background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)',
-                        borderBottom: `2px solid ${isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)'}`
-                      }}>
-                        {/* Junction Options Detail */}
-                        {path.path_junctions && path.path_junctions.length > 0 && (
-                          <div style={{ marginBottom: '20px' }}>
-                            <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: isLightTheme() ? '#065f46' : '#6ee7b7', fontWeight: 600 }}>
-                              🔀 Junction Options for this Path
-                            </h4>
-                            <div style={{
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              gap: '12px',
-                              padding: '12px',
-                              background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.2)',
-                              borderRadius: '8px',
-                              border: `1px solid ${isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.2)'}`
-                            }}>
-                              {path.path_junctions.map((j, idx) => (
-                                <div key={idx} style={{
-                                  padding: '10px 16px',
-                                  background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.15)',
-                                  borderRadius: '8px',
-                                  border: `1px solid ${isLightTheme() ? '#93c5fd' : 'rgba(59, 130, 246, 0.3)'}`
-                                }}>
-                                  <div style={{ fontSize: '11px', color: isLightTheme() ? '#1e40af' : '#93c5fd', marginBottom: '4px' }}>
-                                    {j.junction_name}
-                                  </div>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, color: isLightTheme() ? '#1e3a8a' : '#bfdbfe' }}>
-                                    {j.option}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Steps List */}
-                        <div>
-                          <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: isLightTheme() ? '#065f46' : '#6ee7b7', fontWeight: 600 }}>
-                            📝 Steps ({path.steps?.length || 0})
-                          </h4>
-                          <div>
-                            {getDisplaySteps(path.steps || []).map((step, idx) => {
-                              const isVerifyStep = step.action?.toLowerCase() === 'verify' || step.action?.toLowerCase().includes('verify')
-                              const isEditing = editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx
-                              return (
-                              <div 
-                                key={idx} 
-                                onClick={() => {
-                                  if (editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx) {
-                                    handleCancelPathStepEdit()
-                                  } else {
-                                    handleEditPathStep(path.id, idx, step)
-                                  }
-                                }}
-                                style={{
-                                  padding: '14px 16px',
-                                  background: isEditing
-                                    ? (isVerifyStep 
-                                        ? (isLightTheme() ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.15)')
-                                        : (isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.15)'))
-                                    : (isLightTheme() ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.2)'),
-                                  borderRadius: '8px',
-                                  marginBottom: '10px',
-                                  border: isEditing
-                                    ? (isVerifyStep
-                                        ? `2px solid ${isLightTheme() ? '#10b981' : '#059669'}`
-                                        : `2px solid ${isLightTheme() ? '#3b82f6' : '#6366f1'}`)
-                                    : `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.05)'}`,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease'
-                                }}>
-                                {/* Step Header Row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  {/* Step Number */}
-                                  <div style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    background: isVerifyStep 
-                                      ? (isLightTheme() ? '#10b981' : '#059669')
-                                      : (isLightTheme() ? '#0ea5e9' : getTheme().colors.accentPrimary),
-                                    color: '#fff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    flexShrink: 0
-                                  }}>{step.step_number || idx + 1}</div>
-
-                                  {/* Action Badge */}
-                                  <div style={{
-                                    background: isVerifyStep
-                                      ? (isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.2)')
-                                      : (isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)'),
-                                    color: isVerifyStep
-                                      ? (isLightTheme() ? '#166534' : '#6ee7b7')
-                                      : (isLightTheme() ? '#1e40af' : '#93c5fd'),
-                                    padding: '5px 12px',
-                                    borderRadius: '4px',
-                                    fontSize: '13px',
-                                    fontWeight: 600,
-                                    textTransform: 'uppercase',
-                                    minWidth: '60px',
-                                    textAlign: 'center'
-                                  }}>{step.action}</div>
-
-                                  {/* Description */}
-                                  <div style={{ 
-                                    flex: 1, 
-                                    fontSize: '15px', 
-                                    color: getTheme().colors.textPrimary, 
-                                    fontWeight: 500 
-                                  }}>
-                                    {step.description || `${step.action} on element`}
-                                  </div>
-
-                                  {/* Edit Button */}
-                                  {!isEditing && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleEditPathStep(path.id, idx, step)
-                                      }}
-                                      style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '6px',
-                                        fontSize: '13px',
-                                        cursor: 'pointer',
-                                        border: `1px solid ${isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary}`,
-                                        fontWeight: 500,
-                                        background: 'transparent',
-                                        color: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
-                                        flexShrink: 0
-                                      }}
-                                    >✏️ Edit</button>
-                                  )}
-                                </div>
-
-                                {/* Step Details (non-edit mode) */}
-                                {!(editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx) && (
-                                  <div style={{ marginTop: '10px', marginLeft: '44px' }}>
-                                    <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginBottom: '6px' }}>
-                                      <span style={{ fontWeight: 500, color: isLightTheme() ? '#374151' : '#9ca3af' }}>Selector: </span>
-                                      <code style={{ 
-                                        background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.1)', 
-                                        padding: '4px 10px', 
-                                        borderRadius: '4px',
-                                        fontSize: '13px'
-                                      }}>
-                                        {step.selector || 'N/A'}
-                                      </code>
-                                    </div>
-                                    {step.value && (
-                                      <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary }}>
-                                        <span style={{ fontWeight: 500, color: isLightTheme() ? '#374151' : '#9ca3af' }}>Value: </span>
-                                        <strong style={{ color: getTheme().colors.textPrimary }}>{step.value}</strong>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Edit Form (Selector and Description editable, Value read-only) */}
-                                {editingPathStep?.pathId === path.id && editingPathStep?.stepIndex === idx && (
-                                  <div style={{ marginTop: '16px', marginLeft: '44px' }}>
-                                    {/* Line 1: Selector */}
-                                    <div style={{ marginBottom: '12px' }}>
-                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Selector</label>
-                                      <input
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          width: '100%',
-                                          padding: '10px 14px',
-                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                          borderRadius: '6px',
-                                          fontSize: '14px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
-                                          color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
-                                        }}
-                                        value={editedPathStepData.selector || ''}
-                                        onChange={e => setEditedPathStepData({ ...editedPathStepData, selector: e.target.value })}
-                                        placeholder="CSS selector or XPath"
-                                      />
-                                    </div>
-
-                                    {/* Line 2: Value (Read-only) */}
-                                    <div style={{ marginBottom: '12px' }}>
-                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Value <span style={{ fontSize: '11px', opacity: 0.7 }}>(read-only)</span></label>
-                                      <input
-                                        onClick={(e) => e.stopPropagation()}
-                                        readOnly
-                                        style={{
-                                          width: '100%',
-                                          padding: '10px 14px',
-                                          border: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)'}`,
-                                          borderRadius: '6px',
-                                          fontSize: '14px',
-                                          background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.05)',
-                                          color: getTheme().colors.textSecondary,
-                                          boxSizing: 'border-box',
-                                          cursor: 'not-allowed'
-                                        }}
-                                        value={editedPathStepData.value || ''}
-                                        placeholder="No value"
-                                      />
-                                    </div>
-
-                                    {/* Line 3: Description */}
-                                    <div style={{ marginBottom: '16px' }}>
-                                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: getTheme().colors.textSecondary, marginBottom: '6px' }}>Description</label>
-                                      <input
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          width: '100%',
-                                          padding: '10px 14px',
-                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                          borderRadius: '6px',
-                                          fontSize: '14px',
-                                          background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.1)',
-                                          color: getTheme().colors.textPrimary,
-                                          boxSizing: 'border-box'
-                                        }}
-                                        value={editedPathStepData.description || ''}
-                                        onChange={e => setEditedPathStepData({ ...editedPathStepData, description: e.target.value })}
-                                        placeholder="Step description"
-                                      />
-                                    </div>
-
-                                    {/* Buttons */}
-                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                      <button 
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          handleCancelPathStepEdit()
-                                        }}
-                                        style={{
-                                          padding: '8px 16px',
-                                          borderRadius: '6px',
-                                          fontSize: '13px',
-                                          cursor: 'pointer',
-                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
-                                          fontWeight: 500,
-                                          background: isLightTheme() ? '#f5f5f5' : 'rgba(255,255,255,0.1)',
-                                          color: getTheme().colors.textSecondary
-                                        }}
-                                      >Cancel</button>
-                                      <button 
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          handleSavePathStep(path.id, idx)
-                                        }}
-                                        style={{
-                                          padding: '8px 20px',
-                                          borderRadius: '6px',
-                                          fontSize: '13px',
-                                          cursor: 'pointer',
-                                          border: 'none',
-                                          fontWeight: 600,
-                                          background: '#10b981',
-                                          color: '#fff'
-                                        }}
-                                      >Save</button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )})}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Tip */}
-            <div style={{
-              marginTop: '16px',
-              padding: '12px 16px',
-              background: isLightTheme() ? '#fef9c3' : 'rgba(250, 204, 21, 0.1)',
-              borderRadius: '8px',
-              fontSize: '13px',
-              color: isLightTheme() ? '#854d0e' : '#fde047',
-              textAlign: 'center',
-              border: `1px solid ${isLightTheme() ? '#fde047' : 'rgba(250, 204, 21, 0.2)'}`
-            }}>
-              💡 Tip: Double-click a path row to expand • Click a step to edit/close it
-            </div>
-          </div>
-
-          {/* Footer - minimal now that buttons are in header */}
-          <div style={{
-            padding: '20px 44px',
-            borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-            background: isLightTheme() ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.15)',
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '18px'
-          }}>
-            <p style={{ margin: 0, fontSize: '14px', color: getTheme().colors.textSecondary, opacity: 0.7 }}>
-              💡 Tip: Click on a step to expand and edit its details
-            </p>
-          </div>
-        </div>
-
-        {/* Delete Step Confirmation Modal */}
-        {showDeleteStepConfirm && (
-          <div style={modalOverlayStyle}>
-            <div style={smallModalContentStyle}>
-              <h3 style={{ marginTop: 0, color: '#ef4444', fontSize: '20px', fontWeight: 700 }}>
-                <span style={{ marginRight: '8px' }}>⚠️</span>Delete Step?
-              </h3>
-              <p style={{ fontSize: '15px', color: '#e2e8f0', margin: '16px 0' }}>
-                Are you sure you want to delete <strong style={{ color: '#fff' }}>Step {(stepToDeleteIndex || 0) + 1}</strong>?
-              </p>
-              <p style={{ fontSize: '14px', color: '#94a3b8', margin: '0 0 24px' }}>This action cannot be undone.</p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button onClick={() => { setShowDeleteStepConfirm(false); setStepToDeleteIndex(null) }} style={secondaryButtonStyle}>
-                  Cancel
-                </button>
-                <button onClick={deleteStep} style={dangerButtonStyle}>
-                  Delete Step
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+        }}
+        onSave={isLoginLogoutEdit ? saveLoginLogoutSteps : saveFormPage}
+        onStartMapping={isLoginLogoutEdit ? () => {} : startMappingFromEditPanel}
+        onCancelMapping={cancelMapping}
+        onOpenEditPanel={openEditPanel}
+        onDeletePath={(pathId: number) => { /* TODO: implement */ }}
+        onSavePathStep={handleSavePathStep}
+        onExportPath={downloadPathJson}
+        onRefreshPaths={() => !isLoginLogoutEdit && fetchCompletedPaths(editingFormPage.id)}
+        onDeleteFormPage={isLoginLogoutEdit ? () => {} : rediscoverFormPage}
+        getTheme={getTheme}
+        isLightTheme={isLightTheme}
+        isLoginLogout={isLoginLogoutEdit}
+        loginLogoutType={loginLogoutType}
+      />
     )
   }
+
 
   // ============ MAIN DISCOVERY PAGE ============
   return (
@@ -3096,6 +2370,43 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
+              {/* Rediscover Message */}
+              {rediscoverMessage && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '20px 24px',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  boxShadow: '0 4px 15px rgba(245, 158, 11, 0.4)'
+                }}>
+                  <span style={{ fontSize: '32px' }}>🔄</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, color: '#fff', fontWeight: 600, fontSize: '16px' }}>
+                      {rediscoverMessage}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRediscoverMessage(null)}
+                    style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      border: 'none',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontWeight: 600
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              
               {/* Network Selection */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -3325,8 +2636,34 @@ export default function DashboardPage() {
           borderRadius: '28px',
           padding: '36px',
           boxShadow: `${getTheme().colors.cardGlow}, 0 20px 60px rgba(0,0,0,0.25)`,
-          marginTop: '32px'
+          marginTop: '32px',
+          position: 'relative'
         }}>
+          {/* Close button - only show when not discovering */}
+          {!isDiscovering && (
+            <button
+              onClick={() => setDiscoveryQueue([])}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                borderRadius: '8px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: getTheme().colors.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Close discovery progress"
+            >
+              <span>✕</span> Close
+            </button>
+          )}
           <h2 style={{ marginTop: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700, marginBottom: '28px', letterSpacing: '-0.5px', textShadow: getTheme().colors.textGlow }}>
             <span style={{ marginRight: '14px' }}>📊</span> Discovery Progress
           </h2>
@@ -3347,7 +2684,7 @@ export default function DashboardPage() {
               borderRadius: '18px',
               border: `1px solid ${getTheme().colors.cardBorder}`
             }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Forms Found</div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>New Forms Found</div>
               <div style={{ fontSize: '32px', fontWeight: 700, color: getTheme().colors.statusOnline, letterSpacing: '-1px' }}>{stats.totalFormsFound}</div>
             </div>
             <div style={{
@@ -3619,200 +2956,305 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...formPages].sort((a, b) => {
-                  if (sortField === 'name') {
-                    const nameA = (a.form_name || '').toLowerCase()
-                    const nameB = (b.form_name || '').toLowerCase()
-                    return sortDirection === 'asc' 
-                      ? nameA.localeCompare(nameB)
-                      : nameB.localeCompare(nameA)
-                  } else {
-                    const dateA = new Date(a.created_at || 0).getTime()
-                    const dateB = new Date(b.created_at || 0).getTime()
-                    return sortDirection === 'asc' 
-                      ? dateA - dateB
-                      : dateB - dateA
-                  }
-                }).map((form, index) => (
-                  <tr 
-                    key={form.id} 
-                    className="table-row"
-                    style={{
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      background: isLightTheme() 
-                        ? (index % 2 === 0 ? 'rgba(242, 246, 250, 0.95)' : 'rgba(236, 241, 248, 0.9)')
-                        : (index % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)')
-                    }}
-                    onDoubleClick={() => openEditPanel(form)}
-                  >
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <strong style={{ fontSize: '17px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
-                      {form.parent_form_name && (
-                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
-                          Parent: {form.parent_form_name}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <span style={{
-                        background: isLightTheme() 
-                          ? 'rgba(16, 185, 129, 0.15)'
-                          : 'rgba(16, 185, 129, 0.2)',
-                        color: isLightTheme() ? '#059669' : '#6ee7b7',
-                        padding: '8px 16px',
-                        borderRadius: '20px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        border: `1px solid ${isLightTheme() ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`,
-                        boxShadow: isLightTheme() ? '0 1px 4px rgba(16, 185, 129, 0.2)' : '0 0 10px rgba(16, 185, 129, 0.15)'
-                      }}>
-                        {(form as any).paths_count || 0} paths
-                      </span>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '14px',
-                      color: getTheme().colors.textSecondary,
-                      maxWidth: '250px'
-                    }}>
-                      <div style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap',
-                        color: isLightTheme() ? '#0369a1' : '#7dd3fc'
-                      }} title={form.url}>
-                        {form.url || '-'}
-                      </div>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary
-                    }}>
-                      <div style={{ fontSize: '15px', color: getTheme().colors.textPrimary }}>
-                        {form.created_at ? new Date(form.created_at).toLocaleDateString() : '-'}
-                      </div>
-                      <div style={{ fontSize: '13px', color: getTheme().colors.textSecondary, marginTop: '2px' }}>
-                        {form.created_at ? new Date(form.created_at).toLocaleTimeString() : ''}
-                      </div>
-                    </td>
-                    <td style={{
-                      padding: '20px 24px',
-                      borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
-                      verticalAlign: 'middle',
-                      fontSize: '16px',
-                      color: getTheme().colors.textPrimary,
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-                        {/* Map Button or Stop Button */}
-                        {mappingFormIds.has(form.id) ? (
-                          mappingStatus[form.id]?.status === 'stopping' ? (
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(156, 163, 175, 0.2)',
-                              color: '#9ca3af',
-                              borderRadius: '10px',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(156, 163, 175, 0.4)',
-                              boxShadow: '0 0 15px rgba(156, 163, 175, 0.3)'
-                            }}>
-                              ⏳ Stopping...
-                            </span>
-                          ) : (
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{
-                              padding: '10px 16px',
-                              background: 'rgba(245, 158, 11, 0.2)',
-                              color: '#f59e0b',
-                              borderRadius: '10px',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              border: '2px solid rgba(245, 158, 11, 0.4)',
-                              boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)'
-                            }}>
-                              ⏳ Mapping...
-                            </span>
-                            <button 
-                              onClick={() => cancelMapping(form.id)} 
-                              className="action-btn"
+                {/* Group form pages by network_id, then show login/logout at end of each group */}
+                {(() => {
+                  // Get unique network IDs from form pages
+                  const networkIdsFromForms = [...new Set(formPages.map(fp => fp.network_id))]
+                  // Get network IDs from login/logout data
+                  const networkIdsFromLoginLogout = Object.keys(loginLogoutData).map(id => parseInt(id))
+                  // Combine and deduplicate
+                  const allNetworkIds = [...new Set([...networkIdsFromForms, ...networkIdsFromLoginLogout])]
+                  
+                  // Sort form pages
+                  const sortedFormPages = [...formPages].sort((a, b) => {
+                    if (sortField === 'name') {
+                      const nameA = (a.form_name || '').toLowerCase()
+                      const nameB = (b.form_name || '').toLowerCase()
+                      return sortDirection === 'asc' 
+                        ? nameA.localeCompare(nameB)
+                        : nameB.localeCompare(nameA)
+                    } else {
+                      const dateA = new Date(a.created_at || 0).getTime()
+                      const dateB = new Date(b.created_at || 0).getTime()
+                      return sortDirection === 'asc' 
+                        ? dateA - dateB
+                        : dateB - dateA
+                    }
+                  })
+                  
+                  let rowIndex = 0
+                  
+                  return allNetworkIds.map(networkId => {
+                    const networkForms = sortedFormPages.filter(fp => fp.network_id === networkId)
+                    const loginLogout = loginLogoutData[networkId]
+                    
+                    return (
+                      <>
+                        {/* Form pages for this network */}
+                        {networkForms.map((form) => {
+                          const currentIndex = rowIndex++
+                          return (
+                            <tr 
+                              key={form.id} 
+                              className="table-row"
                               style={{
-                                background: 'rgba(239, 68, 68, 0.2)',
-                                border: '2px solid rgba(239, 68, 68, 0.4)',
-                                borderRadius: '12px',
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
                                 transition: 'all 0.2s ease',
-                                boxShadow: '0 0 15px rgba(239, 68, 68, 0.2)'
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? (currentIndex % 2 === 0 ? 'rgba(219, 234, 254, 0.6)' : 'rgba(191, 219, 254, 0.5)')
+                                  : (currentIndex % 2 === 0 ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.12)')
                               }}
-                              title="Stop mapping"
+                              onDoubleClick={() => openEditPanel(form)}
                             >
-                              ⏹️
-                            </button>
-                          </div>
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: getTheme().colors.textPrimary }}>{form.form_name}</strong>
+                                {form.parent_form_name && (
+                                  <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                    Parent: {form.parent_form_name}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${getTheme().colors.cardBorder}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <span style={{
+                                  background: isLightTheme() 
+                                    ? 'rgba(16, 185, 129, 0.15)'
+                                    : 'rgba(16, 185, 129, 0.2)',
+                                  color: isLightTheme() ? '#059669' : '#6ee7b7',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {completedPaths.filter(p => p.id === form.id).length > 0 
+                                    ? `${completedPaths.filter(p => p.id === form.id).length} paths`
+                                    : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={form.url}>
+                                  {form.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, color: getTheme().colors.textSecondary }}>
+                                {form.created_at ? (
+                                  <>
+                                    {new Date(form.created_at).toLocaleDateString()}
+                                    <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                                      {new Date(form.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  </>
+                                ) : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                  <button 
+                                    onClick={() => openEditPanel(form)}
+                                    className="action-btn"
+                                    style={{
+                                      background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(99, 102, 241, 0.15)',
+                                      border: `2px solid ${isLightTheme() ? 'rgba(59, 130, 246, 0.2)' : 'rgba(99, 102, 241, 0.3)'}`,
+                                      borderRadius: '12px',
+                                      padding: '16px 18px',
+                                      cursor: 'pointer',
+                                      fontSize: '20px',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    title="Edit form page"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button 
+                                    onClick={() => confirmDeleteFormPage(form)}
+                                    className="action-btn"
+                                    style={{
+                                      background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
+                                      border: `2px solid ${isLightTheme() ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                      borderRadius: '12px',
+                                      padding: '16px 18px',
+                                      cursor: 'pointer',
+                                      fontSize: '20px',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    title="Delete form page"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           )
-                        ) : null}
-                        <button 
-                          onClick={() => openEditPanel(form)} 
-                          className="action-btn"
-                          style={{
-                            background: isLightTheme() 
-                              ? 'rgba(30, 64, 175, 0.08)'
-                              : `${getTheme().colors.accentPrimary}15`,
-                            border: isLightTheme() 
-                              ? '1px solid rgba(30, 64, 175, 0.25)'
-                              : `2px solid ${getTheme().colors.cardBorder}`,
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            cursor: 'pointer',
-                            fontSize: '20px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : `0 0 15px ${getTheme().colors.accentGlow}30`
-                          }}
-                          title="Edit form page"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          onClick={() => openDeleteModal(form)} 
-                          className="action-btn"
-                          style={{
-                            background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
-                            border: isLightTheme() ? '1px solid rgba(239, 68, 68, 0.25)' : '2px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            cursor: 'pointer',
-                            fontSize: '20px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: isLightTheme() ? 'none' : '0 0 15px rgba(239, 68, 68, 0.2)'
-                          }}
-                          title="Delete form page"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        })}
+                        
+                        {/* Login/Logout rows at end of each network group */}
+                        {loginLogout && (
+                          <>
+                            {/* Login Row */}
+                            <tr 
+                              key={`login-${networkId}`}
+                              className="table-row"
+                              style={{
+                                transition: 'all 0.2s ease',
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? 'rgba(16, 185, 129, 0.08)' 
+                                  : 'rgba(16, 185, 129, 0.1)',
+                                borderLeft: '4px solid #10b981'
+                              }}
+                              onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'login')}
+                            >
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: '#10b981' }}>🔐 Login</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                  {loginLogout.network_name}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}` }}>
+                                <span style={{
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {loginLogout.login_stages.length} steps
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
+                                  {loginLogout.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, color: getTheme().colors.textSecondary }}>
+                                {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => openLoginLogoutEditPanel(networkId, 'login')}
+                                  className="action-btn"
+                                  style={{
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '2px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
+                                    cursor: 'pointer',
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  title="Edit login steps"
+                                >
+                                  ✏️
+                                </button>
+                              </td>
+                            </tr>
+                            
+                            {/* Logout Row */}
+                            <tr 
+                              key={`logout-${networkId}`}
+                              className="table-row"
+                              style={{
+                                transition: 'all 0.2s ease',
+                                cursor: 'pointer',
+                                background: isLightTheme() 
+                                  ? 'rgba(239, 68, 68, 0.08)' 
+                                  : 'rgba(239, 68, 68, 0.1)',
+                                borderLeft: '4px solid #ef4444'
+                              }}
+                              onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
+                            >
+                              <td style={{
+                                padding: '20px 24px',
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+                                verticalAlign: 'middle',
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
+                              }}>
+                                <strong style={{ fontSize: '17px', color: '#ef4444' }}>🚪 Logout</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
+                                  {loginLogout.network_name}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}` }}>
+                                <span style={{
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
+                                }}>
+                                  {loginLogout.logout_stages.length} steps
+                                </span>
+                              </td>
+                              <td style={{ 
+                                padding: '20px 24px', 
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
+                                maxWidth: '250px'
+                              }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
+                                  {loginLogout.url}
+                                </div>
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, color: getTheme().colors.textSecondary }}>
+                                {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
+                              </td>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, textAlign: 'center' }}>
+                                <button 
+                                  onClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
+                                  className="action-btn"
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    border: '2px solid rgba(239, 68, 68, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
+                                    cursor: 'pointer',
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  title="Edit logout steps"
+                                >
+                                  ✏️
+                                </button>
+                              </td>
+                            </tr>
+                          </>
+                        )}
+                      </>
+                    )
+                  })
+                })()}
               </tbody>
             </table>
           </div>

@@ -208,7 +208,7 @@ export default function AcceptInvitePage() {
             <span style={{ fontSize: '32px', fontWeight: 700, color: '#fff' }}>Q</span>
           </div>
           <h1 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 700, color: '#fff' }}>
-            Welcome to Quathera!
+            Welcome to Quattera!
           </h1>
           <p style={{ margin: '0', color: '#a0aec0', fontSize: '16px' }}>
             Set up your account to get started

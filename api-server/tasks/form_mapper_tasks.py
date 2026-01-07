@@ -946,7 +946,8 @@ def evaluate_paths_with_ai(
             "all_paths_complete": ai_result.get("all_paths_complete", True),
             "next_path": ai_result.get("next_path", {}),
             "total_paths_estimated": ai_result.get("total_paths_estimated", 0),
-            "reason": ai_result.get("reason", "")
+            "reason": ai_result.get("reason", ""),
+            "next_path_number": len(completed_paths) + 1
         }
         _continue_orchestrator_chain(session_id, "evaluate_paths_with_ai", result)
         return result
@@ -1076,6 +1077,46 @@ def sync_mapper_session_status(session_id: str, status: str, error: str = None):
             logger.info(f"[MapperTasks] DB session {session_id} status -> {status}")
     except Exception as e:
         logger.error(f"[MapperTasks] Failed to sync DB session {session_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+@shared_task(name="tasks.log_mapping_activity")
+def log_mapping_activity(
+    company_id: int,
+    project_id: int,
+    user_id: int,
+    mapper_session_id: int,
+    message: str,
+    level: str = 'info',
+    extra_data: dict = None
+):
+    """
+    Async task to log mapping activity to activity_log_entries table.
+    Fire-and-forget - does not block orchestrator.
+    """
+    db = _get_db_session()
+    try:
+        from models.database import ActivityLogEntry
+        from datetime import datetime
+
+        entry = ActivityLogEntry(
+            company_id=company_id,
+            project_id=project_id,
+            user_id=user_id,
+            activity_type="mapping",
+            mapper_session_id=mapper_session_id,
+            timestamp=datetime.utcnow(),
+            level=level,
+            category="milestone",
+            message=message,
+            extra_data=extra_data
+        )
+        db.add(entry)
+        db.commit()
+        logger.info(f"[MapperTasks] Logged activity: {message[:50]}...")
+    except Exception as e:
+        logger.error(f"[MapperTasks] Failed to log activity: {e}")
         db.rollback()
     finally:
         db.close()

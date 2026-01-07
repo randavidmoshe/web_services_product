@@ -324,13 +324,16 @@ class ServerBatcher(LogSubscriber):
     
     def _send_batch(self):
         """Send collected entries to server."""
+        print(f"[DEBUG] _send_batch called")
         with self.lock:
             if not self.entries:
+                print(f"[DEBUG] No entries to send")
                 return
             
             entries_to_send = self.entries.copy()
             self.entries = []
-        
+        print(f"[DEBUG] Sending {len(entries_to_send)} entries to server")
+
         # Build payload
         payload = {
             'activity_type': self.activity_type,
@@ -360,9 +363,12 @@ class ServerBatcher(LogSubscriber):
                     timeout=30,
                     verify=self.ssl_verify
                 )
+
+                print(f"[DEBUG] Server response: status={response.status_code}, body={response.text[:200]}")
                 
                 if response.status_code in (200, 201):
                     # Success
+                    print(f"[DEBUG] Bulk upload SUCCESS")
                     return True
                 elif response.status_code == 401:
                     # Auth error - don't retry

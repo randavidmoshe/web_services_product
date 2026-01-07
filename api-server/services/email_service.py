@@ -9,8 +9,8 @@ from typing import Optional
 
 # AWS SES Configuration
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
-SES_SENDER_EMAIL = os.getenv("SES_SENDER_EMAIL", "no-reply@quathera.com")
-SES_SENDER_NAME = os.getenv("SES_SENDER_NAME", "Quathera")
+SES_SENDER_EMAIL = os.getenv("SES_SENDER_EMAIL", "no-reply@quattera.com")
+SES_SENDER_NAME = os.getenv("SES_SENDER_NAME", "Quattera")
 
 # For testing in sandbox mode, use a verified email
 SES_SANDBOX_MODE = os.getenv("SES_SANDBOX_MODE", "true").lower() == "true"
@@ -121,7 +121,7 @@ def send_invitation_email(
     """
     invite_url = f"{APP_URL}/accept-invite?token={invite_token}"
     
-    subject = f"You've been invited to join {company_name} on Quathera"
+    subject = f"You've been invited to join {company_name} on Quattera"
     
     html_body = f"""
     <!DOCTYPE html>
@@ -138,7 +138,7 @@ def send_invitation_email(
                         <!-- Header -->
                         <tr>
                             <td style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 40px 40px; text-align: center;">
-                                <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Quathera</h1>
+                                <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Quattera</h1>
                                 <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">AI-Powered Form Testing Platform</p>
                             </td>
                         </tr>
@@ -151,7 +151,7 @@ def send_invitation_email(
                                 </h2>
                                 
                                 <p style="margin: 0 0 20px; color: #4a5568; font-size: 16px; line-height: 1.6;">
-                                    <strong>{inviter_name}</strong> has invited you to join <strong>{company_name}</strong> on Quathera.
+                                    <strong>{inviter_name}</strong> has invited you to join <strong>{company_name}</strong> on Quattera.
                                 </p>
                                 
                                 <p style="margin: 0 0 30px; color: #4a5568; font-size: 16px; line-height: 1.6;">
@@ -193,10 +193,10 @@ def send_invitation_email(
                         <tr>
                             <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
                                 <p style="margin: 0 0 10px; color: #718096; font-size: 14px;">
-                                    — The Quathera Team
+                                    — The Quattera Team
                                 </p>
                                 <p style="margin: 0; color: #a0aec0; font-size: 12px;">
-                                    © 2025 Quathera. All rights reserved.
+                                    © 2025 Quattera. All rights reserved.
                                 </p>
                             </td>
                         </tr>
@@ -211,7 +211,7 @@ def send_invitation_email(
     text_body = f"""
 Hi {to_name},
 
-{inviter_name} has invited you to join {company_name} on Quathera.
+{inviter_name} has invited you to join {company_name} on Quattera.
 
 Click the link below to set up your account and get started:
 
@@ -221,7 +221,7 @@ This invitation expires in 7 days.
 
 If you didn't expect this invitation, you can safely ignore this email.
 
-— The Quathera Team
+— The Quattera Team
     """
     
     return send_email(to_email, subject, html_body, text_body)
@@ -237,7 +237,7 @@ def send_password_reset_email(
     """
     reset_url = f"{APP_URL}/reset-password?token={reset_token}"
     
-    subject = "Reset your Quathera password"
+    subject = "Reset your Quattera password"
     
     html_body = f"""
     <!DOCTYPE html>
@@ -252,7 +252,7 @@ def send_password_reset_email(
                     <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
                         <tr>
                             <td style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 40px; text-align: center;">
-                                <h1 style="margin: 0; color: #ffffff; font-size: 28px;">Quathera</h1>
+                                <h1 style="margin: 0; color: #ffffff; font-size: 28px;">Quattera</h1>
                             </td>
                         </tr>
                         <tr>

@@ -263,5 +263,35 @@ class TestTemplate(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 # Note: Agent model is defined in models/agent_models.py to avoid duplication
 
+class ActivityLogEntry(Base):
+    """
+    Stores activity log entries from agent.
+    Used by Discovery, Mapping, and Test Runs.
+    """
+    __tablename__ = "activity_log_entries"
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Activity identification
+    activity_type = Column(String(50), nullable=False, index=True)  # 'discovery', 'mapping', 'test_run'
+
+    # Link to specific session (only one will be set)
+    crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"), nullable=True, index=True)
+    mapper_session_id = Column(Integer, ForeignKey("form_mapper_sessions.id"), nullable=True, index=True)
+    test_run_id = Column(Integer, nullable=True, index=True)  # Future: ForeignKey to test_runs
+
+    # Log entry data
+    timestamp = Column(DateTime, nullable=False, index=True)  # When event occurred on agent
+    level = Column(String(20), nullable=False)  # 'info', 'warning', 'error'
+    category = Column(String(50), default='milestone')  # 'milestone' or 'debug'
+    message = Column(Text, nullable=False)
+    extra_data = Column(JSON, nullable=True)  # Optional structured data
+
+    # Server timestamp
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Import related models to resolve relationships
 from models.form_mapper_models import FormMapperSession, FormMapResult

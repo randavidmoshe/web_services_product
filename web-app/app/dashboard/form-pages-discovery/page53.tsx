@@ -178,6 +178,9 @@ export default function DashboardPage() {
   const [selectedFormForMapping, setSelectedFormForMapping] = useState<FormPage | null>(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   
+  // Theme state - reads from localStorage to sync with layout
+  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
   // Login/Logout stages state
   const [loginLogoutData, setLoginLogoutData] = useState<Record<number, LoginLogoutData>>({})
   const [editingLoginLogout, setEditingLoginLogout] = useState<{
@@ -188,63 +191,491 @@ export default function DashboardPage() {
     url: string
   } | null>(null)
 
-  // Theme configuration - Pearl White only (fixed theme, synced with layout.tsx)
-  const theme = {
-    name: 'Pearl White',
+  // Theme definitions (same as layout.tsx)
+  const themes: Record<string, {
+    name: string
     colors: {
-      bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-      headerBg: 'rgba(248, 250, 252, 0.98)',
-      sidebarBg: 'rgba(241, 245, 249, 0.95)',
-      cardBg: 'rgba(242, 246, 250, 0.98)',
-      cardBorder: 'rgba(100, 116, 139, 0.3)',
-      cardGlow: 'none',
-      accentPrimary: '#0369a1',
-      accentSecondary: '#0ea5e9',
-      accentGlow: 'none',
-      iconGlow: 'none',
-      buttonGlow: 'none',
-      textPrimary: '#1e293b',
-      textSecondary: '#475569',
-      textGlow: 'none',
-      statusOnline: '#16a34a',
-      statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
-      borderGlow: 'none'
+      bgGradient: string
+      headerBg: string
+      sidebarBg: string
+      cardBg: string
+      cardBorder: string
+      cardGlow: string
+      accentPrimary: string
+      accentSecondary: string
+      accentGlow: string
+      iconGlow: string
+      buttonGlow: string
+      textPrimary: string
+      textSecondary: string
+      textGlow: string
+      statusOnline: string
+      statusGlow: string
+      borderGlow: string
+    }
+  }> = {
+    'platinum-steel': {
+      name: 'Platinum Steel',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
+        headerBg: 'rgba(75, 85, 99, 0.9)',
+        sidebarBg: 'rgba(75, 85, 99, 0.6)',
+        cardBg: 'rgba(75, 85, 99, 0.5)',
+        cardBorder: 'rgba(156, 163, 175, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#6366f1',
+        accentSecondary: '#8b5cf6',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f3f4f6',
+        textSecondary: '#9ca3af',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'ocean-depths': {
+      name: 'Ocean Depths',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
+        headerBg: 'rgba(15, 76, 92, 0.9)',
+        sidebarBg: 'rgba(15, 76, 92, 0.6)',
+        cardBg: 'rgba(15, 76, 92, 0.5)',
+        cardBorder: 'rgba(34, 211, 238, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#06b6d4',
+        accentSecondary: '#22d3ee',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfeff',
+        textSecondary: '#67e8f9',
+        textGlow: 'none',
+        statusOnline: '#22d3ee',
+        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'aurora-borealis': {
+      name: 'Aurora Borealis',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
+        headerBg: 'rgba(49, 46, 129, 0.9)',
+        sidebarBg: 'rgba(49, 46, 129, 0.6)',
+        cardBg: 'rgba(49, 46, 129, 0.5)',
+        cardBorder: 'rgba(167, 139, 250, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#8b5cf6',
+        accentSecondary: '#a78bfa',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f5f3ff',
+        textSecondary: '#c4b5fd',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'sunset-ember': {
+      name: 'Sunset Ember',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
+        headerBg: 'rgba(124, 45, 18, 0.9)',
+        sidebarBg: 'rgba(124, 45, 18, 0.6)',
+        cardBg: 'rgba(124, 45, 18, 0.5)',
+        cardBorder: 'rgba(251, 146, 60, 0.4)',
+        cardGlow: 'none',
+        accentPrimary: '#f97316',
+        accentSecondary: '#fb923c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff7ed',
+        textSecondary: '#fdba74',
+        textGlow: 'none',
+        statusOnline: '#fbbf24',
+        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'emerald-forest': {
+      name: 'Emerald Forest',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
+        headerBg: 'rgba(6, 78, 59, 0.9)',
+        sidebarBg: 'rgba(6, 78, 59, 0.6)',
+        cardBg: 'rgba(6, 78, 59, 0.5)',
+        cardBorder: 'rgba(52, 211, 153, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#10b981',
+        accentSecondary: '#34d399',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ecfdf5',
+        textSecondary: '#6ee7b7',
+        textGlow: 'none',
+        statusOnline: '#34d399',
+        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'crimson-night': {
+      name: 'Crimson Night',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
+        headerBg: 'rgba(69, 10, 10, 0.9)',
+        sidebarBg: 'rgba(69, 10, 10, 0.6)',
+        cardBg: 'rgba(69, 10, 10, 0.5)',
+        cardBorder: 'rgba(251, 113, 133, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#f43f5e',
+        accentSecondary: '#fb7185',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#fff1f2',
+        textSecondary: '#fda4af',
+        textGlow: 'none',
+        statusOnline: '#fb7185',
+        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    'bright-silver': {
+      name: 'Bright Silver',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
+        headerBg: 'rgba(107, 114, 128, 0.95)',
+        sidebarBg: 'rgba(107, 114, 128, 0.7)',
+        cardBg: 'rgba(107, 114, 128, 0.6)',
+        cardBorder: 'rgba(209, 213, 219, 0.5)',
+        cardGlow: 'none',
+        accentPrimary: '#1e3a5f',
+        accentSecondary: '#2d5a87',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ffffff',
+        textSecondary: '#e5e7eb',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'chrome-glow': {
+      name: 'Chrome Glow',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
+        headerBg: 'rgba(156, 163, 175, 0.95)',
+        sidebarBg: 'rgba(156, 163, 175, 0.7)',
+        cardBg: 'rgba(156, 163, 175, 0.6)',
+        cardBorder: 'rgba(229, 231, 235, 0.6)',
+        cardGlow: 'none',
+        accentPrimary: '#0f4c5c',
+        accentSecondary: '#1a6b7c',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#111827',
+        textSecondary: '#374151',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'pearl-white': {
+      name: 'Pearl White',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+        headerBg: 'rgba(248, 250, 252, 0.98)',
+        sidebarBg: 'rgba(241, 245, 249, 0.95)',
+        cardBg: 'rgba(242, 246, 250, 0.98)',
+        cardBorder: 'rgba(100, 116, 139, 0.3)',
+        cardGlow: 'none',
+        accentPrimary: '#0369a1',
+        accentSecondary: '#0ea5e9',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#1e293b',
+        textSecondary: '#475569',
+        textGlow: 'none',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    'cyber-pink': {
+      name: 'Cyber Pink',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
+        headerBg: 'rgba(40, 15, 40, 0.95)',
+        sidebarBg: 'rgba(40, 15, 40, 0.8)',
+        cardBg: 'rgba(50, 20, 50, 0.6)',
+        cardBorder: 'rgba(255, 0, 128, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
+        accentPrimary: '#ff0080',
+        accentSecondary: '#ff00ff',
+        accentGlow: 'rgba(255, 0, 128, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff99cc',
+        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
+      }
+    },
+    'radioactive': {
+      name: 'Radioactive',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
+        headerBg: 'rgba(20, 40, 10, 0.95)',
+        sidebarBg: 'rgba(20, 40, 10, 0.8)',
+        cardBg: 'rgba(25, 50, 15, 0.6)',
+        cardBorder: 'rgba(136, 255, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
+        accentPrimary: '#00ff00',
+        accentSecondary: '#88ff00',
+        accentGlow: 'rgba(0, 255, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#bbff66',
+        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
+        statusOnline: '#ffff00',
+        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
+      }
+    },
+    'electric-blue': {
+      name: 'Electric Blue',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
+        headerBg: 'rgba(0, 20, 50, 0.95)',
+        sidebarBg: 'rgba(0, 20, 50, 0.8)',
+        cardBg: 'rgba(0, 30, 60, 0.6)',
+        cardBorder: 'rgba(0, 204, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
+        accentPrimary: '#0066ff',
+        accentSecondary: '#00ccff',
+        accentGlow: 'rgba(0, 102, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ddff',
+        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
+        statusOnline: '#00ffff',
+        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
+      }
+    },
+    'golden-sunrise': {
+      name: 'Golden Sunrise',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
+        headerBg: 'rgba(40, 30, 10, 0.95)',
+        sidebarBg: 'rgba(40, 30, 10, 0.8)',
+        cardBg: 'rgba(50, 35, 15, 0.6)',
+        cardBorder: 'rgba(255, 204, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
+        accentPrimary: '#ff8800',
+        accentSecondary: '#ffcc00',
+        accentGlow: 'rgba(255, 136, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffdd44',
+        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
+        statusOnline: '#ffff66',
+        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
+      }
+    },
+    'plasma-purple': {
+      name: 'Plasma Purple',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
+        headerBg: 'rgba(30, 10, 50, 0.95)',
+        sidebarBg: 'rgba(30, 10, 50, 0.8)',
+        cardBg: 'rgba(40, 15, 60, 0.6)',
+        cardBorder: 'rgba(204, 102, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
+        accentPrimary: '#9900ff',
+        accentSecondary: '#cc66ff',
+        accentGlow: 'rgba(153, 0, 255, 0.18)',
+        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
+        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#dd99ff',
+        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
+        statusOnline: '#ff99ff',
+        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
+      }
+    },
+    'fire-storm': {
+      name: 'Fire Storm',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
+        headerBg: 'rgba(40, 10, 10, 0.95)',
+        sidebarBg: 'rgba(40, 10, 10, 0.8)',
+        cardBg: 'rgba(50, 15, 15, 0.6)',
+        cardBorder: 'rgba(255, 102, 0, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
+        accentPrimary: '#ff0000',
+        accentSecondary: '#ff6600',
+        accentGlow: 'rgba(255, 0, 0, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ff9944',
+        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
+        statusOnline: '#ffcc00',
+        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
+      }
+    },
+    'arctic-aurora': {
+      name: 'Arctic Aurora',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
+        headerBg: 'rgba(0, 40, 40, 0.95)',
+        sidebarBg: 'rgba(0, 40, 40, 0.8)',
+        cardBg: 'rgba(0, 50, 50, 0.6)',
+        cardBorder: 'rgba(0, 255, 255, 0.6)',
+        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
+        accentPrimary: '#00ffcc',
+        accentSecondary: '#00ffff',
+        accentGlow: 'rgba(0, 255, 204, 0.18)',
+        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
+        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#66ffff',
+        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
+        statusOnline: '#66ffff',
+        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
+        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
+      }
+    },
+    'midnight-rose': {
+      name: 'Midnight Rose',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
+        headerBg: 'rgba(40, 10, 25, 0.95)',
+        sidebarBg: 'rgba(40, 10, 25, 0.8)',
+        cardBg: 'rgba(50, 15, 35, 0.6)',
+        cardBorder: 'rgba(255, 102, 153, 0.6)',
+        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
+        accentPrimary: '#ff3377',
+        accentSecondary: '#ff66aa',
+        accentGlow: 'rgba(255, 51, 119, 0.18)',
+        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
+        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
+        textPrimary: '#ffffff',
+        textSecondary: '#ffaacc',
+        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
+        statusOnline: '#ff99cc',
+        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
+        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
+      }
     }
   }
 
   // Get current theme colors
-  const getTheme = () => theme
+  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
 
-  // Always light theme
-  const isLightTheme = () => true
+  // Detect if current theme is light (for contrast adjustments)
+  const isLightTheme = () => {
+    const lightThemes = ['pearl-white']
+    return lightThemes.includes(currentTheme)
+  }
 
   // Get contrasting background for elements (darker on light themes)
   const getContrastBg = (opacity: number = 0.1) => {
-    return `rgba(0, 0, 0, ${opacity})`
+    return isLightTheme() 
+      ? `rgba(0, 0, 0, ${opacity})`
+      : `rgba(255, 255, 255, ${opacity * 0.3})`
   }
 
-  // Systematic background colors for consistency (light theme only)
+  // Systematic background colors for consistency
   const getBgColor = (level: 'card' | 'section' | 'input' | 'header' | 'hover' | 'muted') => {
-    switch (level) {
-      case 'card': return 'rgba(255, 255, 255, 0.95)'
-      case 'section': return 'rgba(0, 0, 0, 0.03)'
-      case 'input': return 'rgba(255, 255, 255, 0.9)'
-      case 'header': return 'rgba(0, 0, 0, 0.04)'
-      case 'hover': return 'rgba(0, 0, 0, 0.06)'
-      case 'muted': return 'rgba(0, 0, 0, 0.02)'
-      default: return 'rgba(255, 255, 255, 0.95)'
+    if (isLightTheme()) {
+      switch (level) {
+        case 'card': return 'rgba(255, 255, 255, 0.95)'
+        case 'section': return 'rgba(0, 0, 0, 0.03)'
+        case 'input': return 'rgba(255, 255, 255, 0.9)'
+        case 'header': return 'rgba(0, 0, 0, 0.04)'
+        case 'hover': return 'rgba(0, 0, 0, 0.06)'
+        case 'muted': return 'rgba(0, 0, 0, 0.02)'
+        default: return 'rgba(255, 255, 255, 0.95)'
+      }
+    } else {
+      switch (level) {
+        case 'card': return 'rgba(255, 255, 255, 0.03)'
+        case 'section': return 'rgba(0, 0, 0, 0.1)'
+        case 'input': return 'rgba(255, 255, 255, 0.05)'
+        case 'header': return 'rgba(255, 255, 255, 0.05)'
+        case 'hover': return 'rgba(255, 255, 255, 0.08)'
+        case 'muted': return 'rgba(255, 255, 255, 0.02)'
+        default: return 'rgba(255, 255, 255, 0.03)'
+      }
     }
   }
 
-  // Systematic border colors (light theme only)
+  // Systematic border colors
   const getBorderColor = (emphasis: 'normal' | 'strong' | 'subtle' | 'light' = 'normal') => {
-    switch (emphasis) {
-      case 'strong': return 'rgba(0, 0, 0, 0.15)'
-      case 'subtle': return 'rgba(0, 0, 0, 0.06)'
-      case 'light': return 'rgba(0, 0, 0, 0.08)'
-      default: return 'rgba(0, 0, 0, 0.1)'
+    if (isLightTheme()) {
+      switch (emphasis) {
+        case 'strong': return 'rgba(0, 0, 0, 0.15)'
+        case 'subtle': return 'rgba(0, 0, 0, 0.06)'
+        case 'light': return 'rgba(0, 0, 0, 0.08)'
+        default: return 'rgba(0, 0, 0, 0.1)'
+      }
+    } else {
+      switch (emphasis) {
+        case 'strong': return 'rgba(255, 255, 255, 0.15)'
+        case 'subtle': return 'rgba(255, 255, 255, 0.06)'
+        case 'light': return 'rgba(255, 255, 255, 0.08)'
+        default: return 'rgba(255, 255, 255, 0.1)'
+      }
     }
   }
+
+  // Load theme from localStorage on mount and listen for changes
+  useEffect(() => {
+    const loadTheme = () => {
+      const savedTheme = localStorage.getItem('quathera-theme')
+      if (savedTheme && themes[savedTheme]) {
+        setCurrentTheme(savedTheme)
+      }
+    }
+    loadTheme()
+    
+    // Listen for storage changes (when theme is changed in layout)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'quathera-theme' && e.newValue && themes[e.newValue]) {
+        setCurrentTheme(e.newValue)
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Also poll for changes (in case same-tab changes don't trigger storage event)
+    const interval = setInterval(loadTheme, 500)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
 
   // Fetch test templates on mount
   useEffect(() => {

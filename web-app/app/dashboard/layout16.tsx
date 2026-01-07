@@ -95,42 +95,156 @@ export default function DashboardLayout({
   const [aiBudget, setAiBudget] = useState<number | null>(null)
   const [isByok, setIsByok] = useState<boolean>(false)
 
-  // Theme configuration - Pearl White only (fixed theme)
-  const theme = {
-    name: 'Pearl White',
-    emoji: '🤍',
-    category: 'elegant',
+  // Theme configuration
+  const [showConfigDropdown, setShowConfigDropdown] = useState(false)
+  const [showThemeModal, setShowThemeModal] = useState(false)
+  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+
+  // Theme definitions - Kept themes only
+  const themes: Record<string, {
+    name: string
+    emoji: string
+    category: 'elegant' | 'neon'
     colors: {
-      bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-      headerBg: 'rgba(248, 250, 252, 0.98)',
-      sidebarBg: 'rgba(241, 245, 249, 0.95)',
-      cardBg: 'rgba(242, 246, 250, 0.98)',
-      cardBorder: 'rgba(100, 116, 139, 0.3)',
-      cardGlow: 'none',
-      accentPrimary: '#0369a1',
-      accentSecondary: '#0ea5e9',
-      accentGlow: 'none',
-      iconGlow: 'none',
-      buttonGlow: 'none',
-      textPrimary: '#1e293b',
-      textSecondary: '#475569',
-      textGlow: 'none',
-      statusOnline: '#16a34a',
-      statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
-      borderGlow: 'none'
+      bgGradient: string
+      headerBg: string
+      sidebarBg: string
+      cardBg: string
+      cardBorder: string
+      cardGlow: string
+      accentPrimary: string
+      accentSecondary: string
+      accentGlow: string
+      iconGlow: string
+      buttonGlow: string
+      textPrimary: string
+      textSecondary: string
+      textGlow: string
+      statusOnline: string
+      statusGlow: string
+      borderGlow: string
+    }
+  }> = {
+    // === DARK THEME ===
+    'platinum-steel': {
+      name: 'Platinum Steel',
+      emoji: '🔩',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
+        headerBg: 'rgba(75, 85, 99, 0.9)',
+        sidebarBg: 'rgba(75, 85, 99, 0.6)',
+        cardBg: 'rgba(75, 85, 99, 0.5)',
+        cardBorder: 'rgba(156, 163, 175, 0.35)',
+        cardGlow: 'none',
+        accentPrimary: '#6366f1',
+        accentSecondary: '#8b5cf6',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#f3f4f6',
+        textSecondary: '#9ca3af',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
+        borderGlow: 'none'
+      }
+    },
+    // === MEDIUM DARK THEME ===
+    'bright-silver': {
+      name: 'Bright Silver',
+      emoji: '🥈',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
+        headerBg: 'rgba(107, 114, 128, 0.95)',
+        sidebarBg: 'rgba(107, 114, 128, 0.7)',
+        cardBg: 'rgba(107, 114, 128, 0.6)',
+        cardBorder: 'rgba(209, 213, 219, 0.5)',
+        cardGlow: 'none',
+        accentPrimary: '#1e3a5f',
+        accentSecondary: '#2d5a87',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#ffffff',
+        textSecondary: '#e5e7eb',
+        textGlow: 'none',
+        statusOnline: '#22c55e',
+        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
+        borderGlow: 'none'
+      }
+    },
+    // === LIGHT THEMES (with improved contrast) ===
+    'pearl-white': {
+      name: 'Pearl White',
+      emoji: '🤍',
+      category: 'elegant',
+      colors: {
+        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+        headerBg: 'rgba(248, 250, 252, 0.98)',
+        sidebarBg: 'rgba(241, 245, 249, 0.95)',
+        cardBg: 'rgba(242, 246, 250, 0.98)',
+        cardBorder: 'rgba(100, 116, 139, 0.3)',
+        cardGlow: 'none',
+        accentPrimary: '#0369a1',
+        accentSecondary: '#0ea5e9',
+        accentGlow: 'none',
+        iconGlow: 'none',
+        buttonGlow: 'none',
+        textPrimary: '#1e293b',
+        textSecondary: '#475569',
+        textGlow: 'none',
+        statusOnline: '#16a34a',
+        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
+        borderGlow: 'none'
+      }
     }
   }
 
   // Get current theme colors
-  const getTheme = () => theme
+  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
 
-  // Always light theme
-  const isLightTheme = () => true
+  // Detect if current theme is light (for contrast adjustments)
+  const isLightTheme = () => {
+    const lightThemes = ['pearl-white']
+    return lightThemes.includes(currentTheme)
+  }
 
   // Get contrasting background for elements (darker on light themes)
   const getContrastBg = (opacity: number = 0.1) => {
-    return `rgba(0, 0, 0, ${opacity})`
+    return isLightTheme() 
+      ? `rgba(0, 0, 0, ${opacity})`
+      : `rgba(255, 255, 255, ${opacity * 0.3})`
   }
+
+  // Load theme from localStorage on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('quathera-theme')
+    if (savedTheme && themes[savedTheme]) {
+      setCurrentTheme(savedTheme)
+    }
+  }, [])
+
+  // Save theme to localStorage when changed
+  const changeTheme = (themeId: string) => {
+    setCurrentTheme(themeId)
+    localStorage.setItem('quathera-theme', themeId)
+    setShowThemeModal(false)
+    setShowConfigDropdown(false)
+  }
+
+  // Close config dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.config-dropdown')) {
+        setShowConfigDropdown(false)
+      }
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
 
   // Load networks when Test Sites tab is selected
   useEffect(() => {
@@ -803,6 +917,70 @@ export default function DashboardLayout({
             </span>
           </div>
           
+          {/* Configuration Dropdown */}
+          <div className="config-dropdown" style={{ position: 'relative' }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowConfigDropdown(!showConfigDropdown) }}
+              className="top-btn"
+              style={{
+                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '12px',
+                padding: '12px 22px',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: getTheme().colors.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span>⚙️</span> Configuration <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
+            </button>
+            
+            {showConfigDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 10px)',
+                right: 0,
+                background: getTheme().colors.headerBg,
+                backdropFilter: 'blur(20px)',
+                border: `2px solid ${getTheme().colors.cardBorder}`,
+                borderRadius: '16px',
+                boxShadow: `${getTheme().colors.borderGlow}, 0 20px 60px rgba(0,0,0,0.5)`,
+                minWidth: '220px',
+                zIndex: 1000,
+                overflow: 'hidden',
+                animation: 'fadeIn 0.2s ease'
+              }}>
+                <div style={{ padding: '14px 18px', fontSize: '11px', fontWeight: 700, color: getTheme().colors.textSecondary, letterSpacing: '1.5px', borderBottom: `1px solid ${getTheme().colors.cardBorder}` }}>
+                  CONFIGURATION
+                </div>
+                <div
+                  onClick={() => setShowThemeModal(true)}
+                  className="dropdown-item"
+                  style={{
+                    padding: '16px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    color: getTheme().colors.textPrimary,
+                    transition: 'all 0.2s ease',
+                    fontSize: '16px',
+                    fontWeight: 500
+                  }}
+                >
+                  <span style={{ fontSize: '20px' }}>🎨</span>
+                  <span>Themes</span>
+                  <span style={{ marginLeft: 'auto', opacity: 0.5 }}>→</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* Download Agent */}
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
@@ -1404,6 +1582,276 @@ export default function DashboardLayout({
         </div>
       )}
 
+      {/* Theme Selector Modal */}
+      {showThemeModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{
+            background: getTheme().colors.headerBg,
+            borderRadius: '28px',
+            width: '900px',
+            maxHeight: '85vh',
+            overflow: 'hidden',
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            boxShadow: `${getTheme().colors.borderGlow}, 0 30px 100px rgba(0,0,0,0.5)`,
+            animation: 'fadeIn 0.3s ease'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '28px 36px',
+              borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}20, ${getTheme().colors.accentSecondary}15)`
+            }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700 }}>
+                  🎨 Choose Your Theme
+                </h2>
+                <p style={{ margin: '8px 0 0', fontSize: '15px', color: getTheme().colors.textSecondary }}>
+                  Select a color scheme for your dashboard
+                </p>
+              </div>
+              <button
+                onClick={() => setShowThemeModal(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  color: getTheme().colors.textPrimary,
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: '32px', overflowY: 'auto', maxHeight: 'calc(85vh - 120px)' }}>
+              {/* Elegant Themes */}
+              <div style={{ marginBottom: '36px' }}>
+                <h3 style={{ 
+                  color: getTheme().colors.textPrimary, 
+                  fontSize: '18px', 
+                  fontWeight: 700, 
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>✨</span> Elegant Themes
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+                  {Object.entries(themes).filter(([_, t]) => t.category === 'elegant').map(([id, theme]) => (
+                    <div
+                      key={id}
+                      onClick={() => changeTheme(id)}
+                      style={{
+                        background: theme.colors.cardBg,
+                        border: currentTheme === id 
+                          ? `3px solid ${theme.colors.accentPrimary}` 
+                          : `2px solid ${theme.colors.cardBorder}`,
+                        borderRadius: '20px',
+                        padding: '20px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        boxShadow: currentTheme === id 
+                          ? theme.colors.buttonGlow 
+                          : theme.colors.cardGlow,
+                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                    >
+                      {/* Mini Preview */}
+                      <div style={{
+                        background: theme.colors.bgGradient,
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '16px',
+                        border: `1px solid ${theme.colors.cardBorder}`
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 15px ${theme.colors.accentGlow}`
+                          }} />
+                          <div style={{
+                            height: '8px',
+                            flex: 1,
+                            borderRadius: '4px',
+                            background: theme.colors.cardBorder
+                          }} />
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          gap: '8px'
+                        }}>
+                          <div style={{
+                            height: '24px',
+                            flex: 1,
+                            borderRadius: '6px',
+                            background: theme.colors.cardBg,
+                            border: `1px solid ${theme.colors.cardBorder}`
+                          }} />
+                          <div style={{
+                            width: '50px',
+                            height: '24px',
+                            borderRadius: '6px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
+                          }} />
+                        </div>
+                      </div>
+                      {/* Theme Name */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        color: theme.colors.textPrimary
+                      }}>
+                        <span style={{ fontSize: '22px' }}>{theme.emoji}</span>
+                        <span style={{ fontWeight: 600, fontSize: '15px' }}>{theme.name}</span>
+                        {currentTheme === id && (
+                          <span style={{ 
+                            marginLeft: 'auto', 
+                            background: theme.colors.accentPrimary,
+                            color: '#fff',
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: 700
+                          }}>
+                            ✓ Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Neon Themes */}
+              <div>
+                <h3 style={{ 
+                  color: getTheme().colors.textPrimary, 
+                  fontSize: '18px', 
+                  fontWeight: 700, 
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>⚡</span> Ultra Bright Neon Themes
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+                  {Object.entries(themes).filter(([_, t]) => t.category === 'neon').map(([id, theme]) => (
+                    <div
+                      key={id}
+                      onClick={() => changeTheme(id)}
+                      style={{
+                        background: theme.colors.cardBg,
+                        border: currentTheme === id 
+                          ? `3px solid ${theme.colors.accentPrimary}` 
+                          : `2px solid ${theme.colors.cardBorder}`,
+                        borderRadius: '18px',
+                        padding: '16px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        boxShadow: currentTheme === id 
+                          ? theme.colors.buttonGlow 
+                          : theme.colors.cardGlow,
+                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                    >
+                      {/* Mini Preview */}
+                      <div style={{
+                        background: theme.colors.bgGradient,
+                        borderRadius: '10px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme.colors.cardBorder}`,
+                        boxShadow: `inset 0 0 20px ${theme.colors.accentGlow}`
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginBottom: '10px'
+                        }}>
+                          <div style={{
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '6px',
+                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                            boxShadow: `0 0 20px ${theme.colors.accentPrimary}`
+                          }} />
+                          <div style={{
+                            height: '6px',
+                            flex: 1,
+                            borderRadius: '3px',
+                            background: theme.colors.cardBorder,
+                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
+                          }} />
+                        </div>
+                        <div style={{
+                          height: '18px',
+                          borderRadius: '5px',
+                          background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
+                          boxShadow: `0 0 15px ${theme.colors.accentPrimary}`
+                        }} />
+                      </div>
+                      {/* Theme Name */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: theme.colors.textPrimary
+                      }}>
+                        <span style={{ fontSize: '18px' }}>{theme.emoji}</span>
+                        <span style={{ fontWeight: 600, fontSize: '13px', textShadow: theme.colors.textGlow }}>{theme.name}</span>
+                        {currentTheme === id && (
+                          <span style={{ 
+                            marginLeft: 'auto', 
+                            background: theme.colors.accentPrimary,
+                            color: '#fff',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            boxShadow: `0 0 10px ${theme.colors.accentPrimary}`
+                          }}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

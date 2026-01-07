@@ -19,6 +19,7 @@ from routes import company_config  # <-- ADD THIS
 from routes import test_templates
 from passlib.context import CryptContext
 from routes import user_requirements
+from routes.activity_logs import router as activity_logs_router
 
 import logging
 
@@ -109,7 +110,7 @@ cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://local
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
 # Always include production domains
-production_origins = ["https://www.quathera.com", "https://app.quathera.com"]
+production_origins = ["https://www.quattera.ai", "https://app.quattera.ai"]
 for origin in production_origins:
     if origin not in cors_origins:
         cors_origins.append(origin)
@@ -137,6 +138,7 @@ app.include_router(two_fa.router, prefix="/api", tags=["2fa"])  # 2FA router
 app.include_router(users.router)  # Users management router
 app.include_router(test_templates.router)
 app.include_router(user_requirements.router)
+app.include_router(activity_logs_router)
 
 @app.get("/")
 async def root():

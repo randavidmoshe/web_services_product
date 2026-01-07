@@ -9,6 +9,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
+from models.database import ActivityLogEntry
 from services.path_evaluation_service import (
     PathEvaluationService, JunctionsState, create_path_evaluation_service
 )
@@ -164,7 +165,10 @@ class FormMapperOrchestrator:
             logger.info(f"[Orchestrator] Invalidated config cache for company {company_id}")
         except Exception as e:
             logger.warning(f"[Orchestrator] Failed to invalidate config cache: {e}")
-    
+
+
+
+
     def _get_default_config(self) -> dict:
         from models.form_mapper_config_models import DEFAULT_FORM_MAPPER_CONFIG
         return DEFAULT_FORM_MAPPER_CONFIG.copy()
@@ -184,6 +188,7 @@ class FormMapperOrchestrator:
         # Get form page URL from database (do this once at session creation)
         form_page_url = base_url or ""
         user_provided_inputs = None
+        form_name = None
         if form_route_id and self.db:
             try:
                 from models.database import FormPageRoute
@@ -192,6 +197,7 @@ class FormMapperOrchestrator:
                     if not form_page_url:
                         form_page_url = route.url or ""
                     project_id = route.project_id
+                    form_name = route.form_name
                     if route.user_provided_inputs and route.user_provided_inputs.get("status") == "ready":
                         user_provided_inputs = route.user_provided_inputs
             except Exception as e:
@@ -212,7 +218,7 @@ class FormMapperOrchestrator:
         session_state = {
             "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0,
             "product_id": product_id or 1, "network_id": network_id or 0,
-            "form_route_id": form_route_id or 0, "form_page_url": form_page_url,
+            "form_route_id": form_route_id or 0, "form_page_url": form_page_url, "form_name": form_name or "Unknown Form", "project_id": project_id or 0,
             "state": MapperState.INITIALIZING.value, "previous_state": "",
             "current_step_index": 0, "all_steps": "[]", "executed_steps": "[]",
             "current_dom_hash": "", "current_path": 1,
@@ -234,6 +240,7 @@ class FormMapperOrchestrator:
         self.redis.hset(key, mapping=session_state)
         self.redis.expire(key, 86400)
         logger.info(f"[Orchestrator] Created session {session_id} with network_id={network_id}, form_route_id={form_route_id}")
+
         if user_id:
             self.redis.delete(f"agent:{user_id}")
             logger.info(f"[Orchestrator] Flushed agent queue for user {user_id}")
@@ -317,6 +324,13 @@ class FormMapperOrchestrator:
         self.transition_to(session_id, MapperState.FAILED, last_error=error,
                           completed_at=datetime.utcnow().isoformat())
         self._sync_session_status_to_db(session_id, "failed", error)
+        session = self.get_session(session_id)
+        if session:
+            self._push_agent_task(session_id, "form_mapper_close", {
+                "complete_logging": True,
+                "log_message": f"❌ Mapping failed: {error}",
+                "log_level": "error"
+            })
         return {"success": False, "error": error, "state": "failed"}
 
     # ============================================================
@@ -327,9 +341,9 @@ class FormMapperOrchestrator:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         network_id = session.get("network_id")
-        if not network_id: return self.start_navigation_phase(session_id)
+        if not network_id: return self.start_navigation_phase(session_id, is_first_phase=True)
         login_stages = self._load_login_stages(network_id)
-        if not login_stages: return self.start_navigation_phase(session_id)
+        if not login_stages: return self.start_navigation_phase(session_id, is_first_phase=True)
         self.transition_to(session_id, MapperState.LOGGING_IN)
         from tasks.forms_runner_tasks import start_runner_phase
         start_runner_phase.delay(
@@ -340,22 +354,31 @@ class FormMapperOrchestrator:
             user_id=session.get("user_id", 0),
             product_id=session.get("product_id", 1),
             network_id=network_id,
-            form_route_id=session.get("form_route_id", 0)
+            form_route_id=session.get("form_route_id", 0),
+            log_message=f"🗺️ Mapping started: {session.get('form_name', 'Unknown Form')}\n🔐 Login started",
+            session_context={
+                "activity_type": "mapping",
+                "session_id": int(session_id),
+                "project_id": session.get("project_id"),
+                "company_id": session.get("company_id"),
+                "user_id": session.get("user_id")
+            }
         )
         return {"success": True, "phase": "login", "async": True}
     
     def handle_login_phase_complete(self, session_id: str, result: Dict) -> Dict:
         if not result.get("success"):
             return self._fail_session(session_id, result.get("error", "Login failed"))
-        return self.start_navigation_phase(session_id)
+
+        return self.start_navigation_phase(session_id, is_first_phase=False, log_message="✅ Login successful")
     
-    def start_navigation_phase(self, session_id: str) -> Dict:
+    def start_navigation_phase(self, session_id: str, is_first_phase: bool = False, log_message: str = None) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         form_route_id = session.get("form_route_id")
-        if not form_route_id: return self.start_mapping_phase(session_id)
+        if not form_route_id: return self.start_mapping_phase(session_id, is_first_phase=is_first_phase, log_message=log_message)
         nav_stages = self._load_navigation_stages(form_route_id)
-        if not nav_stages: return self.start_mapping_phase(session_id)
+        if not nav_stages: return self.start_mapping_phase(session_id, is_first_phase=is_first_phase, log_message=log_message)
         self.transition_to(session_id, MapperState.NAVIGATING)
         from tasks.forms_runner_tasks import start_runner_phase
         start_runner_phase.delay(
@@ -366,7 +389,15 @@ class FormMapperOrchestrator:
             user_id=session.get("user_id", 0),
             product_id=session.get("product_id", 1),
             network_id=session.get("network_id", 0),
-            form_route_id=form_route_id
+            form_route_id=form_route_id,
+            log_message=(f"🗺️ Mapping started: {session.get('form_name', 'Unknown Form')}\n" if is_first_phase else "") + (log_message + "\n" if log_message else "") + "🧭 Navigation started",
+            session_context={
+                "activity_type": "mapping",
+                "session_id": int(session_id),
+                "project_id": session.get("project_id"),
+                "company_id": session.get("company_id"),
+                "user_id": session.get("user_id")
+            } if is_first_phase else None
         )
         return {"success": True, "phase": "navigate", "async": True}
     
@@ -375,13 +406,14 @@ class FormMapperOrchestrator:
             return self._fail_session(session_id, result.get("error", "Navigation failed"))
         if result.get("final_url"):
             self.update_session(session_id, {"base_url": result.get("final_url")})
-        return self.start_mapping_phase(session_id)
+
+        return self.start_mapping_phase(session_id, is_first_phase=False, log_message="✅ Navigated to form page")
 
     # ============================================================
     # PHASE 3: FORM MAPPING - INITIAL
     # ============================================================
     
-    def start_mapping_phase(self, session_id: str) -> Dict:
+    def start_mapping_phase(self, session_id: str, is_first_phase: bool = False, log_message: str = None) -> Dict:
         import traceback
         print(f"[TRACE] start_mapping_phase CALLED for session={session_id}")
         print(f"[TRACE] CALL STACK: {traceback.format_stack()[-3:]}")
@@ -389,10 +421,31 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
         config = session.get("config", {})
         self.transition_to(session_id, MapperState.EXTRACTING_INITIAL_DOM, current_path=1)
-        task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
+        log_msg = "🗺️ Mapping started\n" if is_first_phase else ""
+        if log_message:
+            log_msg += log_message + "\n"
+        log_msg += f"📍 Path {session.get('current_path', 1)} started"
+        #task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
+        #    "use_full_dom": config.get("use_full_dom", True),
+        #    "capture_screenshot": config.get("enable_ui_verification", True),
+        #    "log_message": log_msg
+        #})
+
+        payload = {
             "use_full_dom": config.get("use_full_dom", True),
-            "capture_screenshot": config.get("enable_ui_verification", True)
-        })
+            "capture_screenshot": config.get("enable_ui_verification", True),
+            "log_message": log_msg
+        }
+        if is_first_phase:
+            payload["session_context"] = {
+                "activity_type": "mapping",
+                "session_id": int(session_id),
+                "project_id": session.get("project_id"),
+                "company_id": session.get("company_id"),
+                "user_id": session.get("user_id")
+            }
+        task = self._push_agent_task(session_id, "form_mapper_extract_dom", payload)
+
         return {"success": True, "phase": "mapping", "agent_task": task}
 
     def handle_initial_dom_result(self, session_id: str, result: Dict) -> Dict:
@@ -448,17 +501,30 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
         ui_issue = result.get("ui_issue", "")
         if ui_issue:
+            new_issues = []
             test_context = session.get("test_context", {})
             reported = test_context.get("reported_ui_issues", [])
             for issue in ui_issue.split(','):
                 issue = issue.strip()
-                if issue and issue not in reported: reported.append(issue)
+                if issue and issue not in reported:
+                    reported.append(issue)
+                    new_issues.append(issue)
             test_context["reported_ui_issues"] = reported
             self.update_session(session_id, {"test_context": test_context})
-            logger.warning(f"[Orchestrator] UI issues: {ui_issue}")
-            self._push_agent_task(session_id, "form_mapper_save_screenshot_and_log",
-                                  {"ui_issue": ui_issue,
-                                   "scenario": "initial_ui_verification"})
+            if new_issues:
+                logger.warning(f"[Orchestrator] UI issues: {', '.join(new_issues)}")
+                self._push_agent_task(session_id, "form_mapper_log_bug", {
+                    "bug_description": ', '.join(new_issues),
+                    "log_level": "warning",
+                    "screenshot": True,
+                    "bug_type": "ui_issue"
+                })
+            #self._push_agent_task(session_id, "form_mapper_log_bug", {
+            #    "log_message": f"🐛 UI Issue: {ui_issue}",
+            #    "log_level": "warning",
+            #    "screenshot": True,
+            #    "bug_type": "ui_issue"
+            #})
         dom_html = self.redis.get(f"mapper_dom:{session_id}")
         if dom_html: dom_html = dom_html.decode() if isinstance(dom_html, bytes) else dom_html
         return self._trigger_generate_initial_steps(session_id, dom_html,
@@ -588,6 +654,7 @@ class FormMapperOrchestrator:
         max_retries = config.get("max_retries", self.max_retries)
         self.update_session(session_id, {"consecutive_failures": consecutive_failures})
         logger.warning(f"[Orchestrator] Step failed. Consecutive: {consecutive_failures}/{max_retries}")
+
         logger.info(
             f"[handle_step_result] consecutive_failures={consecutive_failures}, max_retries={max_retries}, will_fail={consecutive_failures >= max_retries}")
 
@@ -771,7 +838,7 @@ class FormMapperOrchestrator:
         alert_text = result.get("alert_text", "")
         alert_screenshot = result.get("alert_screenshot_base64")  # Screenshot captured while alert was visible
         logger.info(f"[Orchestrator] Alert: {alert_type} - {alert_text[:50]}")
-        
+
         # Add accept_alert to executed
         executed_steps = session.get("executed_steps", [])
         executed_steps.append({"step_number": len(executed_steps) + 1, "action": "accept_alert",
@@ -821,6 +888,12 @@ class FormMapperOrchestrator:
             self.transition_to(session_id, MapperState.SYSTEM_ISSUE,
                               last_error=f"Real issue: {result.get('explanation', '')}",
                               completed_at=datetime.utcnow().isoformat())
+            self._push_agent_task(session_id, "form_mapper_log_bug", {
+                "bug_description": result.get('explanation', '')[:100],
+                "log_level": "error",
+                "screenshot": True,
+                "bug_type": "real_bug_alert"
+            })
             return {"success": False, "system_issue": True, "explanation": result.get("explanation", "")}
         
         #if not alert_steps:
@@ -877,6 +950,12 @@ class FormMapperOrchestrator:
             self.transition_to(session_id, MapperState.SYSTEM_ISSUE,
                                last_error=f"Real issue: {result.get('explanation', '')}",
                                completed_at=datetime.utcnow().isoformat())
+            self._push_agent_task(session_id, "form_mapper_log_bug", {
+                "bug_description": result.get('explanation', '')[:100],
+                "log_level": "error",
+                "screenshot": True,
+                "bug_type": "real_bug_validation"
+            })
             return {"success": False, "system_issue": True, "explanation": result.get("explanation", "")}
 
         # AI issue - navigate back and retry with critical fields
@@ -1107,17 +1186,26 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
         ui_issue = result.get("ui_issue", "")
         if ui_issue:
+            new_issues = []
             test_context = session.get("test_context", {})
             reported = test_context.get("reported_ui_issues", [])
             for issue in ui_issue.split(','):
                 issue = issue.strip()
-                if issue and issue not in reported: reported.append(issue)
+                if issue and issue not in reported:
+                    reported.append(issue)
+                    new_issues.append(issue)
             test_context["reported_ui_issues"] = reported
             self.update_session(session_id, {"test_context": test_context})
-            logger.warning(f"[Orchestrator] UI issues: {ui_issue}")
-            self._push_agent_task(session_id, "form_mapper_save_screenshot_and_log",
-                                 {"scenario_description": "ui_issue",
-                                  "log_message": f"UI ISSUE (after DOM change): {ui_issue}", "log_level": "warning"})
+            if new_issues:
+                logger.warning(f"[Orchestrator] UI issues: {', '.join(new_issues)}")
+                self._push_agent_task(session_id, "form_mapper_log_bug", {
+                    "bug_description": ', '.join(new_issues),
+                    "log_level": "warning",
+                    "screenshot": True,
+                    "bug_type": "ui_issue"
+                })
+
+
         #return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
 
         # Get fresh DOM before regeneration
@@ -1530,6 +1618,7 @@ class FormMapperOrchestrator:
         # Check if we need to continue to next path
         if result.get("continue_to_next_path"):
             logger.info(f"[Orchestrator] Path saved, starting next path...")
+            current_path = session.get("current_path", 1)
             # Reset for next path
             self.update_session(session_id, {
                 "executed_steps": "[]",
@@ -1544,6 +1633,10 @@ class FormMapperOrchestrator:
                            completed_at=datetime.utcnow().isoformat())
         self._sync_session_status_to_db(session_id, "completed")
         logger.info(f"[Orchestrator] Session {session_id} COMPLETED: {len(final_stages)} steps")
+        self._push_agent_task(session_id, "form_mapper_close", {
+            "log_message": f"✅ Mapping complete - {len(final_stages)} steps",
+            "complete_logging": True
+        })
         return {"success": True, "state": "completed", "total_steps": len(final_stages)}
 
     def handle_ai_path_evaluation_result(self, session_id: str, result: Dict) -> Dict:
@@ -1659,7 +1752,11 @@ class FormMapperOrchestrator:
 
         # Step 1: Navigate to form URL
         self.transition_to(session_id, MapperState.NEXT_PATH_NAVIGATING)
-        task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": form_page_url})
+        #task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": form_page_url})
+        task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {
+            "url": form_page_url,
+            "log_message": f"📍 Path {session.get('current_path', 1)} started"
+        })
         return {"success": True, "state": "next_path_navigating", "agent_task": task}
 
     # ============================================================
@@ -1690,6 +1787,7 @@ class FormMapperOrchestrator:
     
     def cancel_session(self, session_id: str) -> Dict:
         self.transition_to(session_id, MapperState.CANCELLED, completed_at=datetime.utcnow().isoformat())
+
         # Push close task to agent to close browser immediately
         session = self.get_session(session_id)
         if session:
@@ -1697,7 +1795,11 @@ class FormMapperOrchestrator:
             if user_id:
                 self.redis.delete(f"agent:{user_id}")
                 logger.info(f"[Orchestrator] Flushed agent queue for user {user_id}")
-                self._push_agent_task(session_id, "form_mapper_close", {})
+                self._push_agent_task(session_id, "form_mapper_close", {
+                    "log_message": "⏹️ Mapping cancelled",
+                    "log_level": "warning",
+                    "complete_logging": True
+                })
                 logger.info(f"[Orchestrator] Pushed close task for session {session_id}")
 
         return {"success": True, "state": "cancelled"}

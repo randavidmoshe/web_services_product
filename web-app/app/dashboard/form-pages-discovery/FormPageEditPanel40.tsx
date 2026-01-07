@@ -16,11 +16,14 @@ export interface FormPage {
   form_name: string
   url: string
   network_id: number
+  network_name?: string
+  parent_fields?: Array<{field_name: string, field_label: string, parent_entity: string, field_type?: string}>
   navigation_steps: NavigationStep[]
   is_root: boolean
   parent_form_id: number | null
   parent_form_name?: string
-  children?: FormPage[]
+  parent_network_name?: string
+  children?: Array<{form_id: number, form_name: string, network_name?: string}>
   created_at: string
   mapping_status?: 'not_mapped' | 'mapping' | 'mapped' | 'failed'
   mapping_session_id?: number
@@ -238,11 +241,11 @@ export default function FormPageEditPanel({
   // Action types available in agent_selenium
   const ACTION_TYPES = [
     'click', 'fill', 'type', 'select', 'hover', 'scroll', 'slider', 'drag_and_drop',
-    'press_key', 'clear', 'wait', 'wait_for_visible', 'wait_for_hidden', 'wait_for_ready',
-    'wait_dom_ready', 'double_click', 'switch_to_window', 'switch_to_parent_window', 
-    'switch_to_frame', 'switch_to_default', 'switch_to_shadow_root',
-    'refresh', 'check', 'uncheck', 'accept_alert', 'dismiss_alert', 'fill_alert', 
-    'navigate', 'create_file', 'upload_file', 'verify'
+    'press_key', 'clear', 'wait_for_visible', 'double_click', 'wait_for_hidden',
+    'switch_to_window', 'switch_to_parent_window', 'refresh', 'check', 'uncheck',
+    'wait', 'wait_dom_ready', 'wait_for_ready', 'switch_to_frame', 'switch_to_default', 'switch_to_shadow_root',
+    'accept_alert', 'dismiss_alert', 'fill_alert', 'navigate', 'create_file',
+    'upload_file', 'verify', 'verify_login_page'
   ]
   
   // Local state for expanded steps (key: pathId-stepIndex)
@@ -1055,7 +1058,22 @@ export default function FormPageEditPanel({
         </div>
       )}
       {message && (
-        <div style={successBoxStyle}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '16px 20px',
+          background: isLightTheme() 
+            ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))'
+            : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))',
+          border: isLightTheme() 
+            ? '1px solid rgba(34, 197, 94, 0.4)'
+            : '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
+          color: isLightTheme() ? '#16a34a' : '#86efac',
+          marginBottom: '20px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
           <span>✅</span> {message}
           <button onClick={() => setMessage(null)} style={closeButtonStyle}>×</button>
         </div>
@@ -1364,7 +1382,7 @@ export default function FormPageEditPanel({
                 {editingFormPage.parent_form_name && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
-                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}{editingFormPage.parent_network_name && ` (${editingFormPage.parent_network_name})`}</span>
                   </div>
                 )}
                 {editingFormPage.children && editingFormPage.children.length > 0 && (
@@ -1379,7 +1397,7 @@ export default function FormPageEditPanel({
                           borderRadius: '6px',
                           fontSize: '14px',
                           fontWeight: 500
-                        }}>{c.form_name}</span>
+                        }}>{c.form_name}{c.network_name && ` (${c.network_name})`}</span>
                       ))}
                     </div>
                   </div>
@@ -1704,20 +1722,22 @@ export default function FormPageEditPanel({
 
           {/* Right Column - Steps */}
           <div style={{ width: '600px', flexShrink: 0, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
-            {/* Path to Form Page Banner */}
-            <div style={{
-              display: 'inline-flex',
-              gap: '12px',
-              background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
-              border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
-              padding: '12px 20px',
-              borderRadius: '10px',
-              marginBottom: '24px',
-              alignItems: 'center'
-            }}>
-              <span style={{ fontSize: '22px' }}>🛤️</span>
-              <strong style={{ fontSize: '17px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
-            </div>
+            {/* Path to Form Page Banner - hidden for login/logout */}
+            {!isLoginLogout && (
+              <div style={{
+                display: 'inline-flex',
+                gap: '12px',
+                background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
+                border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
+                padding: '12px 20px',
+                borderRadius: '10px',
+                marginBottom: '24px',
+                alignItems: 'center'
+              }}>
+                <span style={{ fontSize: '22px' }}>🛤️</span>
+                <strong style={{ fontSize: '17px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
+              </div>
+            )}
 
             {/* Path Steps Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -1898,11 +1918,7 @@ export default function FormPageEditPanel({
                                 opacity: navStepsEditable ? 1 : 0.7
                               }}
                             >
-                              <option value=""></option>
-                              {/* Include current action if not in ACTION_TYPES */}
-                              {step.action && !ACTION_TYPES.includes(step.action) && (
-                                <option key={step.action} value={step.action}>{step.action}</option>
-                              )}
+                              <option value="">Select action...</option>
                               {ACTION_TYPES.map(action => (
                                 <option key={action} value={action}>{action}</option>
                               ))}
@@ -2622,11 +2638,7 @@ export default function FormPageEditPanel({
                                             opacity: isPathEditable(path.id) ? 1 : 0.7
                                           }}
                                         >
-                                          <option value=""></option>
-                                          {/* Include current action if not in ACTION_TYPES */}
-                                          {(editData.action || step.action) && !ACTION_TYPES.includes(editData.action || step.action) && (
-                                            <option key={editData.action || step.action} value={editData.action || step.action}>{editData.action || step.action}</option>
-                                          )}
+                                          <option value="">Select action...</option>
                                           {ACTION_TYPES.filter(a => a !== 'verify').map(action => (
                                             <option key={action} value={action}>{action}</option>
                                           ))}

@@ -60,27 +60,36 @@ class AgentSelenium:
     Handles all browser automation, DOM extraction, and step execution
     """
     
-    def __init__(self, screenshot_folder: Optional[str] = None):
+    def __init__(self, screenshot_folder: Optional[str] = None, config=None):
         self.driver = None
         self.shadow_root_context = None
+        self.config = config  # Store config reference
         
         # Screenshot folder configuration
-        if screenshot_folder:
-            # User provided a path (absolute or relative)
-            if os.path.isabs(screenshot_folder):
-                base_path = screenshot_folder
-            else:
-                # Relative path - make it relative to current working directory
-                base_path = os.path.abspath(screenshot_folder)
+        if config:
+            # Use config paths from user settings
+            self.screenshots_path = config.screenshot_folder
+            self.logs_path = config.log_folder
+            self.files_path = config.files_folder
         else:
-            # Default to Desktop
-            base_path = self._get_desktop_path()
+            if screenshot_folder:
+                # User provided a path (absolute or relative)
+                if os.path.isabs(screenshot_folder):
+                    base_path = screenshot_folder
+                else:
+                    # Relative path - make it relative to current working directory
+                    base_path = os.path.abspath(screenshot_folder)
+            else:
+                # Default to Desktop
+                base_path = self._get_desktop_path()
+
+            # Create automation_files folder structure
+            automation_files_path = os.path.join(base_path, "automation_files")
+            self.screenshots_path = os.path.join(automation_files_path, "screenshots")
+            self.logs_path = os.path.join(automation_files_path, "logs")
+            self.files_path = os.path.join(automation_files_path, "files")
         
-        # Create automation_files folder structure
-        automation_files_path = os.path.join(base_path, "automation_files")
-        self.screenshots_path = os.path.join(automation_files_path, "screenshots")
-        self.logs_path = os.path.join(automation_files_path, "logs")
-        self.files_path = os.path.join(automation_files_path, "files")
+
         
         # Create folders if they don't exist
         os.makedirs(self.screenshots_path, exist_ok=True)
@@ -1251,8 +1260,8 @@ class AgentSelenium:
 
 
             # DEBUG: Save screenshot when fields change
-            if fields_changed:
-                self.capture_screenshot("fields_changed_debug")
+            #if fields_changed:
+            #    self.capture_screenshot("fields_changed_debug")
 
             self.info_logger.info(f"  ✅ Success")
             self.info_logger.info("-" * 70)

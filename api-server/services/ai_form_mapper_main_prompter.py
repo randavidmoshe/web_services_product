@@ -1411,8 +1411,8 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 - Set to `false` (or omit) for all other actions
 
 
-**force_regenerate_verify field (for Save/Submit only):**
-- Set to `true` ONLY for Save and Submit buttons
+** CRITICAL AND MANDATORY - force_regenerate_verify field (for Save/Submit only):**
+- Set to `true` for Save and Submit buttons
 - This triggers verification-focused AI after form submission
 
 ---
@@ -1503,9 +1503,11 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
 - ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
 
-**⚠️ WHERE TO GET EXPECTED VALUES:**
+**⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
 - ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
 - ❌ NEVER use values from the current DOM (what is DISPLAYED) as expected values
+- The whole point of verification is to CHECK if what was entered matches what is displayed
+- Example: If fill step had `"value": "15-1-1990"`, verify with `"value": "15-1-1990"` - NOT what DOM shows
 
 **VERIFY ALL FIELDS - NO SKIPPING:**
 1. Generate a VERIFY step for EACH fill/select/check step in "Steps Already Completed"
@@ -1513,17 +1515,45 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 3. **NEVER SKIP** - even if you suspect value might not match or format might differ - verification failures are VALID test results
 
 **⚠️ SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
-- ✅ `//div[.//label[contains(text(), 'Email')]]//div[@class='value']`
-- ❌ `(//div[@class='field-value'])[3]` - position-only won't work if layout changes
+Every verify selector MUST include the field name/label as an anchor (e.g., 'Email', 'First Name', 'Phone').
+- ✅ `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[@class='value']`  
+- ❌ `(//div[@class='field-value'])[3]` - position-only without field name won't work if layout changes
 
 **⚠️ DUPLICATE FIELD NAMES (e.g., two "City" fields):**
-Scope selector to SECTION/PARENT container:
-- ✅ `//div[contains(@class, 'shipping')]//div[.//label[contains(text(), 'City')]]//span`
-- ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - index as last resort
+When the same field label appears multiple times, scope the selector to the SECTION/PARENT container:
+- ✅ `//div[contains(@class, 'personal-info')]//div[.//label[contains(text(), 'City')]]//span`
+- ✅ `//section[@id='shipping']//div[.//label[contains(text(), 'City')]]//span`
+- ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - use index as last resort
+- ❌ `//label[contains(text(), 'City')]/..//span` - not unique when multiple exist
+
+**TABLE/LIST verification - MANDATORY FOR IT TO SUCCEED -> SEARCH FIRST:**
+Before generating ANY verify steps for a list/table, check for search input:
+1. Look for search box in DOM: `input[type='search']`, `input#search`, `input[placeholder*='Search']`, `input[placeholder*='Filter']`
+2. If search exists: Generate fill step to search, then wait_for_ready, then verify steps
+3. If NO search exists: Use positional selectors on first row (newly added items typically appear at top)
+
+**Why search first:** Positional selectors like `//tr[1]//td[1]` may fail on re-runs if multiple records exist. Searching isolates your record.
+
+**Example with search:**
+1. `{{"action": "fill", "selector": "input#searchBox", "value": "john@email.com", "description": "Search for created record", "force_regenerate_verify": true}}`
+2. `{{"action": "wait_for_ready", "selector": "table", "description": "Wait for search results"}}`
+3. `{{"action": "verify", "selector": "//table//tbody//tr[1]//td[1]", "value": "John", "description": "Verify name"}}`
+
+**Positional selectors (use after search, or if no search available):**
+- First data row, column 1: `//table//tbody//tr[1]//td[1]`
+- First data row, column 2: `//table//tbody//tr[1]//td[2]`
+- Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
+- By row with unique class: `//tr[contains(@class,'highlight')]//td[1]`
+
 
 **❌ WRONG selectors:**
 - `//div[contains(text(), 'john@email.com')]` - value in selector!
-- `input#email` on view page - form elements don't exist!
+- `//td[text()='TestValue']` - value in selector won't work with different test data!
+- `//tr[td[text()='SomeValue']]//td[2]` - finding row by value won't work for reusable tests!
+- `input#email` on view page - form elements don't exist on view pages!
+- Inventing class names not in DOM
+
+**⚠️ TABLE SELECTOR RULE:** Selectors must work with ANY test data. Use POSITION (row/column index) or STRUCTURE (classes, data-attributes), NEVER the actual field VALUES.
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 ---

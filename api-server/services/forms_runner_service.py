@@ -64,7 +64,8 @@ class FormsRunnerService:
         phase: RunnerPhase,
         stages: List[Dict],
         network_id: int,
-        form_route_id: Optional[int] = None
+        form_route_id: Optional[int] = None,
+        log_message: str = None
     ) -> Dict:
         """Initialize runner state in Redis"""
         state = {
@@ -75,6 +76,7 @@ class FormsRunnerService:
             "stages": json.dumps(stages),
             "total_stages": len(stages),
             "current_stage_index": 0,
+            "log_message": log_message or "",
             "status": "running",
             "retry_count": 0,
             "recovery_attempts": 0,
@@ -177,7 +179,8 @@ class FormsRunnerService:
         self,
         session_id: str,
         stage: Dict,
-        user_id: int
+        user_id: int,
+        log_message: str = None
     ) -> Dict:
         """Create agent task for executing a stage"""
         return {
@@ -185,7 +188,8 @@ class FormsRunnerService:
             "task_type": "forms_runner_exec_step",
             "session_id": session_id,
             "payload": {
-                "step": stage
+                "step": stage,
+                **({"log_message": log_message} if log_message else {})
             },
             "created_at": datetime.utcnow().isoformat()
         }
