@@ -68,6 +68,7 @@ class FormMapperTaskHandler:
         session_id = task.get("session_id")
         payload = task.get("payload", {})
 
+
         # Start session if context provided and not already started
         session_context = payload.get("session_context")
         print(
@@ -80,7 +81,10 @@ class FormMapperTaskHandler:
                 session_id=session_context.get("session_id", 0),
                 project_id=session_context.get("project_id", 0),
                 company_id=session_context.get("company_id", 0),
-                user_id=session_context.get("user_id", 0)
+                user_id=session_context.get("user_id", 0),
+                upload_urls=session_context.get("upload_urls", {}),
+                screenshots_folder=self.selenium.screenshots_path if self.selenium else None,
+                form_files_folder=self.selenium.files_path if self.selenium else None
             )
 
         # Display log_message if present
@@ -760,11 +764,18 @@ class FormMapperTaskHandler:
         
         try:
             import os
-            import tempfile
-            
-            # Create file in temp directory
-            temp_dir = tempfile.gettempdir()
-            filepath = os.path.join(temp_dir, filename)
+
+            # Create file in session-specific folder (for S3 upload on complete)
+            if self.selenium and self.selenium.files_path:
+                session_id = self.activity_logger.session_id if self.activity_logger else 'unknown'
+                files_dir = os.path.join(self.selenium.files_path, str(session_id))
+                os.makedirs(files_dir, exist_ok=True)
+                filepath = os.path.join(files_dir, filename)
+            else:
+                # Fallback to temp directory
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                filepath = os.path.join(temp_dir, filename)
             
             if file_type == "png":
                 # Create a simple PNG

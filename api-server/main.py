@@ -20,6 +20,7 @@ from routes import test_templates
 from passlib.context import CryptContext
 from routes import user_requirements
 from routes.activity_logs import router as activity_logs_router
+from utils.logging_config import configure_logging
 
 import logging
 
@@ -29,6 +30,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
+
+# Initialize structured JSON logging for CloudWatch
+configure_logging()
 
 load_dotenv()
 

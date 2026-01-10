@@ -88,6 +88,7 @@ services:
       - SES_SANDBOX_MODE=${SES_SANDBOX_MODE:-true}
       - SES_TEST_SENDER=${SES_TEST_SENDER:-ranlaser@gmail.com}
       - APP_URL=${APP_URL:-https://localhost}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - db
       - redis
@@ -138,12 +139,31 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_REGION=${AWS_REGION:-eu-west-1}
       - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - db
       - redis
     volumes:
       - ./api-server:/app
       - ./debug_screenshots:/tmp/debug_screenshots
+
+  # ==========================================================================
+  # Fluent Bit (Log shipping to CloudWatch)
+  # ==========================================================================
+  fluent-bit:
+    image: fluent/fluent-bit:latest
+    container_name: quattera-fluent-bit
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./fluent-bit-docker.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./parsers-docker.conf:/fluent-bit/etc/parsers.conf:ro
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-eu-west-1}
+      - ENVIRONMENT=${ENVIRONMENT:-dev}
+    restart: unless-stopped
 
 volumes:
   postgres_data:

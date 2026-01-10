@@ -12,7 +12,7 @@ from celery_app import celery
 from celery import shared_task
 from typing import Dict, Optional, List
 from services.ai_form_mapper_main_prompter import AIParseError
-
+from services.session_logger import SessionLogger, get_session_logger, ActivityType
 logger = logging.getLogger(__name__)
 
 
@@ -209,6 +209,7 @@ def analyze_form_page(
     from services.ai_budget_service import AIOperationType, BudgetExceededError
     
     logger.info(f"[FormMapperTask] Analyzing form page for session {session_id}")
+
     
     db = _get_db_session()
     redis_client = _get_redis_client()
@@ -221,7 +222,12 @@ def analyze_form_page(
             return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
-        
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: analyze_form_page started", category="celery_task")
+
         if not api_key:
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "analyze_form_page", result)
@@ -232,12 +238,26 @@ def analyze_form_page(
         
         ai_helper = helpers["form_mapper"]
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!! 🤖 Entering AI for Generating steps ...")
-        print(f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!! Generating steps: field_requirements: {field_requirements}")
-        print(f"!!!! Generating steps: junction instructions: {junction_instructions}")
-        print(f"!!!! Generating steps: test_cases: {test_cases}")
+        msg = f"!!!! 🤖 Entering AI for Generating steps ..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        # Structured logging
+        log.ai_call("generate_steps", prompt_size=len(str(dom_html or "")))
+        msg = f"!!!! Generating steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: field_requirements: {field_requirements}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: junction instructions: {junction_instructions}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: test_cases: {test_cases}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
         ai_result = ai_helper.generate_test_steps(
             dom_html=dom_html,
             test_cases=test_cases,
@@ -250,7 +270,15 @@ def analyze_form_page(
             is_first_iteration=True
         )
 
-        print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
+        #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
+        msg = f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_response("generate_steps", success=True, tokens=ai_result.get('total_tokens', 0))
+        log.debug(f"!!! AI Generated {len(ai_result.get('steps', []))} steps", category="ai_response",
+                  steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
             print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
             if s.get('is_junction') or s.get('junction_info'):
@@ -329,6 +357,10 @@ def analyze_failure_and_recover(
             return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info(f"Celery task: analyze_failure_and_recover started (attempt {attempt_number})", category="celery_task")
         
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -347,14 +379,41 @@ def analyze_failure_and_recover(
             **(test_context or {})
         }
 
-        print(f"!!!! 🤖 Regen remain steps errors and recover ...")
-        print(f"!!!! ❌ FAILED STEP: {failed_step.get('step_number', '?')}: {failed_step.get('action', '?')} | {failed_step.get('selector', '')[:50]} | {failed_step.get('description', '')[:40]}")
-        print(f"!!!! ❌ FAILED STEP ERROR: {recovery_failure_history[-1].get('error') if recovery_failure_history else 'Unknown'}")
-        print(f"!!!! Regen remain steps errors and recover: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!! Regen remain steps errors and recover, Already executed: {len(executed_steps)} steps:")
+        #print(f"!!!! 🤖 Regen remain steps errors and recover ...")
+        msg = f"!!!! 🤖 Regen remain steps errors and recover ..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_call("recovery_steps", prompt_size=len(str(fresh_dom or "")))
+        log.debug(f"!!! Recovery: failed step {failed_step.get('step_number', '?')}: {failed_step.get('action', '?')}",
+                  category="ai_call", failed_step=failed_step.get('step_number'),
+                  executed_steps_count=len(executed_steps))
+        #print(f"!!!! ❌ FAILED STEP: {failed_step.get('step_number', '?')}: {failed_step.get('action', '?')} | {failed_step.get('selector', '')[:50]} | {failed_step.get('description', '')[:40]}")
+        #print(f"!!!! ❌ FAILED STEP ERROR: {recovery_failure_history[-1].get('error') if recovery_failure_history else 'Unknown'}")
+        #print(f"!!!! Regen remain steps errors and recover: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        #print(f"!!!! Regen remain steps errors and recover, Already executed: {len(executed_steps)} steps:")
+
+        msg = f"!!!! ❌ FAILED STEP: {failed_step.get('step_number', '?')}: {failed_step.get('action', '?')} | {failed_step.get('selector', '')[:50]} | {failed_step.get('description', '')[:40]}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! ❌ FAILED STEP ERROR: {recovery_failure_history[-1].get('error') if recovery_failure_history else 'Unknown'}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps errors and recover: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps errors and recover, Already executed: {len(executed_steps)} steps:"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
         for s in executed_steps:
             print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
-        print(f"!!!! Regen remain steps errors and recover, recovery_context: {recovery_context} steps")
+        #print(f"!!!! Regen remain steps errors and recover, recovery_context: {recovery_context} steps")
+        msg = f"!!!! Regen remain steps errors and recover, recovery_context: {recovery_context} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
         error_message = ""
         if recovery_failure_history:
             error_message = recovery_failure_history[-1].get('error', '')
@@ -385,8 +444,12 @@ def analyze_failure_and_recover(
         recovery_steps = recovery_result if isinstance(recovery_result, list) else []
         ai_result = {"steps": recovery_steps, "no_more_paths": False}
 
-        print(
-            f"!!!! ✅ Regenerated steps (errors and recover) : {len(ai_result.get('steps', []))} new steps:")
+        msg = f"!!!! ✅ Regenerated steps (errors and recover) : {len(ai_result.get('steps', []))} new steps:"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("recovery_steps", success=True)
+        log.debug(f"!!! Recovery generated {len(ai_result.get('steps', []))} steps", category="ai_response",
+                  steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
             print(f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
         
@@ -459,6 +522,10 @@ def handle_alert_recovery(
             return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: handle_alert_recovery started", category="celery_task")
         
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -469,11 +536,28 @@ def handle_alert_recovery(
         helpers = create_ai_helpers(api_key)
         
         ai_recovery = helpers["alert_recovery"]
-        print(f"!!!! 🤖 Regen remain steps for alert ...")
+        #print(f"!!!! 🤖 Regen remain steps for alert ...")
+        msg = f"!!!! 🤖 Regen remain steps for alert ..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_call("alert_recovery", prompt_size=len(str(dom_html or "")))
+        log.debug(f"!!! Alert recovery: {alert_info.get('alert_type', 'unknown')}",
+                  category="ai_call", alert_type=alert_info.get('alert_type'))
         last_step = executed_steps[-1] if executed_steps else {}
-        print(f"!!!! ⚠️ Regen remain steps for alert, TRIGGERED AFTER STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
-        print(f"!!!! Regen remain steps for alert, Already executed: {executed_steps} steps")
-        print(f"!!!! Regen remain steps for alert, gathered_error_info: {gathered_error_info} steps")
+        #print(f"!!!! ⚠️ Regen remain steps for alert, TRIGGERED AFTER STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        #print(f"!!!! Regen remain steps for alert, Already executed: {executed_steps} steps")
+        #print(f"!!!! Regen remain steps for alert, gathered_error_info: {gathered_error_info} steps")
+        msg = f"!!!! ⚠️ Regen remain steps for alert, TRIGGERED AFTER STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps for alert, Already executed: {executed_steps} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps for alert, gathered_error_info: {gathered_error_info} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
 
         ai_result = ai_recovery.regenerate_steps_after_alert(
             alert_info=alert_info,
@@ -486,9 +570,13 @@ def handle_alert_recovery(
             include_accept_step=include_accept_step,
             gathered_error_info=gathered_error_info
         )
-        print(
-            f"!!!! ✅ AI regenerate_steps (alert) returned {ai_result} new steps")
-
+        msg = f"!!!! ✅ AI regenerate_steps (alert) returned {ai_result} new steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("alert_recovery", success=True)
+        log.debug(
+            f"!!! Alert recovery completed: scenario={ai_result.get('scenario') if isinstance(ai_result, dict) else 'list'}",
+            category="ai_response")
 
         input_tokens = len(dom_html) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -551,6 +639,10 @@ def handle_validation_error_recovery(
             return result
 
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: handle_validation_error_recovery started", category="celery_task")
         if not api_key:
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
@@ -560,7 +652,13 @@ def handle_validation_error_recovery(
         helpers = create_ai_helpers(api_key)
         ai_recovery = helpers["alert_recovery"]
 
-        print(f"!!!! 🔴 Analyzing validation errors...")
+        #print(f"!!!! 🔴 Analyzing validation errors...")
+        msg = f"!!!! 🔴 Analyzing validation errors..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_call("validation_error_analysis", prompt_size=len(str(dom_html or "")))
 
         ai_result = ai_recovery.analyze_validation_errors(
             executed_steps=executed_steps,
@@ -568,7 +666,15 @@ def handle_validation_error_recovery(
             screenshot_base64=screenshot_base64
         )
 
-        print(f"!!!! ✅ AI validation error analysis returned: {ai_result}")
+        #print(f"!!!! ✅ AI validation error analysis returned: {ai_result}")
+        msg = f"!!!! ✅ AI validation error analysis returned: {ai_result}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_response("validation_error_analysis", success=True)
+        log.debug(f"!!! Validation error analysis: issue_type={ai_result.get('issue_type', 'unknown')}",
+                  category="ai_response")
 
         input_tokens = len(dom_html) // 4 + 500
         output_tokens = len(json.dumps(ai_result)) // 4 if ai_result else 0
@@ -628,6 +734,10 @@ def verify_ui_visual(
             return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: verify_ui_visual started", category="celery_task")
         
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -707,6 +817,11 @@ def regenerate_steps(
             return result
         
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: regenerate_steps started", category="celery_task")
         
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -717,17 +832,47 @@ def regenerate_steps(
         helpers = create_ai_helpers(api_key)
         
         ai_helper = helpers["form_mapper"]
-        print(f"!!!! 🤖 Regen remain steps(regular)...")
+        #print(f"!!!! 🤖 Regen remain steps(regular)...")
+        msg = f"!!!! 🤖 Regen remain steps(regular)..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        # Structured logging
+        log.ai_call("regenerate_steps", prompt_size=len(str(dom_html or "")))
+        log.debug(f"!!! Regenerate steps: {len(executed_steps)} already executed",
+                  category="ai_call", executed_steps_count=len(executed_steps))
+
+
         last_step = executed_steps[-1] if executed_steps else {}
-        print(f"!!!! 🔄 Regen remain steps(regular), TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
-        print(f"!!!! Regen remain steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!! Regen remain steps(regular), Already executed: {len(executed_steps)} steps")
+        #print(f"!!!! 🔄 Regen remain steps(regular), TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        #print(f"!!!! Regen remain steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        #print(f"!!!! Regen remain steps(regular), Already executed: {len(executed_steps)} steps")
+        msg = f"!!!! 🔄 Regen remain steps(regular), TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps(regular): screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps(regular), Already executed: {len(executed_steps)} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
         for step in executed_steps:
             print(
                 f"    Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}")
-        print(f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps")
-        print(f"!!!! Regen: junction instructions: {junction_instructions}")
-        print(f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps")
+        #print(f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps")
+        #print(f"!!!! Regen: junction instructions: {junction_instructions}")
+        #print(f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps")
+        msg = f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen: junction instructions: {junction_instructions}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
         ai_result = ai_helper.regenerate_steps(
             dom_html=dom_html,
             executed_steps=executed_steps,
@@ -739,7 +884,12 @@ def regenerate_steps(
             junction_instructions=_build_junction_instructions_text(junction_instructions),
             user_provided_inputs=user_provided_inputs or {}
         )
-        print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
+        # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
+        msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("regenerate_steps", success=True)
+
         for s in ai_result.get('steps', []):
             print(
                 f"    Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}")
@@ -814,6 +964,10 @@ def regenerate_verify_steps(
             return result
 
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: regenerate_verify_steps started", category="celery_task")
 
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -824,12 +978,28 @@ def regenerate_verify_steps(
         helpers = create_ai_helpers(api_key)
 
         ai_helper = helpers["form_mapper"]
-        print(f"!!!! 🔍 Regen VERIFY steps...")
+        #print(f"!!!! 🔍 Regen VERIFY steps...")
+        msg = f"!!!! 🔍 Regen VERIFY steps..."
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
         last_step = executed_steps[-1] if executed_steps else {}
-        print(
-            f"!!!! 🔍 Regen VERIFY steps, TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
-        print(f"!!!! Regen VERIFY steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
-        print(f"!!!! Regen VERIFY steps, Already executed: {len(executed_steps)} steps")
+        #print(
+        #    f"!!!! 🔍 Regen VERIFY steps, TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}")
+        msg = f"!!!! 🔍 Regen VERIFY steps, TRIGGERED BY STEP: {last_step.get('step_number', '?')}: {last_step.get('action', '?')} | {last_step.get('selector', '')[:50]} | {last_step.get('description', '')[:40]}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        #print(f"!!!! Regen VERIFY steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
+        #print(f"!!!! Regen VERIFY steps, Already executed: {len(executed_steps)} steps")
+        msg = f"!!!! Regen VERIFY steps: screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Regen VERIFY steps, Already executed: {len(executed_steps)} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_call("regenerate_verify_steps", prompt_size=len(str(dom_html or "")))
+
         for step in executed_steps:
             print(
                 f"    Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}")
@@ -846,13 +1016,16 @@ def regenerate_verify_steps(
         no_more_paths = ai_result.get("no_more_paths", False)
 
         # Log steps
-        logger.warning(f"!!!! ✅ AI regenerated_verify_steps: {len(new_steps)} new steps:")
+        msg = f"!!!! ✅ AI regenerated_verify_steps: {len(new_steps)} new steps:"
+        print(msg)
+        log.debug(msg, category="debug_trace")
         for step in new_steps[:15]:
             desc = step.get('description', '')[:40]
             sel = step.get('selector', '')[:50]
             logger.warning(f"    Step {step.get('step_number')}: {step.get('action')} | {sel} | {desc}")
 
         logger.info(f"[FormMapperTask] Verify regeneration complete: {len(new_steps)} new steps")
+        log.ai_response("regenerate_verify_steps", success=True)
 
         result = {
             "success": True,
@@ -896,9 +1069,6 @@ def evaluate_paths_with_ai(
 ) -> Dict:
     """Celery task: Use AI to evaluate paths and determine next junction combination."""
     logger.info(f"[FormMapperTask] AI path evaluation for session {session_id}")
-    print(f"!!!! 🤖 AI Path Evaluation for session {session_id}")
-    print(f"!!!! Completed paths: {completed_paths}")
-    print(f"!!!! Discover all combinations: {discover_all_combinations}")
 
     db = _get_db_session()
     redis_client = _get_redis_client()
@@ -911,6 +1081,22 @@ def evaluate_paths_with_ai(
             return result
 
         api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"))
+        log.info("Celery task: evaluate_paths_with_ai started", category="celery_task")
+        msg = f"!!!! 🤖 AI Path Evaluation for session {session_id}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Completed paths: {completed_paths}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Discover all combinations: {discover_all_combinations}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_call("evaluate_paths", prompt_size=len(str(completed_paths)))
+
 
         if not api_key:
             result = {"success": False, "error": "No API key available"}
@@ -928,7 +1114,12 @@ def evaluate_paths_with_ai(
             max_paths=max_paths
         )
 
-        print(f"!!!! ✅ AI Path Evaluation result: {ai_result}")
+        # print(f"!!!! ✅ AI Path Evaluation result: {ai_result}")
+        msg = f"!!!! ✅ AI Path Evaluation result: {ai_result}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("evaluate_paths", success=True)
+
         logger.info(f"[FormMapperTask] AI path evaluation result: {ai_result}")
 
         # Record AI usage
@@ -952,9 +1143,15 @@ def evaluate_paths_with_ai(
         _continue_orchestrator_chain(session_id, "evaluate_paths_with_ai", result)
         return result
 
+
     except Exception as e:
+
         logger.error(f"[FormMapperTask] AI path evaluation error: {e}")
-        print(f"!!!! ❌ AI Path Evaluation error: {e}")
+        msg = f"!!!! ❌ AI Path Evaluation error: {e}"
+        print(msg)
+        if 'log' in locals():
+            log.debug(msg, category="debug_trace")
+
         sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "evaluate_paths_with_ai", result)

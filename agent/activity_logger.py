@@ -44,6 +44,10 @@ from pathlib import Path
 import json
 import requests
 
+import zipfile
+import glob
+import io
+
 
 # ============================================================================
 # Log Entry Data Class
@@ -293,6 +297,9 @@ class ServerBatcher(LogSubscriber):
         self.company_id: Optional[int] = None
         self.user_id: Optional[int] = None
         self.lock = threading.Lock()
+        self.upload_urls: Dict[str, str] = {}
+        self.screenshots_folder: Optional[str] = None
+        self.form_files_folder: Optional[str] = None
     
     def update_auth(self, api_key: str = '', jwt_token: str = ''):
         """Update authentication credentials (for JWT refresh)."""
@@ -308,6 +315,9 @@ class ServerBatcher(LogSubscriber):
             self.project_id = metadata.get('project_id')
             self.company_id = metadata.get('company_id')
             self.user_id = metadata.get('user_id')
+            self.upload_urls = metadata.get('upload_urls', {})
+            self.screenshots_folder = metadata.get('screenshots_folder')
+            self.form_files_folder = metadata.get('form_files_folder')
     
     def on_log(self, entry: LogEntry):
         """Collect entry for batch upload."""
@@ -317,73 +327,304 @@ class ServerBatcher(LogSubscriber):
     def on_session_complete(self, summary: Optional[str] = None):
         """Send batch to server."""
         self._send_batch()
+        if self.activity_type in ('mapping', 'test_run') and self.screenshots_folder:
+            self._send_screenshots_to_s3()
+        if self.activity_type == 'mapping' and self.form_files_folder:
+            self._send_form_files_to_s3()
     
     def on_session_fail(self, error_message: str, error_code: Optional[str] = None):
         """Send batch to server (even on failure)."""
         self._send_batch()
-    
+        if self.activity_type in ('mapping', 'test_run') and self.screenshots_folder:
+            self._send_screenshots_to_s3()
+
+
     def _send_batch(self):
-        """Send collected entries to server."""
-        print(f"[DEBUG] _send_batch called")
+        """Upload ALL logs to S3, then confirm with API."""
+        print(f"[ActivityLogger] _send_batch called")
+
         with self.lock:
             if not self.entries:
-                print(f"[DEBUG] No entries to send")
+                print(f"[ActivityLogger] No entries to send")
                 return
-            
             entries_to_send = self.entries.copy()
             self.entries = []
-        print(f"[DEBUG] Sending {len(entries_to_send)} entries to server")
 
-        # Build payload
-        payload = {
-            'activity_type': self.activity_type,
-            'session_id': self.session_id,
-            'project_id': self.project_id,
-            'company_id': self.company_id,
-            'user_id': self.user_id,
-            'entries': [e.to_dict() for e in entries_to_send]
-        }
-        
-        # Build headers
-        headers = {'Content-Type': 'application/json'}
-        if self.api_key:
-            headers['X-Agent-API-Key'] = self.api_key
-        if self.jwt_token:
-            headers['Authorization'] = f'Bearer {self.jwt_token}'
-        
-        # Send with retries
-        url = f"{self.api_url}/api/activity-logs"
-        
-        for attempt in range(self.max_retries):
-            try:
-                response = requests.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=30,
-                    verify=self.ssl_verify
-                )
+        upload_url = self.upload_urls.get('logs')
+        s3_key = self.upload_urls.get('logs_s3_key')
 
-                print(f"[DEBUG] Server response: status={response.status_code}, body={response.text[:200]}")
-                
-                if response.status_code in (200, 201):
-                    # Success
-                    print(f"[DEBUG] Bulk upload SUCCESS")
-                    return True
-                elif response.status_code == 401:
-                    # Auth error - don't retry
-                    return False
+        if not upload_url or not s3_key:
+            print(f"[ActivityLogger] No upload URL for logs - skipping S3 upload")
+            return
+
+        # Convert entries to JSON
+        entries_dicts = [e.to_dict() for e in entries_to_send]
+        entries_json = json.dumps(entries_dicts)
+
+        print(f"[ActivityLogger] Uploading {len(entries_dicts)} log entries ({len(entries_json)} bytes) to S3")
+
+        try:
+            # Upload to S3
+            response = requests.put(
+                upload_url,
+                data=entries_json.encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                timeout=120
+            )
+
+            if response.status_code not in (200, 201):
+                print(f"[ActivityLogger] S3 upload failed: {response.status_code} - {response.text[:200]}")
+                return
+
+            print(f"[ActivityLogger] S3 upload SUCCESS, confirming with API")
+
+            # Confirm with API
+            confirm_payload = {
+                'activity_type': self.activity_type,
+                'session_id': self.session_id,
+                'project_id': self.project_id,
+                'company_id': self.company_id,
+                'user_id': self.user_id,
+                's3_key': s3_key
+            }
+
+            headers = {'Content-Type': 'application/json'}
+            if self.api_key:
+                headers['X-Agent-API-Key'] = self.api_key
+            if self.jwt_token:
+                headers['Authorization'] = f'Bearer {self.jwt_token}'
+
+            confirm_url = f"{self.api_url}/api/activity-logs/logs/confirm"
+            confirm_response = requests.post(
+                confirm_url,
+                json=confirm_payload,
+                headers=headers,
+                timeout=30,
+                verify=self.ssl_verify
+            )
+
+            if confirm_response.status_code in (200, 201):
+                print(f"[ActivityLogger] Log confirm SUCCESS")
+            else:
+                print(f"[ActivityLogger] Log confirm failed: {confirm_response.status_code}")
+
+        except Exception as e:
+            print(f"[ActivityLogger] Log upload error: {e}")
+
+    def _send_screenshots_to_s3(self):
+        """Zip and upload screenshots to S3. Lambda will unzip automatically."""
+        upload_url = self.upload_urls.get('screenshots_zip')
+
+        if not upload_url:
+            print(f"[ActivityLogger] No screenshot upload URL")
+            return
+
+        if not self.screenshots_folder or not os.path.exists(self.screenshots_folder):
+            print(f"[ActivityLogger] Screenshots folder not found: {self.screenshots_folder}")
+            return
+
+        # Find screenshot files for this session
+        screenshot_files = self._find_session_screenshots()
+
+        if not screenshot_files:
+            print(f"[ActivityLogger] No screenshot files found for session {self.session_id}")
+            return
+
+        print(f"[ActivityLogger] Found {len(screenshot_files)} screenshots to upload")
+
+        # Create zip file in memory
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for filepath in screenshot_files:
+                filename = os.path.basename(filepath)
+                zip_file.write(filepath, filename)
+
+        zip_buffer.seek(0)
+        zip_data = zip_buffer.read()
+
+        print(f"[ActivityLogger] Created zip: {len(zip_data)} bytes")
+
+        try:
+            # Upload zip to S3 - Lambda will process automatically
+            print(f"[ActivityLogger] Uploading screenshots zip to S3")
+            response = requests.put(
+                upload_url,
+                data=zip_data,
+                headers={'Content-Type': 'application/zip'},
+                timeout=300  # 5 min for large uploads
+            )
+
+            if response.status_code in (200, 201):
+                # Check which processor to use (lambda or celery)
+                screenshot_processor = os.environ.get('SCREENSHOT_PROCESSOR', 'celery').lower()
+
+                if screenshot_processor == 'lambda':
+                    # Lambda: S3 trigger will process automatically
+                    print(f"[ActivityLogger] Screenshot upload SUCCESS - Lambda will process")
                 else:
-                    # Other error - retry
-                    time.sleep(2 ** attempt)  # Exponential backoff
-                    
-            except requests.exceptions.RequestException:
-                # Network error - retry
-                time.sleep(2 ** attempt)
-        
-        # All retries failed - entries are lost but saved in local file
-        return False
+                    # Celery: call confirm endpoint to trigger processing
+                    print(f"[ActivityLogger] Screenshot upload SUCCESS, confirming with API")
 
+                    s3_key = self.upload_urls.get('screenshots_zip_s3_key')
+                    confirm_payload = {
+                        'activity_type': self.activity_type,
+                        'session_id': self.session_id,
+                        'project_id': self.project_id,
+                        'company_id': self.company_id,
+                        's3_key': s3_key
+                    }
+
+                    headers = {'Content-Type': 'application/json'}
+                    if self.api_key:
+                        headers['X-Agent-API-Key'] = self.api_key
+                    if self.jwt_token:
+                        headers['Authorization'] = f'Bearer {self.jwt_token}'
+
+                    confirm_url = f"{self.api_url}/api/activity-logs/screenshots/confirm-zip"
+                    try:
+                        confirm_response = requests.post(
+                            confirm_url,
+                            json=confirm_payload,
+                            headers=headers,
+                            timeout=30,
+                            verify=self.ssl_verify
+                        )
+
+                        if confirm_response.status_code in (200, 201):
+                            print(f"[ActivityLogger] Screenshot confirm SUCCESS")
+                        else:
+                            print(f"[ActivityLogger] Screenshot confirm failed: {confirm_response.status_code}")
+                    except Exception as confirm_error:
+                        print(f"[ActivityLogger] Screenshot confirm error: {confirm_error}")
+            else:
+                print(f"[ActivityLogger] Screenshot upload failed: {response.status_code}")
+
+        except Exception as e:
+            print(f"[ActivityLogger] Screenshot upload error: {e}")
+
+    def _find_session_screenshots(self) -> List[str]:
+        """Find screenshot files for the current session."""
+        screenshot_files = []
+
+        # Option 1: Session-specific subfolder
+        session_folder = os.path.join(self.screenshots_folder, str(self.session_id))
+        if os.path.exists(session_folder):
+            screenshot_files = glob.glob(os.path.join(session_folder, '*.png'))
+
+        # Option 2: Files matching session_id in filename
+        if not screenshot_files:
+            screenshot_files = glob.glob(os.path.join(self.screenshots_folder, f'*_{self.session_id}_*.png'))
+
+        # Option 3: Check mapping subfolder
+        if not screenshot_files:
+            mapping_folder = os.path.join(self.screenshots_folder, 'mapping')
+            if os.path.exists(mapping_folder):
+                screenshot_files = glob.glob(os.path.join(mapping_folder, f'*_{self.session_id}_*.png'))
+
+        return screenshot_files
+
+    def _send_form_files_to_s3(self):
+        """Zip and upload form files to S3 for test runner to use later."""
+        upload_url = self.upload_urls.get('form_files_zip')
+
+        if not upload_url:
+            print(f"[ActivityLogger] No form files upload URL")
+            return
+
+        if not self.form_files_folder or not os.path.exists(self.form_files_folder):
+            print(f"[ActivityLogger] Form files folder not found: {self.form_files_folder}")
+            return
+
+        # Find form files for this session
+        session_folder = os.path.join(self.form_files_folder, str(self.session_id))
+        if not os.path.exists(session_folder):
+            print(f"[ActivityLogger] No form files folder for session {self.session_id}")
+            return
+
+        # Get all files in session folder
+        form_files = []
+        for f in os.listdir(session_folder):
+            filepath = os.path.join(session_folder, f)
+            if os.path.isfile(filepath):
+                form_files.append(filepath)
+
+        if not form_files:
+            print(f"[ActivityLogger] No form files found for session {self.session_id}")
+            return
+
+        print(f"[ActivityLogger] Found {len(form_files)} form files to upload")
+
+        # Create zip file in memory
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for filepath in form_files:
+                filename = os.path.basename(filepath)
+                zip_file.write(filepath, filename)
+
+        zip_buffer.seek(0)
+        zip_data = zip_buffer.read()
+
+        print(f"[ActivityLogger] Created form files zip: {len(zip_data)} bytes")
+
+        try:
+            # Upload zip to S3
+            print(f"[ActivityLogger] Uploading form files zip to S3")
+            response = requests.put(
+                upload_url,
+                data=zip_data,
+                headers={'Content-Type': 'application/zip'},
+                timeout=300
+            )
+
+            if response.status_code in (200, 201):
+                # Check which processor to use
+                form_files_processor = os.environ.get('SCREENSHOT_PROCESSOR', 'celery').lower()
+
+                if form_files_processor == 'lambda':
+                    print(f"[ActivityLogger] Form files upload SUCCESS - Lambda will process")
+                else:
+                    # Celery: call confirm endpoint
+                    print(f"[ActivityLogger] Form files upload SUCCESS, confirming with API")
+
+                    s3_key = self.upload_urls.get('form_files_zip_s3_key')
+                    confirm_payload = {
+                        'activity_type': self.activity_type,
+                        'session_id': self.session_id,
+                        'project_id': self.project_id,
+                        'company_id': self.company_id,
+                        'form_page_route_id': self.upload_urls.get('form_page_route_id'),
+                        's3_key': s3_key
+                    }
+
+                    headers = {'Content-Type': 'application/json'}
+                    if self.api_key:
+                        headers['X-Agent-API-Key'] = self.api_key
+                    if self.jwt_token:
+                        headers['Authorization'] = f'Bearer {self.jwt_token}'
+
+                    confirm_url = f"{self.api_url}/api/activity-logs/form-files/confirm-zip"
+                    try:
+                        confirm_response = requests.post(
+                            confirm_url,
+                            json=confirm_payload,
+                            headers=headers,
+                            timeout=30,
+                            verify=self.ssl_verify
+                        )
+
+                        if confirm_response.status_code in (200, 201):
+                            print(f"[ActivityLogger] Form files confirm SUCCESS")
+                        else:
+                            print(f"[ActivityLogger] Form files confirm failed: {confirm_response.status_code}")
+                    except Exception as confirm_error:
+                        print(f"[ActivityLogger] Form files confirm error: {confirm_error}")
+            else:
+                print(f"[ActivityLogger] Form files upload failed: {response.status_code}")
+
+        except Exception as e:
+            print(f"[ActivityLogger] Form files upload error: {e}")
 
 # ============================================================================
 # Activity Logger (Main Class)
@@ -480,7 +721,10 @@ class ActivityLogger:
         project_id: int,
         company_id: int,
         user_id: int,
-        network_id: Optional[int] = None
+        network_id: Optional[int] = None,
+        upload_urls: Optional[Dict[str, str]] = None,
+        screenshots_folder: Optional[str] = None,
+        form_files_folder: Optional[str] = None
     ):
         """
         Start a new logging session.
@@ -505,7 +749,10 @@ class ActivityLogger:
             'project_id': project_id,
             'company_id': company_id,
             'user_id': user_id,
-            'network_id': network_id
+            'network_id': network_id,
+            'upload_urls': upload_urls or {},
+            'screenshots_folder': screenshots_folder,
+            'form_files_folder': form_files_folder
         }
         
         # Notify subscribers

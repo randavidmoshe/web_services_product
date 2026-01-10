@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
+from services.s3_storage import generate_presigned_put_url
+
 from models.database import (
     FormPageRoute, 
     CrawlSession, 
@@ -766,7 +768,15 @@ class FormPagesLocatorService:
             network_id=network_id,
             user_id=user_id
         )
-        
+
+        # Generate pre-signed URLs for uploads (all logs go to S3)
+        logs_s3_key = f"logs/{config['company_id']}/{config['project_id']}/discovery_{session.id}.json"
+        logs_url = generate_presigned_put_url(
+            s3_key=logs_s3_key,
+            content_type='application/json',
+            expiration=7200  # 2 hours
+        )
+
         return {
             "task_type": "discover_form_pages",
             "crawl_session_id": session.id,
@@ -784,5 +794,9 @@ class FormPagesLocatorService:
             "max_form_pages": max_form_pages,
             "headless": headless,
             "slow_mode": slow_mode,
-            "ui_verification": ui_verification
+            "ui_verification": ui_verification,
+            "upload_urls": {
+                "logs": logs_url,
+                "logs_s3_key": logs_s3_key
+            }
         }

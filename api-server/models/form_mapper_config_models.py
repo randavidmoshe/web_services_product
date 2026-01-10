@@ -101,6 +101,28 @@ class FormMapperConfig(BaseModel):
         description="When True, test all combinations of junction options. When False, just ensure each option is tested once"
     )
 
+    # Retention settings
+    screenshots_retention_days: int = Field(
+        default=90,
+        ge=7,
+        le=365,
+        description="Days to keep screenshots in S3 before auto-delete"
+    )
+
+    logs_hot_retention_days: int = Field(
+        default=14,
+        ge=1,
+        le=90,
+        description="Days to keep logs in database before archiving to S3"
+    )
+
+    logs_cold_retention_days: int = Field(
+        default=90,
+        ge=14,
+        le=365,
+        description="Days to keep archived logs in S3 before auto-delete"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -118,7 +140,10 @@ class FormMapperConfig(BaseModel):
                 "max_options_to_test": 4,
                 "use_ai_dont_regenerate": True,
                 "use_ai_path_evaluation": True,
-                "ai_discover_all_path_combinations": False
+                "ai_discover_all_path_combinations": False,
+                "screenshots_retention_days": 90,
+                "logs_hot_retention_days": 14,
+                "logs_cold_retention_days": 90
             }
         }
 
@@ -141,6 +166,9 @@ class FormMapperConfigUpdate(BaseModel):
     use_ai_dont_regenerate: Optional[bool] = None
     use_ai_path_evaluation: Optional[bool] = None
     ai_discover_all_path_combinations: Optional[bool] = None
+    screenshots_retention_days: Optional[int] = Field(default=None, ge=7, le=365)
+    logs_hot_retention_days: Optional[int] = Field(default=None, ge=1, le=90)
+    logs_cold_retention_days: Optional[int] = Field(default=None, ge=14, le=365)
 
 
 # Default config as dict
@@ -160,7 +188,10 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "max_options_to_test": 4,
     "use_ai_dont_regenerate": True,
     "use_ai_path_evaluation": True,
-    "ai_discover_all_path_combinations": False
+    "ai_discover_all_path_combinations": False,
+    "screenshots_retention_days": 90,
+    "logs_hot_retention_days": 14,
+    "logs_cold_retention_days": 90,
 }
 
 

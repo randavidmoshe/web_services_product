@@ -171,7 +171,20 @@ async def start_form_mapping(
     if not agent_id:
         # Use default agent assignment logic
         agent_id = f"agent-{user_id}"  # Simplified - you may have more complex logic
-    
+
+    # Cleanup old form files from S3 and DB before remap
+    if form_page_route.project_id and company_id:
+        celery.send_task(
+            'tasks.cleanup_form_s3_files',
+            kwargs={
+                'company_id': company_id,
+                'project_id': form_page_route.project_id,
+                'form_page_route_id': request.form_page_route_id,
+                'reason': 'remap'
+            }
+        )
+        logger.info(f"[API] Queued cleanup of old form files for route {request.form_page_route_id}")
+
     # Create orchestrator and session
     orchestrator = FormMapperOrchestrator(db)
     

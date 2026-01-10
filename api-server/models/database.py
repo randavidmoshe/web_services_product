@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@db:5432/formfinder")
@@ -49,7 +50,9 @@ class Company(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # 2FA enforcement setting
     require_2fa = Column(Boolean, default=False)
-    form_mapper_config = Column(JSON, default=dict)  # Per-company config overrides
+    form_mapper_config = Column(JSON, default=dict)
+    kms_key_arn = Column(String(255), nullable=True)  # BYOK - Customer's KMS key ARN
+    debug_mode = Column(Boolean, default=False)  # Enable verbose AI logging for debugging
 
 class CompanyProductSubscription(Base):
     __tablename__ = "company_product_subscriptions"
@@ -292,6 +295,52 @@ class ActivityLogEntry(Base):
 
     # Server timestamp
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ============================================================================
+# S3 File Tracking Tables
+# ============================================================================
+
+class ActivityScreenshot(Base):
+    """Track screenshots uploaded to S3 for activity sessions."""
+    __tablename__ = "activity_screenshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    activity_type = Column(String(50), nullable=False)  # 'mapping', 'test_run'
+    session_id = Column(Integer, nullable=False)  # mapper_session_id or test_run_id
+    s3_key = Column(String(500), nullable=False)
+    filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Index for fast lookups
+    __table_args__ = (
+        Index('ix_activity_screenshots_session', 'activity_type', 'session_id'),
+        Index('ix_activity_screenshots_company_project', 'company_id', 'project_id'),
+    )
+
+
+class FormUploadedFile(Base):
+    """Track files uploaded during form mapping (e.g., resume.pdf for file upload fields)."""
+    __tablename__ = "form_uploaded_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id"), nullable=False)
+    form_map_result_id = Column(Integer, ForeignKey("form_map_results.id"), nullable=True)
+    path_number = Column(Integer, nullable=True)
+    s3_key = Column(String(500), nullable=False)
+    filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    field_name = Column(String(255), nullable=True)  # Which form field this file is for
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_form_uploaded_files_route', 'form_page_route_id'),
+    )
 
 # Import related models to resolve relationships
 from models.form_mapper_models import FormMapperSession, FormMapResult
