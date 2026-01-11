@@ -17,11 +17,12 @@ result_logger_gui = logging.getLogger('init_result_logger_gui.form_page_test')
 class AIErrorRecovery:
     """Helper class for AI-powered error recovery and alert handling using Claude API"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, session_logger=None):
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
+        self.session_logger = session_logger  # For debug mode logging
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 4000, max_retries: int = 3) -> Optional[str]:
         """
@@ -221,6 +222,13 @@ class AIErrorRecovery:
             })
             
             # Call API
+            # Debug mode: log full prompt (DOM truncated)
+            if self.session_logger and self.session_logger.debug_mode:
+                import re
+                prompt_for_log = re.sub(r'## Current DOM.*?(?=\n##|\n\*\*|$)', '## Current DOM\n[DOM TRUNCATED]\n\n',
+                                        prompt, flags=re.DOTALL)
+                self.session_logger.ai_call("analyze_error", prompt_size=len(prompt), prompt=prompt_for_log)
+
             if screenshot_base64:
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=4000, max_retries=3)
             else:
@@ -233,6 +241,9 @@ class AIErrorRecovery:
             
             print(f"[AIErrorRecovery] Received error analysis response ({len(response_text)} chars)")
             logger.info(f"[AIErrorRecovery] Received error analysis response ({len(response_text)} chars)")
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("analyze_error", success=True, response=response_text)
 
             # Extract JSON from response
             json_match = re.search(r'\{[\s\S]*\}', response_text)
@@ -503,6 +514,13 @@ Return ONLY the JSON object.
             })
 
             # Call API
+            # Debug mode: log full prompt (DOM truncated)
+            if self.session_logger and self.session_logger.debug_mode:
+                import re
+                prompt_for_log = re.sub(r'## Current DOM.*?(?=\n##|\n\*\*|$)', '## Current DOM\n[DOM TRUNCATED]\n\n',
+                                        prompt, flags=re.DOTALL)
+                self.session_logger.ai_call("analyze_validation_errors", prompt_size=len(prompt), prompt=prompt_for_log)
+
             if screenshot_base64:
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=4000,
                                                                      max_retries=3)
@@ -517,6 +535,10 @@ Return ONLY the JSON object.
             print(f"[AIErrorRecovery] Received validation error analysis response ({len(response_text)} chars)")
             logger.info(
                 f"[AIErrorRecovery] Received validation error analysis response ({len(response_text)} chars)")
+
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("analyze_validation_errors", success=True, response=response_text)
 
             # Extract JSON from response
             json_match = re.search(r'\{[\s\S]*\}', response_text)

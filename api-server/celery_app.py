@@ -5,12 +5,22 @@ from typing import Dict, Any
 
 import logging
 
+from celery.signals import setup_logging
+
+@setup_logging.connect
+def on_celery_setup_logging(**kwargs):
+    from utils.logging_config import configure_logging
+    configure_logging()
+    return True  # Prevent Celery from overriding our logging
+
+
 # Configure logging for Celery workers
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
+
 
 # Redis URL
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
@@ -34,6 +44,7 @@ celery.conf.update(
     task_time_limit=3600,  # 1 hour max per task
     worker_prefetch_multiplier=1,  # One task at a time per worker
     worker_max_tasks_per_child=50,  # Restart worker after 50 tasks
+    worker_hijack_root_logger=False,  # Don't override JSON logging
 )
 
 celery.conf.beat_schedule = {

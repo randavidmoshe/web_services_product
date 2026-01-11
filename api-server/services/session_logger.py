@@ -111,6 +111,10 @@ def setup_json_logging():
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.DEBUG)  # Allow all levels, filter at handler if needed
 
+    # Suppress verbose debug logs from anthropic/httpx
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 class SessionLogger:
     """
@@ -455,7 +459,8 @@ def get_session_logger(
     project_id: int = None,
     network_id: int = None,
     form_route_id: int = None,
-    form_name: str = None
+    form_name: str = None,
+    company_name: str = None
 ) -> SessionLogger:
     """
     Factory function to create SessionLogger with company debug_mode from DB.
@@ -475,15 +480,15 @@ def get_session_logger(
         Configured SessionLogger instance
     """
     debug_mode = False
-    company_name = None
-    
+
     if db_session and company_id:
         try:
             from models.database import Company
             company = db_session.query(Company).filter(Company.id == company_id).first()
             if company:
                 debug_mode = getattr(company, 'debug_mode', False) or False
-                company_name = company.name
+                if not company_name:
+                    company_name = company.name
         except Exception:
             pass  # If we can't check, default to False
     

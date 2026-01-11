@@ -11,9 +11,10 @@ from typing import Dict, List, Optional
 class AIFormPageRunError:
     """Analyze and handle errors during form page stage execution"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, session_logger=None):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
+        self.session_logger = session_logger  # For debug mode logging
     
     def analyze_error(
         self,
@@ -57,6 +58,13 @@ class AIFormPageRunError:
         })
         
         try:
+            # Debug mode: log full prompt (DOM truncated)
+            if self.session_logger and self.session_logger.debug_mode:
+                import re
+                prompt_for_log = re.sub(r'## Current DOM.*?(?=\n##|\n\*\*|$)', '## Current DOM\n[DOM TRUNCATED]\n\n',
+                                        prompt, flags=re.DOTALL)
+                self.session_logger.ai_call("runner_analyze_error", prompt_size=len(prompt), prompt=prompt_for_log)
+
             message = self.client.messages.create(
                 model=self.model,
                 max_tokens=16000,
@@ -64,6 +72,10 @@ class AIFormPageRunError:
             )
             
             response_text = message.content[0].text
+
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("runner_analyze_error", success=True, response=response_text)
             
             # Parse JSON response - try code fence first, then raw JSON
             code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', response_text)
@@ -312,6 +324,6 @@ Correct response: Start from Email (step 3) onwards since First Name and Last Na
 
 
 # Celery task wrapper for distributed execution
-def create_runner_error_analyzer(api_key: str) -> AIFormPageRunError:
+def create_runner_error_analyzer(api_key: str, session_logger=None) -> AIFormPageRunError:
     """Factory function to create error analyzer"""
-    return AIFormPageRunError(api_key=api_key)
+    return AIFormPageRunError(api_key=api_key, session_logger=session_logger)

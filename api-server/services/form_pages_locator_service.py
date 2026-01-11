@@ -10,6 +10,7 @@ import os
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+from services.session_logger import get_session_logger, ActivityType
 
 from services.s3_storage import generate_presigned_put_url
 
@@ -60,7 +61,16 @@ class FormPagesLocatorService:
         # Subscription reference (for budget tracking)
         self.subscription: Optional[CompanyProductSubscription] = None
         self.is_byok = False  # Bring Your Own Key - no limits
-    
+
+    def _get_logger(self, session_id: str = None, company_id: int = None):
+        """Get structured logger for discovery operations"""
+        return get_session_logger(
+            db_session=None,
+            activity_type=ActivityType.DISCOVERY.value,
+            session_id=session_id,
+            company_id=company_id
+        )
+
     def _check_and_reset_budget(self, subscription: CompanyProductSubscription) -> None:
         """
         Check if budget needs to be reset (30 days passed).
@@ -168,14 +178,20 @@ class FormPagesLocatorService:
         
         if not self.api_key:
             print("[FormPagesLocatorService] No API key available - AI disabled")
+            log = self._get_logger()
+            log.warning("No API key available - AI disabled", category="discovery")
             return False
         
         try:
             self.ai_helper = FormPagesAIHelper(api_key=self.api_key)
             print("[FormPagesLocatorService] AI Helper initialized")
+            log = self._get_logger()
+            log.info("AI Helper initialized", category="discovery")
             return True
         except Exception as e:
             print(f"[FormPagesLocatorService] Failed to initialize AI: {e}")
+            log = self._get_logger()
+            log.error(f"Failed to initialize AI: {e}", category="error")
             return False
     
     # ========== CRAWL SESSION MANAGEMENT ==========
@@ -354,8 +370,10 @@ class FormPagesLocatorService:
         
         # Track the form name
         self.created_form_names.append(form_name)
-        
+
         print(f"[FormPagesLocatorService] Saved form route: {form_name} ({url})")
+        log = self._get_logger(company_id=company_id)
+        log.info(f"Saved form route: {form_name}", category="discovery", form_name=form_name, url=url)
         return route
     
     def get_form_routes(
@@ -425,6 +443,8 @@ class FormPagesLocatorService:
             })
 
         print(f"[FormPagesLocatorService] Sending {len(forms_data)} forms to AI for hierarchy")
+        log = self._get_logger()
+        log.ai_call("build_hierarchy", prompt_size=len(str(forms_data)))
 
         # Call AI to build hierarchy
         if not self.ai_helper:
@@ -475,6 +495,10 @@ class FormPagesLocatorService:
 
         self.db.commit()
         print(f"[FormPagesLocatorService] Saved hierarchy: {relationships_found} parent-child relationships")
+        log = self._get_logger()
+        log.ai_response("build_hierarchy", success=True)
+        log.info(f"Saved hierarchy: {relationships_found} relationships", category="discovery",
+                 relationships_count=relationships_found)
     
     # ========== AI OPERATIONS ==========
     
@@ -628,8 +652,13 @@ class FormPagesLocatorService:
             print(f"[FormPagesLocatorService] Commit failed: {e}")
             self.db.rollback()
             return
-        
-        print(f"[FormPagesLocatorService] Saved API usage: {cost_summary['total_tokens']} tokens, ${cost_summary['total_cost']:.4f}")
+
+        print(
+            f"[FormPagesLocatorService] Saved API usage: {cost_summary['total_tokens']} tokens, ${cost_summary['total_cost']:.4f}")
+        log = self._get_logger(company_id=company_id)
+        log.info(f"API usage: {cost_summary['total_tokens']} tokens, ${cost_summary['total_cost']:.4f}",
+                 category="budget", tokens=cost_summary['total_tokens'], cost=cost_summary['total_cost'])
+
         if subscription:
             print(f"[FormPagesLocatorService] Total used this month: ${subscription.claude_used_this_month:.2f} / ${subscription.monthly_claude_budget:.2f}")
     

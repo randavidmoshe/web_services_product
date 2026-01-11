@@ -261,12 +261,12 @@ class FormMapperOrchestrator:
         import uuid
         if form_route_id is None and form_page_route_id is not None:
             form_route_id = form_page_route_id
-        print(f"[DEBUG] create_session: network_id={network_id}, form_route_id={form_route_id}")
 
         # Get form page URL from database (do this once at session creation)
         form_page_url = base_url or ""
         user_provided_inputs = None
         form_name = None
+        company_name = None
         if form_route_id and self.db:
             try:
                 from models.database import FormPageRoute
@@ -281,6 +281,16 @@ class FormMapperOrchestrator:
             except Exception as e:
                 logger.warning(f"[Orchestrator] Failed to get form page data: {e}")
 
+        # Get company_name (do this once at session creation)
+        if company_id and self.db:
+            try:
+                from models.database import Company
+                company = self.db.query(Company).filter(Company.id == company_id).first()
+                if company:
+                    company_name = company.name
+            except Exception as e:
+                logger.warning(f"[Orchestrator] Failed to get company name: {e}")
+
         if session_id is None:
             session_id = str(uuid.uuid4())[:8]
         if test_cases is None:
@@ -294,7 +304,7 @@ class FormMapperOrchestrator:
                        "credentials": {}, "reported_ui_issues": []}
         
         session_state = {
-            "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0,
+            "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0, "company_name": company_name or "",
             "product_id": product_id or 1, "network_id": network_id or 0,
             "form_route_id": form_route_id or 0, "form_page_url": form_page_url, "form_name": form_name or "Unknown Form", "project_id": project_id or 0,
             "state": MapperState.INITIALIZING.value, "previous_state": "",
@@ -727,11 +737,10 @@ class FormMapperOrchestrator:
             f"!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}{verify_info_str}{error_info_str}")
 
         # ADD structured log (queryable in CloudWatch)
-        log.debug(f"!!! Step result: {'PASSED' if result.get('success') else 'FAILED'}",
-                  action=step.get('action'),
-                  selector=effective_selector,
-                  success=result.get('success'),
-                  fields_changed=result.get('fields_changed'))
+        # ADD structured log (queryable in CloudWatch)
+        log.debug(
+            f"!!!!!!!!!!!!!!!!!!!! Got a {'PASSED' if result.get('success') else 'FAILED'} result from Agent step: action={step.get('action')}, selector={effective_selector}, description={step.get('description', '')[:40]}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}{verify_info_str}{error_info_str}",
+            category="debug_trace")
 
 
         if not result.get("success"):
@@ -2033,7 +2042,7 @@ class FormMapperOrchestrator:
                 logger.info(f"[Orchestrator] Pushed close task for session {session_id}")
                 # Structured logging
                 log = self._get_logger(session_id)
-                log.session_cancelled()
+                log.info("Session cancelled", category="session")
 
         return {"success": True, "state": "cancelled"}
     

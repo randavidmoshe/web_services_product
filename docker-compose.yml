@@ -89,6 +89,7 @@ services:
       - SES_TEST_SENDER=${SES_TEST_SENDER:-ranlaser@gmail.com}
       - APP_URL=${APP_URL:-https://localhost}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
     depends_on:
       - db
       - redis
@@ -139,7 +140,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_REGION=${AWS_REGION:-eu-west-1}
       - S3_BUCKET=${S3_BUCKET:-form-discoverer-screenshots}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - PYTHONUNBUFFERED=1
     depends_on:
       - db
       - redis

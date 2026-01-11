@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 from datetime import datetime
+from services.session_logger import get_session_logger, ActivityType
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,16 @@ class FormsRunnerService:
         self.max_retries_general_error = 2
         self.max_retries_correction_steps = 2
         self.general_error_wait_time = 60
-    
+
+    def _get_logger(self, session_id: str, company_id: int = None):
+        """Get structured logger for this session"""
+        return get_session_logger(
+            db_session=None,
+            activity_type=ActivityType.RUNNER.value,
+            session_id=session_id,
+            company_id=company_id
+        )
+
     # ============================================================
     # STATE MANAGEMENT (Redis)
     # ============================================================
@@ -90,8 +100,11 @@ class FormsRunnerService:
         key = self._get_runner_key(session_id)
         self.redis.hset(key, mapping=state)
         self.redis.expire(key, 7200)  # 2 hour TTL
-        
+
         logger.info(f"[FormsRunner] Initialized {phase.value} with {len(stages)} stages for session {session_id}")
+        log = self._get_logger(session_id)
+        log.info(f"Runner initialized: {phase.value} with {len(stages)} stages", category="runner",
+                 phase=phase.value, stages_count=len(stages))
         return state
     
     def get_runner_state(self, session_id: str) -> Optional[Dict]:
@@ -159,6 +172,8 @@ class FormsRunnerService:
                 "completed_at": datetime.utcnow().isoformat()
             })
             logger.info(f"[FormsRunner] All {total} stages completed for session {session_id}")
+            log = self._get_logger(session_id)
+            log.info(f"All {total} stages completed", category="runner", stages_completed=total)
             return False
         
         self.update_runner_state(session_id, {
@@ -167,8 +182,10 @@ class FormsRunnerService:
             "recovery_attempts": 0,
             "last_error": ""
         })
-        
+
         logger.info(f"[FormsRunner] Advanced to stage {next_index + 1}/{total} for session {session_id}")
+        log = self._get_logger(session_id)
+        log.step_executing(next_index + 1, total)
         return True
     
     # ============================================================
@@ -202,9 +219,11 @@ class FormsRunnerService:
         
         current_index = state["current_stage_index"]
         total = state["total_stages"]
-        
+
         logger.info(f"[FormsRunner] Step {current_index + 1}/{total} succeeded for session {session_id}")
-        
+        log = self._get_logger(session_id)
+        log.step_succeeded(current_index + 1, total)
+
         # Advance to next stage
         has_more = self.advance_to_next_stage(session_id)
         
@@ -239,6 +258,8 @@ class FormsRunnerService:
         # Special handling for alert actions - just skip
         if action in ["accept_alert", "dismiss_alert"]:
             logger.info(f"[FormsRunner] Alert action failed (no alert) - skipping")
+            log = self._get_logger(session_id)
+            log.debug("Alert action skipped - no alert present", category="runner")
             self.advance_to_next_stage(session_id)
             return {"decision": "skip", "reason": "Alert already handled"}
         
@@ -349,8 +370,11 @@ class FormsRunnerService:
         
         decision = ai_result.get("decision")
         description = ai_result.get("description", "")
-        
+
         logger.info(f"[FormsRunner] AI decision: {decision} - {description}")
+        log = self._get_logger(session_id)
+        log.info(f"AI recovery decision: {decision}", category="recovery",
+                 decision=decision, description=description)
         
         self.update_runner_state(session_id, {
             "last_ai_decision": decision
@@ -493,6 +517,8 @@ class FormsRunnerService:
             
         except Exception as e:
             logger.error(f"[FormsRunner] Failed to persist stages: {e}")
+            log = self._get_logger(session_id)
+            log.error(f"Failed to persist stages: {e}", category="error")
             self.db.rollback()
             return False
     

@@ -9,6 +9,7 @@ import time
 from celery_app import celery
 from celery import shared_task
 from typing import Dict, Optional, List
+from services.session_logger import get_session_logger, ActivityType
 
 logger = logging.getLogger(__name__)
 
@@ -509,7 +510,15 @@ def analyze_runner_error(
     
     redis_client = _get_redis_client()
     db = _get_db_session()
-    
+
+    # Structured logging
+    log = get_session_logger(
+        db_session=db,
+        activity_type=ActivityType.RUNNER.value,
+        session_id=session_id
+    )
+    log.info("Celery task: analyze_runner_error started", category="celery_task")
+
     try:
         state = _get_runner_state(redis_client, session_id)
         if not state:
@@ -527,7 +536,8 @@ def analyze_runner_error(
         
         # Analyze with AI
         from services.ai_forms_runner_error_prompter import AIFormPageRunError
-        analyzer = AIFormPageRunError(api_key=api_key)
+        log.update_context(company_id=company_id, user_id=user_id)
+        analyzer = AIFormPageRunError(api_key=api_key, session_logger=log)
         
         result = analyzer.analyze_error(
             failed_stage=failed_stage,

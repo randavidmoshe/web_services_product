@@ -2,6 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+from utils.logging_config import configure_logging
+configure_logging()
 from dotenv import load_dotenv
 
 # Import routes

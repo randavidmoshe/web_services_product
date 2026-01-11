@@ -25,8 +25,8 @@ class AIFormMapperHelper:
     Delegates to the original AIHelper class.
     """
     
-    def __init__(self, api_key: str):
-        self.helper = AIHelper(api_key)
+    def __init__(self, api_key: str, session_logger=None):
+        self.helper = AIHelper(api_key, session_logger=session_logger)
     
     def generate_test_steps(
         self,
@@ -144,8 +144,8 @@ class AIAlertRecoveryHelper:
     Delegates to the original AIErrorRecovery class.
     """
     
-    def __init__(self, api_key: str):
-        self.helper = AIErrorRecovery(api_key)
+    def __init__(self, api_key: str, session_logger=None):
+        self.helper = AIErrorRecovery(api_key, session_logger=session_logger)
     
     def regenerate_steps_after_alert(
         self,
@@ -270,16 +270,20 @@ class AIUIVisualVerifierWrapper:
 # Factory function for creating helpers with API key
 # ============================================================================
 
-def create_ai_helpers(api_key: str) -> Dict[str, Any]:
+def create_ai_helpers(api_key: str, session_logger=None) -> Dict[str, Any]:
     """
     Create all AI helper instances with the given API key.
-    
+
+    Args:
+        api_key: Anthropic API key
+        session_logger: Optional SessionLogger for debug mode logging
+
     Returns:
         Dict with helper instances
     """
     return {
-        "form_mapper": AIFormMapperHelper(api_key),
-        "alert_recovery": AIAlertRecoveryHelper(api_key),
+        "form_mapper": AIFormMapperHelper(api_key, session_logger=session_logger),
+        "alert_recovery": AIAlertRecoveryHelper(api_key, session_logger=session_logger),
         "end_prompter": AIFormPageEndPrompterWrapper(api_key),
         "ui_verifier": AIUIVisualVerifierWrapper(api_key)
     }

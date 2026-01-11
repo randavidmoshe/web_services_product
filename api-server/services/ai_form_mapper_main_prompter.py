@@ -20,12 +20,13 @@ result_logger_gui = logging.getLogger('init_result_logger_gui.form_page_test')
 class AIHelper:
     """Helper class for AI-powered step generation using Claude API"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, session_logger=None):
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
         #self.model = "claude-sonnet-4-5-20250929"
         self.model = "claude-haiku-4-5-20251001"
+        self.session_logger = session_logger  # For debug mode logging
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
         """
@@ -1107,6 +1108,13 @@ When you have a step for these junctions, use the specified option. If a junctio
                 #print(prompt_no_dom)
                 #print("!" * 80 + "\n")
                 print("!*!*!*!*!*!*!*! Entering the AI func for generate steps")
+                # Debug mode: log full prompt
+                if self.session_logger and self.session_logger.debug_mode:
+                    import re
+                    prompt_for_log = re.sub(r'## Current Page DOM:.*?(?=\n[A-Z#=\*]|$)',
+                                            '## Current Page DOM:\n[DOM TRUNCATED FOR LOG]\n\n', prompt,
+                                            flags=re.DOTALL)
+                    self.session_logger.ai_call("generate_steps", prompt_size=len(prompt), prompt=prompt_for_log)
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000, max_retries=3)
             else:
                 # Text-only API (backward compatibility)
@@ -1125,9 +1133,12 @@ When you have a step for these junctions, use the specified option. If a junctio
                 print("[AIHelper] ❌ Failed to get response from API after retries")
                 logger.error("[AIHelper] Failed to get response from API after retries")
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
-            
+
             logger.info(f"[AIHelper] Received response ({len(response_text)} chars)")
             print(f"[AIHelper] Received response ({len(response_text)} chars)")
+            # Debug mode: log full response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("generate_steps", success=True, response=response_text)
             
             # Parse JSON from response
             response_text = response_text.strip()
@@ -1652,6 +1663,13 @@ The "screenshot_self_check" field is MANDATORY.
                 #print(prompt)
                 #print("!" * 80 + "\n")
                 #print("!*!*!*!*!*!*!*! Entering the AI func for Regenerate steps")
+                # Debug mode: log full prompt (DOM truncated)
+                if self.session_logger and self.session_logger.debug_mode:
+                    import re
+                    prompt_for_log = re.sub(r'## Current Page DOM:.*?(?=\n##|\n\*\*|$)',
+                                            '## Current Page DOM:\n[DOM TRUNCATED]\n\n', prompt, flags=re.DOTALL)
+                    self.session_logger.ai_call("regenerate_steps", prompt_size=len(prompt), prompt=prompt_for_log)
+
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
             else:
@@ -1662,6 +1680,9 @@ The "screenshot_self_check" field is MANDATORY.
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
 
             print(f"[AIHelper] Received regeneration response ({len(response_text)} chars)")
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("regenerate_steps", success=True, response=response_text)
 
             # Parse JSON response
             import re
@@ -2007,6 +2028,14 @@ Return ONLY the JSON object.
                 #                       flags=re.DOTALL)
                 #print(prompt)
                 #print("!" * 80 + "\n")
+                # Debug mode: log full prompt (DOM truncated)
+                if self.session_logger and self.session_logger.debug_mode:
+                    import re
+                    prompt_for_log = re.sub(r'## Current DOM:.*?(?=\n##|\n\*\*|$)',
+                                            '## Current DOM:\n[DOM TRUNCATED]\n\n', prompt, flags=re.DOTALL)
+                    self.session_logger.ai_call("regenerate_verify_steps", prompt_size=len(prompt),
+                                                prompt=prompt_for_log)
+
                 response_text = self._call_api_with_retry_multimodal(message_content, max_tokens=16000,
                                                                      max_retries=3)
             else:
@@ -2017,6 +2046,9 @@ Return ONLY the JSON object.
                 return {"steps": [], "ui_issue": "", "no_more_paths": False}
 
             print(f"[AIHelper] Received verify regeneration response ({len(response_text)} chars)")
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("regenerate_verify_steps", success=True, response=response_text)
 
             # Parse JSON response - find JSON with "steps" key
             remaining = response_text
@@ -2278,6 +2310,14 @@ Return ONLY the JSON object.
             #print("!" * 80 + "\n")
 
             print("!*!*!*!*!*!*!*! Entering the AI func for analyze failures and recover")
+            # Debug mode: log full prompt (DOM truncated)
+            if self.session_logger and self.session_logger.debug_mode:
+                import re
+                prompt_for_log = re.sub(r'## Current DOM:.*?(?=\n##|\n\*\*|$)', '## Current DOM:\n[DOM TRUNCATED]\n\n',
+                                        prompt, flags=re.DOTALL)
+                self.session_logger.ai_call("analyze_failure_and_recover", prompt_size=len(prompt),
+                                            prompt=prompt_for_log)
+
             response_text = self._call_api_with_retry_multimodal(content, max_tokens=16000, max_retries=3)
             #print(f"[DEBUG] Raw AI response: {response_text[:500]}...")
             
@@ -2288,6 +2328,9 @@ Return ONLY the JSON object.
             
             print(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
             logger.info(f"[AIHelper] Received recovery response ({len(response_text)} chars)")
+            # Debug mode: log full raw response
+            if self.session_logger and self.session_logger.debug_mode:
+                self.session_logger.ai_response("analyze_failure_and_recover", success=True, response=response_text)
 
             # Strip markdown code blocks first
             clean_response = response_text
