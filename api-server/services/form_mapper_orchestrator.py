@@ -945,6 +945,10 @@ class FormMapperOrchestrator:
             clean_step["selector"] = result.get("effective_selector")
         clean_step.pop("full_xpath", None)
 
+        # Update value if fill_autocomplete used different character
+        if step.get("action") == "fill_autocomplete" and result.get("actual_value"):
+            clean_step["value"] = result.get("actual_value")
+
         executed_steps.append(clean_step)
         self.update_session(session_id, {"executed_steps": executed_steps, "consecutive_failures": 0})
         

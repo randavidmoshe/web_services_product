@@ -872,9 +872,11 @@ def regenerate_steps(
         log.debug(msg, category="debug_trace")
 
         for step in executed_steps:
-            msg = f"    !!!! Executed Step {step.get('step_number', '?')}: {step.get('action', '?')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}"
+            msg = f"    !!!! Executed Step {step.get('step_number', '?')}: {step.get('action', '?')} | {(step.get('selector') or '')[:50]} | {(step.get('description') or '')[:40]}"
             print(msg)
             log.debug(msg, category="debug_trace")
+
+        #raise Exception("TEST CRASH - Simulating celery failure")  # <-- ADD THIS
 
         msg = f"!!!! Regen remain steps(regular), critical_fields_checklist: {critical_fields_checklist} steps"
         print(msg)
@@ -1278,6 +1280,68 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
         db.close()
 
 
+@shared_task(bind=True, max_retries=2, default_retry_delay=5)
+def field_assist_query(
+        self,
+        session_id: str,
+        screenshot_base64: str,
+        step: Dict,
+        query_type: str
+) -> Dict:
+    """Celery task: Field assist query (lightweight AI check)."""
+    from services.ai_budget_service import AIOperationType, BudgetExceededError
+
+    logger.info(f"[FormMapperTask] Field assist query '{query_type}' for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            return {"success": False, "error": "Session not found"}
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        if not api_key:
+            return {"success": False, "error": "No API key available"}
+
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key)
+
+        field_assist = helpers["field_assist"]
+        result = field_assist.query(
+            query_type=query_type,
+            screenshot_base64=screenshot_base64,
+            step=step
+        )
+
+        # Record usage (lightweight - small tokens)
+        input_tokens = len(screenshot_base64) // 100 + 200
+        output_tokens = 50
+
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx["user_id"],
+            AIOperationType.FORM_MAPPER_FIELD_ASSIST,
+            input_tokens, output_tokens, session_id
+        )
+
+        logger.info(f"[FormMapperTask] Field assist query result: {result}")
+
+        return {"success": True, **result}
+
+    except BudgetExceededError as e:
+        return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Field assist query failed: {e}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            return {"success": False, "error": str(e)}
+        raise
+
+    finally:
+        db.close()
+
 @shared_task(name="tasks.sync_mapper_session_status")
 def sync_mapper_session_status(session_id: str, status: str, error: str = None):
     """Async task to sync mapper session status to DB"""
@@ -1298,6 +1362,28 @@ def sync_mapper_session_status(session_id: str, status: str, error: str = None):
                 db_session.completed_at = datetime.utcnow()
             db.commit()
             logger.info(f"[MapperTasks] DB session {session_id} status -> {status}")
+
+            # Push close task to agent when session fails
+            if status == "failed":
+                try:
+                    import time
+                    user_id = db_session.user_id  # From DB - authoritative
+                    task = {
+                        "task_id": f"mapper_{session_id}_form_mapper_close_{int(time.time() * 1000)}",
+                        "task_type": "form_mapper_close",
+                        "session_id": session_id,
+                        "payload": {
+                            "complete_logging": True,
+                            "log_message": f"❌ Mapping failed: {error}",
+                            "log_level": "error"
+                        }
+                    }
+                    _get_redis_client().lpush(f"agent:{user_id}", json.dumps(task))
+                    logger.info(f"[MapperTasks] Pushed form_mapper_close to agent:{user_id}")
+                except Exception as close_err:
+                    logger.error(f"[MapperTasks] Failed to push close task: {close_err}")
+
+
     except Exception as e:
         logger.error(f"[MapperTasks] Failed to sync DB session {session_id}: {e}")
         db.rollback()

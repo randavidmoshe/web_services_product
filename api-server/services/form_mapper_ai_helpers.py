@@ -17,7 +17,7 @@ from services.ai_form_mapper_main_prompter import AIHelper
 from services.ai_form_mapper_alert_recovery_prompter import AIErrorRecovery
 from services.ai_form_mapper_end_prompter import AIFormPageEndPrompter
 from services.ai_form_page_ui_visual_verify_prompter import AIUIVisualVerifier
-
+from services.ai_form_mapper_field_assist_prompter import AIFieldAssist
 
 class AIFormMapperHelper:
     """
@@ -266,6 +266,39 @@ class AIUIVisualVerifierWrapper:
         )
 
 
+class AIFieldAssistWrapper:
+    """
+    Wrapper for AI-powered field assist queries.
+    Delegates to the original AIFieldAssist class.
+    """
+
+    def __init__(self, api_key: str):
+        self.helper = AIFieldAssist(api_key)
+
+    def query(
+            self,
+            query_type: str,
+            screenshot_base64: str,
+            step: Dict
+    ) -> Dict[str, Any]:
+        """
+        Execute a field assist query.
+
+        Args:
+            query_type: Type of query ("dropdown_visible", etc.)
+            screenshot_base64: Base64 encoded screenshot
+            step: The step being executed
+
+        Returns:
+            Query result dict
+        """
+        return self.helper.query(
+            query_type=query_type,
+            screenshot_base64=screenshot_base64,
+            step=step
+        )
+
+
 # ============================================================================
 # Factory function for creating helpers with API key
 # ============================================================================
@@ -285,5 +318,6 @@ def create_ai_helpers(api_key: str, session_logger=None) -> Dict[str, Any]:
         "form_mapper": AIFormMapperHelper(api_key, session_logger=session_logger),
         "alert_recovery": AIAlertRecoveryHelper(api_key, session_logger=session_logger),
         "end_prompter": AIFormPageEndPrompterWrapper(api_key),
-        "ui_verifier": AIUIVisualVerifierWrapper(api_key)
+        "ui_verifier": AIUIVisualVerifierWrapper(api_key),
+        "field_assist": AIFieldAssistWrapper(api_key)
     }

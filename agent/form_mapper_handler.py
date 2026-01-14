@@ -41,7 +41,7 @@ class FormMapperTaskHandler:
     - form_mapper_save_screenshot_and_log: Save screenshot to file and log UI issue
     """
     
-    def __init__(self, agent_selenium, activity_logger=None):
+    def __init__(self, agent_selenium, activity_logger=None, api_client=None):
         """
         Initialize with existing AgentSelenium instance.
         
@@ -51,6 +51,7 @@ class FormMapperTaskHandler:
         """
         self.selenium = agent_selenium
         self.activity_logger = activity_logger
+        self.api_client = api_client
         self.active_sessions: Dict[int, Dict] = {}  # Track active sessions
         self.closed_sessions: set = set()  # Track closed/cancelled sessions
     
@@ -345,8 +346,13 @@ class FormMapperTaskHandler:
 
         logger.info(f"[FormMapper] Executing step {step_index}: {action} on {selector[:50] if selector else 'N/A'}")
 
-        # Execute the step using agent_selenium (returns full result with fields_changed)
-        result = self.selenium.execute_step(step)
+        # Special handling for fill_autocomplete (requires AI field-assist)
+        if action == "fill_autocomplete":
+            result = self._handle_fill_autocomplete(session_id, step)
+        else:
+            # Execute the step using agent_selenium (returns full result with fields_changed)
+            result = self.selenium.execute_step(step)
+
         print(f"[DEBUG] execute_step result: {result}")
 
         # DEBUG: Print step info and full_xpath
@@ -363,7 +369,10 @@ class FormMapperTaskHandler:
             fallback_step = step.copy()
             fallback_step["selector"] = full_xpath
 
-            fallback_result = self.selenium.execute_step(fallback_step)
+            if action == "fill_autocomplete":
+                fallback_result = self._handle_fill_autocomplete(session_id, fallback_step)
+            else:
+                fallback_result = self.selenium.execute_step(fallback_step)
 
             if fallback_result.get("success"):
                 result = fallback_result
@@ -394,7 +403,47 @@ class FormMapperTaskHandler:
             result["failed_step"] = step
 
         return result
-    
+
+    def _handle_fill_autocomplete(self, session_id: int, step: Dict) -> Dict:
+        selector = step.get("selector", "")
+        value = step.get("value", "a")
+
+        initial_char = value if value else 'a'
+        chars_to_try = [initial_char] + [c for c in ['a', 'e', 'i', 'o', 'u', 's', 't', 'n', 'r', '1'] if
+                                         c != initial_char]
+
+        for char in chars_to_try:
+            # Call selenium to type char
+            step_copy = step.copy()
+            step_copy["value"] = char
+            result = self.selenium.execute_step(step_copy)
+
+            if not result.get("success"):
+                return result
+
+            # Take screenshot
+            screenshot_result = self.selenium.capture_screenshot(save_to_folder=False)
+            screenshot_base64 = screenshot_result.get("screenshot", "")
+
+            # Ask AI if dropdown visible
+            if not self.api_client:
+                # No API client - assume success on first try
+                result["actual_value"] = char
+                return result
+
+            ai_result = self.api_client.field_assist_query(
+                session_id=str(session_id),
+                screenshot_base64=screenshot_base64,
+                step=step,
+                query_type="dropdown_visible"
+            )
+
+            if ai_result.get("success") and ai_result.get("has_valid_options"):
+                result["actual_value"] = char
+                return result
+
+        return {"success": False, "error": "No autocomplete suggestions after trying all characters"}
+
     def _handle_screenshot(self, session_id: int, payload: Dict) -> Dict:
         """
         Capture screenshot of current page.
@@ -463,6 +512,13 @@ class FormMapperTaskHandler:
         Close browser and clean up session.
         """
         try:
+
+            # Skip if already closed (handles late/duplicate close tasks)
+            if int(session_id) in self.closed_sessions:
+                print(f"[DEBUG] Session {session_id} already closed, skipping")
+                return {"success": True, "skipped": True, "reason": "already_closed"}
+
+
             # Send bulk logs to server if requested
             if payload.get("complete_logging") and self.activity_logger:
                 print(f"[DEBUG] complete_logging=True, calling activity_logger.complete()")
@@ -478,6 +534,11 @@ class FormMapperTaskHandler:
             # Only close if no other active sessions
             if not self.active_sessions:
                 self.selenium.close_browser()
+
+            # new fix
+            # Clear any stale sessions and close browser
+            #self.active_sessions.clear()
+            #self.selenium.close_browser()
             
             return {
                 "success": True

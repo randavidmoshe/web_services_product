@@ -62,7 +62,7 @@ class FormDiscovererAgent:
         self.cancel_requested = False  # Set by heartbeat when server requests cancellation
         
         # Initialize Form Mapper handler
-        self.form_mapper_handler = FormMapperTaskHandler(self.selenium_agent, self.activity_logger)
+        self.form_mapper_handler = FormMapperTaskHandler(self.selenium_agent, self.activity_logger, api_client=self)
         self.logger.info("✓ Form Mapper handler initialized")
         
         # SSL verification setting (False for self-signed certs)
@@ -561,7 +561,58 @@ class FormDiscovererAgent:
                 
         except Exception as e:
             self.logger.error(f"❌ Error reporting Form Mapper result: {e}")
-    
+
+    def field_assist_query(self, session_id: str, screenshot_base64: str, step: Dict, query_type: str) -> Dict:
+        """
+        Make field-assist API call (POST to queue task, then poll for result).
+        Used by fill_autocomplete and other AI-assisted actions.
+        """
+        try:
+            # POST to start the task
+            url = f"{self.config.api_url}/api/form-mapper/field-assist"
+            payload = {
+                "session_id": session_id,
+                "screenshot_base64": screenshot_base64,
+                "step": step,
+                "query_type": query_type
+            }
+
+            response = requests.post(url, json=payload, headers=self._get_headers(), timeout=30, verify=self.ssl_verify)
+
+            if response.status_code != 200:
+                self.logger.error(f"[FieldAssist] POST failed: HTTP {response.status_code}")
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+
+            task_id = response.json().get("task_id")
+            if not task_id:
+                return {"success": False, "error": "No task_id returned"}
+
+            # Poll for result
+            poll_url = f"{self.config.api_url}/api/form-mapper/field-assist/{task_id}"
+            max_attempts = 30  # 30 seconds max
+
+            for attempt in range(max_attempts):
+                time.sleep(1)
+                poll_response = requests.get(poll_url, headers=self._get_headers(), timeout=10, verify=self.ssl_verify)
+
+                if poll_response.status_code != 200:
+                    continue
+
+                result = poll_response.json()
+                status = result.get("status")
+
+                if status == "completed":
+                    return {"success": True, **result.get("result", {})}
+                elif status == "failed":
+                    return {"success": False, "error": result.get("error", "Task failed")}
+                # else: still pending, continue polling
+
+            return {"success": False, "error": "Timeout waiting for field-assist result"}
+
+        except Exception as e:
+            self.logger.error(f"[FieldAssist] Error: {e}")
+            return {"success": False, "error": str(e)}
+
     def _handle_execute_steps(self, params: Dict) -> Dict:
         """Execute Selenium steps."""
         steps = params.get('steps', [])

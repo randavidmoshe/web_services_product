@@ -1297,7 +1297,29 @@ class AgentSelenium:
                     "selector": selector,
                     "value": value
                 })
-            
+
+            # FILL AUTOCOMPLETE ACTION
+            elif action == "fill_autocomplete":
+                element = self._find_element(selector)
+                if not element:
+                    return {"success": False, "error": f"Element not found: {selector}"}
+
+                # Clear and type
+                from selenium.webdriver.common.keys import Keys
+                element.send_keys(Keys.CONTROL + "a")
+                element.send_keys(Keys.DELETE)
+                element.send_keys(value)
+
+                # Wait for DOM to stabilize
+                self.wait_for_stable_dom(timeout=5, stability_time=2.0)
+
+                return _finalize_success_result({
+                    "success": True,
+                    "action": "fill_autocomplete",
+                    "selector": selector,
+                    "value": value
+                })
+
             # CLICK ACTION
             elif action == "click":
                 element = self._find_element(selector)
@@ -2114,6 +2136,61 @@ class AgentSelenium:
             return result
         except Exception as e:
             print(f"[Agent] wait_for_stable_dom error: {e}")
+            return False
+
+    def _wait_for_new_elements(self, timeout=1.0):
+        """
+        Wait and detect if new visible elements appeared in DOM.
+        Uses MutationObserver - catches ANY new elements regardless of type/class.
+        Returns True if new visible elements added, False if timeout with no changes.
+        """
+        script = """
+        return new Promise((resolve) => {
+            let elementsAdded = false;
+            const timeoutMs = %d;
+
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.addedNodes.length > 0) {
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === 1) {
+                                const rect = node.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    elementsAdded = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (elementsAdded) break;
+                }
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            const startTime = Date.now();
+            const checkInterval = setInterval(() => {
+                if (elementsAdded) {
+                    clearInterval(checkInterval);
+                    observer.disconnect();
+                    resolve(true);
+                }
+                if (Date.now() - startTime >= timeoutMs) {
+                    clearInterval(checkInterval);
+                    observer.disconnect();
+                    resolve(false);
+                }
+            }, 100);
+        });
+        """ % int(timeout * 1000)
+
+        try:
+            return self.driver.execute_script(script)
+        except Exception as e:
+            print(f"[Agent] _wait_for_new_elements error: {e}")
             return False
 
     def _wait_if_page_loading(self, timeout=60):

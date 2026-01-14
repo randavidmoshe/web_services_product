@@ -342,11 +342,13 @@ When you have a step for these junctions, use the specified option. If a junctio
         -- Keep selectors simple and robust
          
              
-        **CRITICAL - AVOID GENERIC CLASS SELECTORS:**
+        **CRITICAL - AVOID GENERIC CLASS SELECTORS (especially for dropdowns/inputs that repeat):**
         ❌ BAD: input.oxd-input.oxd-input--active (matches sidebar Search AND form fields!)
+        ❌ BAD: //div[@class='dropdown'][1]//span (wrong index syntax - index applies to child, not result set)
         ✅ GOOD: form .form-row input (scoped to form)
         ✅ GOOD: input[placeholder='Event Name'] (unique attribute)
-        ✅ GOOD: //label[contains(text(),'Event Name')]/following::input[1] (XPath with label)
+        ✅ GOOD: //label[contains(text(),'Event')]/following::div[contains(@class,'select-text')][1] (XPath with label - BEST for multiple similar elements)
+        ✅ GOOD: (//div[@class='dropdown']//span)[1] (correct index syntax - parentheses first, then index)
         
         === END SELECTOR GUIDELINES ===
         
@@ -449,7 +451,6 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         **force_regenerate field (REQUIRED):**
         - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
-        - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
         
         **dont_regenerate field (optional):**
         - Set to `true` ONLY for:
@@ -658,7 +659,8 @@ When you have a step for these junctions, use the specified option. If a junctio
         - Email: {'Normal email like john@example.com (NO suffix!)'}
         - Phone, Address, City, State, Zip, Country, Numbers: Normal realistic values (NO suffix!)
         - Dates: Look at screenshot/placeholder for required format
-
+        - **EXCEPTION for fill_autocomplete:** Even for main/leading fields, use ONLY a single character (like "a") - the full value with suffix will be selected from the dropdown suggestions in the next step
+        
         **⚠️ SPECIAL INPUT FIELDS (Date, Time, Phone, etc.) - CRITICAL:**
         For date, time, and specially formatted fields:
         1. Look at the SCREENSHOT to see the field's placeholder/format hint
@@ -675,6 +677,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         - click: Click element (buttons, links, tabs)
         - double_click: Double-click element (some elements require it)
         - fill: Enter text in input field
+        - fill_autocomplete: Type SINGLE CHARACTER (like "a") in autocomplete field to trigger suggestions. The actual value is selected in the next step by clicking on suggestion. MUST always have force_regenerate: true
         - clear: Clear input field before filling
         - select: Choose from dropdown OR select radio button
         - check: Check checkbox (only if not already checked)
@@ -757,8 +760,57 @@ When you have a step for these junctions, use the specified option. If a junctio
         **IMPORTANT: Use 'select' action for BOTH:**
         - <select> dropdowns: {{"action": "select", "selector": "select[name='country']", "value": "USA"}}
         - Radio buttons: {{"action": "select", "selector": "input[value='option1']", "value": "option1"}}
+        
+        === DISCOVERY FIELDS (force_regenerate) ===
 
+        When generating a step, ask yourself:
+        "Can I see in the DOM what I need to interact with AFTER this action?"
 
+        - YES → Complete normally
+        - NO → MANDATORY - Use force_regenerate: true, you'll be called again with updated DOM
+
+        **The Pattern:**
+        1. Trigger action (click/fill) + force_regenerate: true
+        2. System executes, waits for DOM to stabilize, re-extracts DOM
+        3. You're called again with updated DOM showing the revealed content
+        4. Generate the next step(s) with now-visible elements
+
+        **Common Discovery Scenarios:**
+        - Custom dropdown: options hidden until clicked
+        - Autocomplete: suggestions hidden until typing
+        - Date picker: calendar hidden until focused
+        - Any element that reveals hidden content on interaction
+
+        **Custom Dropdown Example:**
+        Step 1:
+        {{"action": "click", "selector": ".dropdown-trigger", "description": "Open dropdown", "force_regenerate": true}}
+
+        Step 2 (after regeneration - options now visible):
+        {{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "description": "Select Option A"}}
+
+        **Fill Autocomplete Example:**
+        Step 1:
+        {{"action": "fill_autocomplete", "selector": "input#city", "value": "a", "description": "Type to trigger suggestions", "force_regenerate": true}}
+
+        Step 2 (after regeneration - suggestions now visible):
+        {{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "description": "Select first suggestion"}}
+
+        **RULE:** If you cannot see in the DOM what you need to select/click after an action, use force_regenerate: true.
+
+        === COMPLEX FIELDS (Atomic Step Sequences) ===
+
+        Some fields require multiple atomic steps to complete.
+
+        **RULE:**
+        1. If the field matches a specific action type (select, slider, check, etc.) → use that action
+        2. If the field does NOT match any specific action type → examine the DOM and generate a sequence of atomic actions (click, fill, press_key, etc.)
+
+        **Examples:**
+        - Multiple input boxes (OTP/PIN) → fill each box separately
+        - Tag input requiring confirmation → fill + press_key ENTER
+
+        Analyze the DOM, understand the field's structure, and generate appropriate atomic steps.
+        
         === CURRENT PAGE DOM ===
 
         {dom_html}
@@ -912,7 +964,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "button.add-new",
             "value": null,
             "verification": "form opens",
-            "wait_seconds": 2
+            "wait_seconds": 2,
+            "full_xpath": "/html/body/div[1]/main/button"
           }},
           {{
             "step_number": 2,
@@ -922,7 +975,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "input[name='name']",
             "value": "TestUser123",
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/div[1]/form/input[1]"
           }},
           {{
             "step_number": 3,
@@ -932,7 +986,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "button[data-tab='address']",
             "value": null,
             "verification": null,
-            "wait_seconds": 1
+            "wait_seconds": 1,
+            "full_xpath": "/html/body/div[1]/form/div[2]/button[3]"
           }},
           {{
             "step_number": 4,
@@ -942,7 +997,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "iframe#address-frame",
             "value": null,
             "verification": null,
-            "wait_seconds": 1
+            "wait_seconds": 1,
+            "full_xpath": "/html/body/div[1]/form/iframe"
           }},
           {{
             "step_number": 5,
@@ -952,7 +1008,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "input[name='street']",
             "value": "123 Main St",
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/form/input[1]"
           }},
           {{
             "step_number": 6,
@@ -962,7 +1019,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": null,
             "value": null,
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": ""
           }},
           {{
             "step_number": 7,
@@ -972,7 +1030,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "input#fieldA",
             "value": "SampleValue",
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/div[1]/form/input[@id='fieldA']"
           }},
           {{
             "step_number": 8,
@@ -982,7 +1041,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "input#fieldB",
             "value": null,
             "verification": null,
-            "wait_seconds": 0
+            "wait_seconds": 0,
+            "full_xpath": "/html/body/div[1]/form/input[@id='fieldB']"
           }},
           {{
             "step_number": 9,
@@ -992,7 +1052,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "input#fieldB",
             "value": "DependentValue",
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/div[1]/form/input[@id='fieldB']"
           }},
           {{
             "step_number": 9,
@@ -1002,7 +1063,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "button.btn-add-finding",
             "value": null,
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/div[1]/form/div[3]/button"
           }},
           {{
             "step_number": 10,
@@ -1012,7 +1074,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "select[name='inquiry_type']",
             "value": "General",
             "verification": null,
-            "wait_seconds": 0.5
+            "wait_seconds": 0.5,
+            "full_xpath": "/html/body/div[1]/form/select"
           }},
           {{
             "step_number": 8,
@@ -1022,7 +1085,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": "button[type='submit']",
             "value": null,
             "verification": "form submitted",
-            "wait_seconds": 2
+            "wait_seconds": 2,
+            "full_xpath": "/html/body/div[1]/form/button[@type='submit']"
           }},
           {{
             "step_number": 9,
@@ -1032,7 +1096,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             "selector": ".success-message",
             "value": null,
             "verification": "success message disappeared",
-            "wait_seconds": 1
+            "wait_seconds": 1,
+            "full_xpath": "/html/body/div[2]/div"
           }}
         ]
 
@@ -1239,7 +1304,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             if executed_steps:
                 executed_context = f"""
 ## Steps Already Completed:
-{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value")} for i, s in enumerate(executed_steps)], indent=2)}
+{json.dumps([{"step": i + 1, "action": s.get("action"), "description": s.get("description"), "selector": s.get("selector"), "value": s.get("value"), "force_regenerate": s.get("force_regenerate", False)} for i, s in enumerate(executed_steps)], indent=2)}
 """
 
             # Build test cases context
@@ -1354,6 +1419,11 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 - When all listed test cases are done, return empty steps array
 - Ignore Edit/Delete/other buttons if no matching test case exists
 
+**⚠️ CONTINUE FROM CURRENT STATE:**
+The screenshot and DOM reflect the state AFTER all "Steps Already Completed" executed. Your first generated step should continue from this state, not repeat actions already done.
+Some of the steps are atomic steps , So look at the last executed step to see if its atomic step and in such a case you need to continue it.
+For example if the last step already executed was to open a drop down then your next step is to click at item in it
+
 **⚠️ DO NOT RE-FILL ALREADY COMPLETED FIELDS:**
 - Check "Steps Already Completed" above - these fields are DONE
 - NEVER generate fill/select/check steps for fields that already appear in completed steps
@@ -1363,6 +1433,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 
 ** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
 - Locate the trigger step in SCREENSHOT
+- Critical - look at the image - is there a dropdown that is currently open - if so is that the last executed step that was done - if this is the case then you first step is to click an option from this list
 - Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
 - imagine you are a user: what is EVERY click, selection, and input you would make?
 - Make sure you create steps for all of them
@@ -1430,7 +1501,7 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 
 ## Action Reference:
 
-**Available actions:** fill, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+**Available actions:** fill, fill_autocomplete, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
 
 **Context switching:**
 - `switch_to_frame` / `switch_to_shadow_root`: Enter iframe or shadow DOM
@@ -1442,9 +1513,13 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 **wait_spinner_hidden:** ONLY when blocking spinner/loader covers >30% of page. Provide selector from DOM.
 
 **Selection elements - choose correct action:**
-- `select` → ONLY for `<select>` dropdowns
-- `click` → For radio buttons, custom dropdowns, toggle buttons  
+- `select` → ONLY for native `<select>` HTML tag (selector MUST be `select[...]` or `select#...`)
+- `click` → For custom/styled dropdowns (div, span, or any non-select element - even if class contains "select")
 - `check`/`uncheck` → For checkboxes
+
+**⚠️ CUSTOM DROPDOWN DETECTION:** If element tag is `<div>`, `<span>`, or anything other than `<select>`, it's a CUSTOM dropdown:
+- ❌ WRONG: `{{"action": "select", "selector": "//div[contains(@class, 'select')]"}}` (div is NOT a native select!)
+- ✅ RIGHT: `{{"action": "click", "selector": "//div[contains(@class, 'select')]", "force_regenerate": true}}` then click option
 
 **Slider:** value = 0-100 (percentage)
 ```json
@@ -1463,6 +1538,55 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 ```
 Supported types: pdf, txt, csv, xlsx, docx, json, png, jpg
 
+=== DISCOVERY FIELDS (force_regenerate) ===
+
+When generating a step, ask yourself:
+"Can I see in the DOM what I need to interact with AFTER this action?"
+
+- YES → Complete normally
+- NO → Use force_regenerate: true, you'll be called again with updated DOM
+
+**The Pattern:**
+1. Trigger action (click/fill) + force_regenerate: true
+2. System executes, waits for DOM to stabilize, re-extracts DOM
+3. You're called again with updated DOM showing the revealed content
+4. Generate the next step(s) with now-visible elements
+
+**Common Discovery Scenarios:**
+- Custom dropdown: options hidden until clicked
+- Autocomplete: suggestions hidden until typing
+- Date picker: calendar hidden until focused
+- Any element that reveals hidden content on interaction
+
+**Custom Dropdown Example:**
+Step 1:
+{{"action": "click", "selector": ".dropdown-trigger", "description": "Open dropdown", "force_regenerate": true}}
+
+Step 2 (after regeneration - options now visible):
+{{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "description": "Select Option A"}}
+
+**Autocomplete Example:**
+Step 1:
+{{"action": "fill_autocomplete", "selector": "input#city", "value": "a", "description": "Type to trigger suggestions", "force_regenerate": true}}
+
+Step 2 (after regeneration - suggestions now visible):
+{{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "description": "Select first suggestion"}}
+
+**RULE:** If you cannot see in the DOM what you need to select/click after an action, use force_regenerate: true.
+
+=== COMPLEX FIELDS (Atomic Step Sequences) ===
+
+Some fields require multiple atomic steps to complete.
+
+**RULE:**
+1. If the field matches a specific action type (select, slider, check, etc.) → use that action
+2. If the field does NOT match any specific action type → examine the DOM and generate a sequence of atomic actions (click, fill, press_key, etc.)
+
+**Examples:**
+- Multiple input boxes (OTP/PIN) → fill each box separately
+- Tag input requiring confirmation → fill + press_key ENTER
+
+Analyze the DOM, understand the field's structure, and generate appropriate atomic steps.
 
 ---
 **Junctions:** Mark a step as a junction if: (1) the step has multiple options to choose from, AND (2) selecting an option may uncover/reveal new fields, AND (3) different options might reveal different fields.
@@ -1498,6 +1622,10 @@ Always include `is_junction: true` and `junction_info` even when following junct
 **CRITICAL - SELECTOR MUST BE UNIQUE:**
 - If ID/name/data-attr are missing or not clearly unique, use XPath scoped to parent container
 - When in doubt, prefer more specific selector over simpler one
+- **For multiple similar elements (e.g., multiple dropdowns with same class):**
+  - ✅ BEST: `//label[contains(text(),'Event')]/following::div[contains(@class,'select-text')][1]` (use field label as anchor)
+  - ✅ GOOD: `(//div[@class='dropdown']//span)[1]` (correct index syntax - parentheses FIRST, then index)
+  - ❌ WRONG: `//div[@class='dropdown'][1]//span` (index applies to child position, not result set)
 
 **Modal buttons - use XPath for precision:**
 - `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
@@ -2448,6 +2576,7 @@ Return ONLY the JSON object.
     - Error: {error_message}
     {f"- Expected Value: {expected_value}" if action == "verify" and expected_value else ""}
     {f"- IS JUNCTION: This step is a junction - you MUST include is_junction: true and junction_info in your recovery step. junction_info: {json.dumps(junction_info)}" if is_junction else ""}
+    {f"- HAS force_regenerate: true - your recovery step MUST also include force_regenerate: true" if failed_step.get('force_regenerate') else ""}
     {executed_context}
     {failure_history_section}
     ## Current DOM:
@@ -2501,8 +2630,10 @@ Return ONLY the JSON object.
     - Outside viewport → scroll to element first
 
     **Selector not unique:**
-    - Scope to parent: `//div[@id='container']//button[text()='Save']`
-    - Use index: `(//button[@class='submit'])[1]`
+    - ✅ BEST - Use label as anchor: `//label[contains(text(),'Event')]/following::div[contains(@class,'select-text')][1]`
+    - ✅ GOOD - Scope to parent: `//div[@id='container']//button[text()='Save']`
+    - ✅ GOOD - Use index (CORRECT syntax): `(//button[@class='submit'])[1]` (parentheses FIRST, then index)
+    - ❌ WRONG index syntax: `//button[@class='submit'][1]` (index applies to child position, not result set)
 
     **Stale element:**
     - Page refreshed - add wait, retry same selector
@@ -2521,11 +2652,29 @@ Return ONLY the JSON object.
     ## Response Format:
     Return ONLY a JSON array with 1-5 fix steps:
     ```json
-        [
-          {{"step_number": 1, "action": "hover", "selector": "#trigger", "value": "", "description": "Re-hover to open menu"}},
-          {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu"}}
-        ]
+            [
+              {{"step_number": 1, "action": "hover", "selector": "#trigger", "value": "", "description": "Re-hover to open menu", "full_xpath": "/html/body/div[@id='app']/div/nav/button"}},
+              {{"step_number": 2, "action": "fill", "selector": "#field", "value": "test", "description": "Fill field in now-visible menu", "full_xpath": "/html/body/div[@id='app']/div/form/input[2]"}}
+            ]
     ```
+    
+    ## ⚠️ full_xpath - MANDATORY AND MUST BE 100% CORRECT:
+    You are in RECOVERY mode because the original selector FAILED. The full_xpath is critical as fallback.
+    
+    **Rules:**
+    - Must start from `/html/body/...`
+    - **USE IDs WHEN AVAILABLE:** `/html/body/div[@id='app']/...` NOT `/html/body/div[1]/...`
+    - Count ALL direct children including hidden elements, modals, overlays
+    - Use `contains(@class, 'x')` for class matching
+    
+    **SELF-VERIFICATION (MANDATORY):**
+    After constructing each full_xpath, trace it step-by-step through the DOM to verify:
+    1. Does the path start correctly from body?
+    2. Did you use IDs where available?
+    3. Did you count child indices correctly?
+    4. Does the final element match your target?
+    
+    If unsure, recount. A wrong full_xpath defeats the purpose of recovery.
     
     ## Important - Save/Submit Buttons:
     If the recovery step is clicking the FINAL Save or Submit button (the one that submits the entire form, not intermediate saves within sections/modals), set `force_regenerate_verify: true` to trigger verification after form submission.

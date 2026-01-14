@@ -811,6 +811,62 @@ async def get_session_logs(
     }
 
 
+# ============================================================================
+# Field Assist Endpoints
+# ============================================================================
+
+class FieldAssistRequest(BaseModel):
+    """Request for field assist query"""
+    session_id: str
+    screenshot_base64: str
+    step: dict
+    query_type: str  # "dropdown_visible", etc.
+
+
+@router.post("/field-assist")
+async def start_field_assist_query(
+        request: FieldAssistRequest,
+        db: Session = Depends(get_db)
+):
+    """
+    Start a field assist query (async via Celery).
+    Returns task_id for polling.
+    """
+    from tasks.form_mapper_tasks import field_assist_query
+
+    task = field_assist_query.delay(
+        session_id=request.session_id,
+        screenshot_base64=request.screenshot_base64,
+        step=request.step,
+        query_type=request.query_type
+    )
+
+    return {"task_id": task.id, "status": "pending"}
+
+
+@router.get("/field-assist/{task_id}")
+async def get_field_assist_result(task_id: str):
+    """
+    Get field assist query result by task_id.
+    """
+    from celery.result import AsyncResult
+
+    result = AsyncResult(task_id, app=celery)
+
+    response = {
+        "task_id": task_id,
+        "status": result.state.lower()
+    }
+
+    if result.state == 'SUCCESS':
+        response["status"] = "completed"
+        response["result"] = result.result
+    elif result.state == 'FAILURE':
+        response["status"] = "failed"
+        response["error"] = str(result.info) if result.info else 'Unknown error'
+
+    return response
+
 @router.post("/pom/generate")
 async def start_pom_generation(
         request: dict,
