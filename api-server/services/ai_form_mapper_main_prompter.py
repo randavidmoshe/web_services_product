@@ -464,7 +464,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         - Set to `true` ONLY for Save and Submit buttons
         - This triggers verification-focused AI after form submission
         
-        **full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
+        **full_xpath field (MANDATORY FOR ALL STEPS):**
         - Fallback selector if primary selector fails
         - Must start from `/html/body/...`
         - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
@@ -474,8 +474,28 @@ When you have a step for these junctions, use the specified option. If a junctio
           - ❌ `/html/body/div[3]/div/div[4]/button[2]` (counting is error-prone)
         - Only use indices `[n]` when no ID exists on that element
         - Trace the path carefully from body → target element using the DOM
-        - For `verify` action: use empty string `""`
         
+        **⚠️ SELF-VERIFICATION (MANDATORY BEFORE RETURNING):**
+        For EACH full_xpath you generate, you MUST verify it by tracing through the DOM:
+        
+        1. Start at `<body>` in the DOM
+        2. For each segment in your path (e.g., `/div[2]`):
+           - Find that element in DOM
+           - Confirm tag name matches
+           - Confirm index is correct (count ALL children of same tag, including hidden)
+           - If using `[@id='x']` or `[@class='x']`, confirm attribute exists and matches
+        3. Verify final element is your actual target
+        
+        **Example verification:**
+        Your xpath: `/html/body/div[2]/form/div[3]/input[1]`
+        
+        CHECK:
+        - body → has children: div#app, div#modal, script → div[2] = div#modal ✓ or ✗?
+        - div#modal → has children: div.header, form → form = form ✓
+        - form → has children: div, div, div, button → div[3] = third div ✓
+        - div[3] → has children: label, input, span → input[1] = first input ✓
+        
+        If ANY check fails → FIX the xpath before returning.
         
         **Example 1: Resume Upload**
         ```json
@@ -676,7 +696,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         **Standard Actions:**
         - click: Click element (buttons, links, tabs)
         - double_click: Double-click element (some elements require it)
-        - fill: Enter text in input field
+        - fill: Enter text in input field (use ONLY for regular text inputs WITHOUT autocomplete/suggestions)
         - fill_autocomplete: Type SINGLE CHARACTER (like "a") in autocomplete field to trigger suggestions. The actual value is selected in the next step by clicking on suggestion. MUST always have force_regenerate: true
         - clear: Clear input field before filling
         - select: Choose from dropdown OR select radio button
@@ -685,7 +705,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         - slider: Set range slider to percentage (value: 0-100)
         - drag_and_drop: Drag element to target (selector: source, value: target selector)
         - press_key: Send keyboard key (value: ENTER, TAB, ESCAPE, ARROW_DOWN, etc.)
-        - verify: Check if element is visible
+        - wait_for_visible: Wait for element to become visible
         - wait: Wait for duration (MAX 10 seconds!) OR wait for element to be ready if selector provided
         - wait_for_ready: Wait for AJAX-loaded element to become interactable (use for dynamic fields)
         - wait_for_visible: Wait for element to become visible (max 10s)
@@ -846,28 +866,24 @@ When you have a step for these junctions, use the specified option. If a junctio
            - Hover: if field is hidden and needs hover to reveal
            - Wait: use wait_for_visible if field loads dynamically
         
-        2. **Verify the field** contains original value:
-           - Action: "verify"
-           - Selector: the field selector
-           - Value: the EXPECTED ORIGINAL value from TEST_1 (the value that was filled in create test)
         
-        3. **Clear the field** (for text inputs only):
+        
+        2. **Clear the field** (for text inputs only):
            - Action: "clear"
            - Selector: the field selector
            - Skip this step for: select dropdowns, checkboxes, radio buttons, sliders
         
-        4. **Update the field** with new value:
+        3. **Update the field** with new value:
            - Action: "fill" or "select" or "check" (depending on field type)
            - Selector: the field selector
            - Value: the new updated value
         
-        5. **Navigate back** (if needed):
+        4. **Navigate back** (if needed):
            - Switch back from iframe: use switch_to_default
            - Switch back from shadow DOM: use switch_to_default
         
         **Example for field in iframe:**
         - switch_to_frame (navigate to iframe)
-        - verify (check original value)
         - clear (clear the field)
         - fill (update with new value)
         - switch_to_default (exit iframe)
@@ -875,7 +891,6 @@ When you have a step for these junctions, use the specified option. If a junctio
         **Example for field requiring hover:**
         - hover (reveal hidden field)
         - wait_for_visible (wait for field to appear)
-        - verify (check original value)
         - clear (clear the field)
         - fill (update with new value)
 
@@ -886,7 +901,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         2. **Each action must have these fields:**
            - "step_number": integer (sequential, starting from 1)
            - "test_case": string (which test this belongs to)
-           - "action": string (navigate, click, fill, select, verify, etc.)
+           - "action": string (navigate, click, fill, select, etc.)
            - "description": string (human-readable description)
            - "selector": string or null (CSS selector is preferred - see guidelines above!)
            - "value": string or null (value for fill/select actions)
@@ -932,19 +947,14 @@ When you have a step for these junctions, use the specified option. If a junctio
            
            **For non-modal buttons, continue using CSS selectors as normal.**
 
-        4. **Verification Steps:**
-           After important actions, verify success:
-           - Do NOT generate more than 3-4 verify steps during form filling (TEST_1)
-           - After navigation → verify new page/section loaded
-           - After form completion → verify confirmation displayed
+        
 
-        5. **Wait Times:**
+        4. **Wait Times:**
            - After navigate: 2 seconds
            - After click (page change): 2 seconds
            - After fill: 0.5 seconds
-           - After verify: 1 second
 
-        3. **Breaking Down Generic Steps:**
+        5. **Breaking Down Generic Steps:**
            - "Fill form fields" → Generate fill steps for EACH VISIBLE field (required AND optional)
            - "Complete form" → Generate steps for all sections/tabs
            - "Navigate to next section" → Click next button and verify new section
@@ -1108,7 +1118,6 @@ When you have a step for these junctions, use the specified option. If a junctio
         ☐ NO :has-text() selectors anywhere
         ☐ NO :contains() selectors anywhere  
         ☐ NO :text() selectors anywhere
-        ☐ For VERIFY actions: selector finds element by location, expected value goes in value field
         ☐ ALL selectors use attributes, IDs, classes, or structure
         ☐ Each generic step expanded into specific actions
         ☐ Following ONE path through the form
@@ -1390,14 +1399,8 @@ Do NOT skip fields just because they are not in the required selections list.
 
 Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
 
-**If validation errors are visible, return ONLY:**
-```json
-{{{{
-  "validation_errors_detected": true
-}}}}
-```
+**If validation errors are visible:** Include `"validation_errors_detected": true` in your response, but STILL generate the remaining steps normally.
 
-**If NO validation errors:** Continue with step generation below.
 
 {screenshot_section}{critical_fields_section}{route_planning_section}
 {user_inputs_section}
@@ -1413,6 +1416,33 @@ Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "P
 
 ## Your Task:
 Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cases" section above.
+
+**⚠️ FIRST: CHECK FOR PAGE ERRORS**
+Scan DOM and screenshot for unrecoverable state:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+
+**If page error detected, return ONLY:**
+```json
+{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}
+```
+(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+
+**⚠️ SECOND: CHECK FOR LOADING SPINNER**
+If loading spinner is visible in screenshot, return ONLY the wait step:
+```json
+{{
+  "steps": [
+    {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-class", "value": "15", "description": "Wait for loading to complete", "full_xpath": "", "force_regenerate_verify": true}}
+  ]
+}}
+```
+Find spinner in DOM (patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations).
+After spinner disappears, you will be called again to generate verify steps.
+
+**If no page error and no spinner:** Continue with verification steps below.
 
 **⚠️ STOP WHEN COMPLETE:**
 - Generate steps ONLY for test cases in the list - NEVER invent new ones (no TEST_4 if not listed)
@@ -1452,7 +1482,7 @@ For example if the last step already executed was to open a drop down then your 
    - Handle special inputs (dropdowns, checkboxes, sliders, file uploads, drag and drop)
    - Do NOT skip fields because they appear optional - fill EVERY visible field
 4. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
-5. Submit form and verify success
+5. Submit form
 
 **For edit/update tests:** Navigate → Verify original value → Clear → Update → Navigate back
 
@@ -1467,7 +1497,7 @@ For example if the last step already executed was to open a drop down then your 
 
 ---
 
-**full_xpath field (MANDATORY FOR ALL STEPS, BUT NOT for verify action):**
+**full_xpath field (MANDATORY FOR ALL STEPS):**
 - Fallback selector if primary selector fails
 - Must start from `/html/body/...`
 - **COUNTING IS CRITICAL:** Count ALL direct children of each parent, including hidden elements, modals, overlays
@@ -1477,13 +1507,44 @@ For example if the last step already executed was to open a drop down then your 
   - ❌ `/html/body/div[3]/div/div[4]/button[2]`
 - Only use indices `[n]` when no ID exists on that element
 - Trace the path carefully from body → target element using the DOM
-- For `verify` action: use empty string `""`
+
+**❌ BAD full_xpath (NEVER DO THIS):**
+`/html/body/div[1]/div/div[2]/div/div[1]/div/div[3]/div/div[1]/div[2]/div[1]/div/div[1]/div`
+- All indices, ignores `id="app"` that exists in DOM!
+
+**✅ GOOD full_xpath (USE IDs AND CLASSES):**
+`/html/body/div[@id='app']//div[contains(@class,'oxd-form')]//div[contains(@class,'oxd-input-group')][1]//div[contains(@class,'oxd-select-text')]`
+- Uses id="app" as anchor
+- Uses class names from DOM
+- Index only where truly needed
+
+**⚠️ SELF-VERIFICATION (MANDATORY BEFORE RETURNING):**
+For EACH full_xpath you generate, you MUST verify it by tracing through the DOM:
+
+1. Start at `<body>` in the DOM
+2. For each segment in your path (e.g., `/div[2]`):
+   - Find that element in DOM
+   - Confirm tag name matches
+   - Confirm index is correct (count ALL children of same tag, including hidden)
+   - If using `[@id='x']` or `[@class='x']`, confirm attribute exists and matches
+3. Verify final element is your actual target
+
+**Example verification:**
+Your xpath: `/html/body/div[2]/form/div[3]/input[1]`
+
+CHECK:
+- body → has children: div#app, div#modal, script → div[2] = div#modal ✓ or ✗?
+- div#modal → has children: div.header, form → form = form ✓
+- form → has children: div, div, div, button → div[3] = third div ✓
+- div[3] → has children: label, input, span → input[1] = first input ✓
+
+If ANY check fails → FIX the xpath before returning.
 
 ---
 
 **force_regenerate field (REQUIRED):**
 - Set to `true` for navigation actions: Next, Continue, Edit, Delete, Back to List buttons
-- Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
+- Set to `false` for: fill, select, click tab, check, hover, scroll, ALL wait actions, switch_to_frame, switch_to_default
 
 **dont_regenerate field (optional):**
 - Set to `true` ONLY for:
@@ -1501,7 +1562,9 @@ For example if the last step already executed was to open a drop down then your 
 
 ## Action Reference:
 
-**Available actions:** fill, fill_autocomplete, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, verify, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+**Available actions:** fill, fill_autocomplete, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+
+**⚠️ NEVER generate "verify" action** during the creation stage - verify steps are generated separately AFTER form submission. Use `wait_for_visible` if you need to confirm an element appeared.
 
 **Context switching:**
 - `switch_to_frame` / `switch_to_shadow_root`: Enter iframe or shadow DOM
@@ -1623,9 +1686,9 @@ Always include `is_junction: true` and `junction_info` even when following junct
 - If ID/name/data-attr are missing or not clearly unique, use XPath scoped to parent container
 - When in doubt, prefer more specific selector over simpler one
 - **For multiple similar elements (e.g., multiple dropdowns with same class):**
-  - ✅ BEST: `//label[contains(text(),'Event')]/following::div[contains(@class,'select-text')][1]` (use field label as anchor)
   - ✅ GOOD: `(//div[@class='dropdown']//span)[1]` (correct index syntax - parentheses FIRST, then index)
   - ❌ WRONG: `//div[@class='dropdown'][1]//span` (index applies to child position, not result set)
+  - ❌ NEVER: `//label[...]/..//div` or `//label[...]/following::div` - parent/following traversal breaks across apps
 
 **Modal buttons - use XPath for precision:**
 - `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
@@ -1695,7 +1758,8 @@ Before generating ANY verify steps for a list/table, check for search input:
 **⚠️ TABLE SELECTOR RULE:** Selectors must work with ANY test data. Use POSITION (row/column index) or STRUCTURE (classes, data-attributes), NEVER the actual field VALUES.
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
----
+
+----
 
 ## Rules:
 - Never use CSS `:contains()` or `:has()` - not supported in Selenium
@@ -1942,7 +2006,38 @@ Scan DOM and screenshot for validation errors (red boxes, error messages like "P
 }}}}
 ```
 
-**If NO validation errors:** Continue with verification below.
+**If NO validation errors:** Continue below.
+
+## SECOND: CHECK FOR PAGE ERRORS
+
+Scan DOM and screenshot for unrecoverable state:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+
+**If page error detected, return ONLY:**
+```json
+{{{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}}}
+```
+(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+
+**If NO page errors:** Continue below.
+
+## THIRD: CHECK FOR LOADING SPINNER
+
+If loading spinner is visible in screenshot, return ONLY the wait_spinner_hidden step:
+```json
+{{{{
+  "steps": [
+    {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-class", "value": "15", "description": "Wait for loading to complete", "full_xpath": "", "force_regenerate_verify": true}}
+  ]
+}}}}
+```
+Find spinner in DOM (patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations).
+After spinner disappears, you will be called again to generate verify steps.
+
+**If no spinner:** Continue with verification below.
 
 ---
 
@@ -1965,14 +2060,16 @@ Your task is to VERIFY that all entered data is displayed correctly.
 Generate steps to VERIFY all fields that were filled during the test, plus any navigation needed to access view pages.
 
 **What you must do:**
-1. Look at "Steps Already Completed" - find ALL fill/select/check steps
-2. For EACH field that was filled, generate a VERIFY step to confirm the value is displayed
-3. If data is on a different page (e.g., need to click "View" button), add navigation steps
-4. Verify ALL fields on EACH page you visit - do NOT skip fields even if verified on a previous page
+1. **Check "Steps Already Completed" for `"action": "verify"` entries - NEVER re-generate verify steps that already exist for the SAME page. If current page's fields are already verified → Return `"steps": []`**
+2. Look at "Steps Already Completed" - find ALL fill/select/check steps
+3. For EACH field that was filled, generate a VERIFY step (unless already verified on THIS page)
+4. If data is on a different page (e.g., need to click "View" button), add navigation steps
+5. A field MAY be verified on BOTH list page AND detail page - but NEVER twice on the same page
 
 **⚠️ CRITICAL - YOU MUST GENERATE VERIFY STEPS:**
 - Your job is to OUTPUT verify step JSON objects, NOT to visually confirm data yourself
-- Even if you can SEE the correct values in the DOM/screenshot, you MUST generate verify steps
+- MANDATORY - if you have all the verify steps in the already created list of steps then do not create them again.
+- Even if you can SEE the correct values in the DOM/screenshot, you MUST generate verify steps (unless you already created verify steps for them)
 - The verify steps will be EXECUTED by automation later - without them, nothing is verified
 - Return `"steps": []` ONLY when verify steps were ALREADY GENERATED in previous calls (check "Steps Already Completed" for existing verify actions)
 - If you see a detail/view page with data but NO verify steps in "Steps Already Completed", you MUST generate verify steps NOW
@@ -1996,7 +2093,7 @@ Return empty ONLY if "Steps Already Completed" already contains `"action": "veri
 ```json
 {{
   "steps": [
-    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "xpath", "force_regenerate": false, "force_regenerate_verify": false, "dont_regenerate": false}}
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "REQUIRED - see below", "force_regenerate": false, "force_regenerate_verify": false, "dont_regenerate": false}}
   ]
 }}
 ```
@@ -2013,15 +2110,20 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 
 **VERIFY ALL FIELDS - NO SKIPPING:**
 1. Look through "Steps Already Completed" for ALL fill/select/check steps
-2. Generate a VERIFY step for EACH field - do NOT skip any
-3. Each page requires FULL verification - do NOT skip fields verified on a previous page
+2. Generate a VERIFY step for EACH field that YOU FILLED (unless already verified on THIS page)
+3. A field can be verified on BOTH list page AND detail page - but NEVER generate duplicate verify for the same field on the SAME page
 4. Get expected values from the `value` field of those fill/select steps
-5. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At", "Saved Date")
-6. **NEVER SKIP VERIFY STEPS** - Generate verify steps for ALL fields, even if:
+5. NEVER verify system-generated fields (Reference ID, Status, timestamps, IDs, "Created At", "Updated At", "Saved Date")
+6. **NEVER SKIP VERIFY STEPS** for fields you filled - Generate verify even if:
    - You suspect expected value might not match displayed value
    - The format might differ (e.g., date format differences)
    - The field seems empty or missing
    - Verification failures are VALID test results - we WANT to catch mismatches, not hide them
+
+**⚠️ ONLY VERIFY FIELDS YOU FILLED - NEVER INVENT:**
+- ✅ ONLY generate verify steps for fields that have a corresponding fill/select/check in "Steps Already Completed"
+- ❌ NEVER verify that a field is "empty", "disabled", or "blank" - verify POSITIVE values only
+- ❌ NEVER invent fields to verify - if you didn't fill it, don't verify it
 
 **⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
 - ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
@@ -2033,11 +2135,23 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 
 **BUILD SELECTOR FROM THE DOM - Common patterns:**
 - By data attribute: `//div[@data-field='email']`
-- By class: `(//div[contains(@class, 'field-value')])[1]` - use ACTUAL class from DOM
-- By label proximity: `//label[contains(text(), 'Email')]/../div`
-- By parent with label: `//div[contains(@class, 'delivery-section')]//div[contains(@class, 'field-row')]//div[contains(@class, 'field-group')][.//div[contains(@class, 'field-label')][contains(text(), 'Time Slot')]]//div[contains(@class, 'field-value')]`
+- By class and label: `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[contains(@class, 'field-value')]`
+- By container filter: `//div[contains(@class, 'form-group')][.//label[contains(text(), 'Email')]]//input`
 
-**⚠️ SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
+**⚠️ NEVER use `..` (parent traversal) or `following-sibling`** - these assume DOM structure and break across different apps.
+- ❌ WRONG: `//label[contains(text(), 'Email')]/../div`
+- ❌ WRONG: `//div[contains(@class, 'oxd-input-group')]//label[contains(text(), 'Employee')]/..//input`
+- ❌ WRONG: ANY selector containing `/../` or `/..` - NEVER USE PARENT TRAVERSAL
+- ✅ RIGHT: `//div[contains(@class, 'oxd-input-group')][.//label[contains(text(), 'Employee')]]//input`
+- ✅ RIGHT: Use `[.//label[...]]` as a FILTER on the container, NOT `//label[...]/../`
+
+**VERIFY SELECTOR EXAMPLES:**
+- ✅ `//div[contains(@class, 'form-group')][.//label[contains(text(), 'Email')]]//span`
+- ✅ `//div[contains(@class, 'field')][.//label[contains(text(), 'Name')]]//div[@class='value']`
+
+Find the NEAREST container that holds BOTH label AND value, then filter by label and find value inside.
+
+**⚠️ CRITICAL AND MANDATORY - SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
 Every verify selector MUST include the field name/label as an anchor (e.g., 'Email', 'First Name', 'Phone').
 - ✅ `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[@class='value']`  
 - ❌ `(//div[@class='field-value'])[3]` - position-only without field name won't work if layout changes
@@ -2102,7 +2216,8 @@ Before generating ANY verify steps for a list/table, check for search input:
   * Click row in table to see details → `force_regenerate_verify: true`
   * Fill search box to filter list → `force_regenerate_verify: true`
   * ANy other action that is related to the list/view pages → `force_regenerate_verify: true`
-- Set to `false` for verify steps, wait steps, and final navigation (no more verification needed)
+  * wait_spinner_hidden so verification continues after wait completes
+- Set to `false` for verify steps , final navigation (no more verification needed)
 - ⚠️ IMPORTANT: If clicking a button will show NEW fields to verify, use `force_regenerate_verify: true`, NOT `force_regenerate: true`
 
 **force_regenerate field (exit verification mode):**
@@ -2113,11 +2228,35 @@ Before generating ANY verify steps for a list/table, check for search input:
 1. If more fields to verify on another page → use `force_regenerate_verify: true`
 2. If ALL fields verified and all Verification pages are done AND next test is Edit/Update → use `force_regenerate: true` on Edit button
 
+---------
 
-**full_xpath field:**
-- Required for click/navigation steps - fallback selector starting from `/html/body/...`
-- Prefer `[@id='...']` over index when element has an ID
-- For `verify` action: use empty string `""`
+**full_xpath field - REQUIRED FOR ALL ACTIONS INCLUDING VERIFY:**
+- Fallback selector if primary selector fails
+- Must start from `/html/body/...` and go DOWN the tree
+- **MUST include field name filter** (e.g., `[.//label[contains(text(),'Employee')]]`)
+- **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+  - ✅ `/html/body/div[@id='app']//form//div[contains(@class,'oxd-input-group')][.//label[contains(text(),'Employee')]]//input`
+  - ❌ `/html/body/div[1]/div/div[2]/div[3]/input` (positional without field identifier!)
+
+**❌ BAD full_xpath for verify (NEVER DO THIS):**
+- `/html/body/div[1]/div/div[2]/div/div[1]/div/div[3]/input` - no field identifier, wrong field if layout changes!
+- ANY path containing `/../` - parent traversal forbidden!
+
+**✅ GOOD full_xpath for verify:**
+`/html/body/div[@id='app']//form//div[contains(@class,'oxd-input-group')][.//label[contains(text(),'Employee')]]//input`
+- Uses id="app" as anchor
+- Uses class names from DOM
+- **Includes field label filter** - finds correct field even if position changes
+
+**⚠️ SELF-VERIFICATION (MANDATORY BEFORE RETURNING):**
+For EACH full_xpath you generate, you MUST verify it by tracing through the DOM:
+
+1. Start at `<body>` in the DOM
+2. Trace your path segment by segment
+3. Confirm the field label filter `[.//label[contains(text(),'X')]]` matches the field you're verifying
+4. Verify final element contains/displays the expected value
+
+If ANY check fails → FIX the xpath before returning.
 
 ---
 
@@ -2154,7 +2293,7 @@ Return ONLY the JSON object.
                 #import re
                 #prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
                 #                       flags=re.DOTALL)
-                #print(prompt)
+                print(prompt)
                 #print("!" * 80 + "\n")
                 # Debug mode: log full prompt (DOM truncated)
                 if self.session_logger and self.session_logger.debug_mode:
@@ -2559,7 +2698,40 @@ Return ONLY the JSON object.
 
     **DO NOT generate any steps if validation errors exist.**
 
-    **Only if NO validation errors exist:** Continue to Step 2 below.
+    **Only if NO validation errors exist:** Continue to Step 1b below.
+    
+    ## STEP 1b: CHECK FOR UNRECOVERABLE PAGE STATE
+    
+    Scan the DOM and screenshot for signs of unrecoverable state:
+    - "Page Not Found", "404", "Not Found", "Error 404"
+    - Empty page with no form elements
+    - "Session Expired", "Access Denied", "Unauthorized"
+    - Server error messages ("500", "Internal Server Error")
+    
+    **If page is unrecoverable, return ONLY:**
+    ```json
+    {{{{
+      "page_error_detected": true,
+      "error_type": "page_not_found"
+    }}}}
+    ```
+    (use error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+    
+    **Only if page state is normal:** Continue to Step 1c below.
+
+    ## STEP 1c: CHECK FOR LOADING SPINNER
+    
+    Look at screenshot for any rotating/spinning loading indicator that blocks interaction.
+    
+    **If loading spinner is visible, return:**
+    ```json
+    [
+      {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-selector-from-dom", "value": "15", "description": "Wait for loading spinner to disappear", "full_xpath": ""}}
+    ]
+    ```
+    Find spinner in DOM by looking at screenshot to identify visual indicator. Common patterns: spinner, loader, loading, progress, wait, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations.
+    
+    **Only if no spinner visible:** Continue to Step 2 below.
 
     ---
 
@@ -2591,6 +2763,7 @@ Return ONLY the JSON object.
     - Return EXACTLY 1 step with the FIXED selector
     - Keep the SAME expected value (the `value` field) - do NOT change it
     - Only fix the LOCATOR (selector)
+    - Use empty string for full_xpath: `"full_xpath": ""`
     
     **VERIFY selector rules:**
     - Build selector from DOM structure, NOT from displayed values
@@ -2630,10 +2803,10 @@ Return ONLY the JSON object.
     - Outside viewport → scroll to element first
 
     **Selector not unique:**
-    - ✅ BEST - Use label as anchor: `//label[contains(text(),'Event')]/following::div[contains(@class,'select-text')][1]`
     - ✅ GOOD - Scope to parent: `//div[@id='container']//button[text()='Save']`
     - ✅ GOOD - Use index (CORRECT syntax): `(//button[@class='submit'])[1]` (parentheses FIRST, then index)
     - ❌ WRONG index syntax: `//button[@class='submit'][1]` (index applies to child position, not result set)
+    - ❌ NEVER: `//label[...]/..//div` or `//label[...]/following::div` - parent/following traversal breaks across apps
 
     **Stale element:**
     - Page refreshed - add wait, retry same selector
@@ -2641,7 +2814,8 @@ Return ONLY the JSON object.
     **Wrong context:**
     - Inside iframe → switch_to_frame first
     - Need main page → switch_to_default first
-
+    
+        
     ## Selector Priority:
     1. ID: `#fieldId`
     2. Name: `[name='fieldName']`
@@ -2658,8 +2832,9 @@ Return ONLY the JSON object.
             ]
     ```
     
-    ## ⚠️ full_xpath - MANDATORY AND MUST BE 100% CORRECT:
-    You are in RECOVERY mode because the original selector FAILED. The full_xpath is critical as fallback.
+    ## ⚠️ full_xpath - MANDATORY FOR NON-VERIFY ACTIONS:
+    For `verify` action recovery: use empty string `"full_xpath": ""`
+    For all other actions: full_xpath is critical as fallback since original selector FAILED.
     
     **Rules:**
     - Must start from `/html/body/...`
@@ -2675,6 +2850,16 @@ Return ONLY the JSON object.
     4. Does the final element match your target?
     
     If unsure, recount. A wrong full_xpath defeats the purpose of recovery.
+    
+    **❌ BAD full_xpath (NEVER DO THIS):**
+    `/html/body/div[1]/div/div[2]/div/div[1]/div/div[3]/div/div[1]/div[2]/div[1]/div/div[1]/div`
+    - All indices, ignores `id="app"` that exists in DOM!
+
+    **✅ GOOD full_xpath (USE IDs AND CLASSES):**
+    `/html/body/div[@id='app']//div[contains(@class,'oxd-form')]//div[contains(@class,'oxd-input-group')][1]//div[contains(@class,'oxd-select-text')]`
+    - Uses id="app" as anchor
+    - Uses class names from DOM
+    - Index only where truly needed
     
     ## Important - Save/Submit Buttons:
     If the recovery step is clicking the FINAL Save or Submit button (the one that submits the entire form, not intermediate saves within sections/modals), set `force_regenerate_verify: true` to trigger verification after form submission.

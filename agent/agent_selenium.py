@@ -488,7 +488,12 @@ class AgentSelenium:
         """
         try:
             #dom_html = self.driver.page_source
-            dom_html = self.driver.execute_script("return document.documentElement.outerHTML")
+            #dom_html = self.driver.execute_script("return document.documentElement.outerHTML")
+            dom_html = self.driver.execute_script("""
+                const clone = document.documentElement.cloneNode(true);
+                clone.querySelectorAll('svg').forEach(svg => svg.innerHTML = '');
+                return clone.outerHTML;
+            """)
             dom_hash = hashlib.md5(dom_html.encode('utf-8')).hexdigest()
             
             return {
@@ -1521,8 +1526,11 @@ class AgentSelenium:
                 
                 try:
                     # Determine selector type
-                    if selector.startswith('/') or selector.startswith('//'):
+                    if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
+                    elif selector.startswith('xpath='):
+                        by_type = By.XPATH
+                        selector = selector[6:]  # Remove "xpath=" prefix
                     else:
                         by_type = By.CSS_SELECTOR
                     
@@ -1561,8 +1569,11 @@ class AgentSelenium:
 
                 try:
                     # Determine selector type
-                    if selector.startswith('/') or selector.startswith('//'):
+                    if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
+                    elif selector.startswith('xpath='):
+                        by_type = By.XPATH
+                        selector = selector[6:]  # Remove "xpath=" prefix
                     else:
                         by_type = By.CSS_SELECTOR
 
@@ -1672,8 +1683,17 @@ class AgentSelenium:
                     timeout = min(float(value) if value else 10.0, 10.0)
                     
                     try:
+                        # Determine selector type
+                        if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
+                            by_type = By.XPATH
+                        elif selector.startswith('xpath='):
+                            by_type = By.XPATH
+                            selector = selector[6:]  # Remove "xpath=" prefix
+                        else:
+                            by_type = By.CSS_SELECTOR
+
                         element = WebDriverWait(self.driver, timeout).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                            EC.element_to_be_clickable((by_type, selector))
                         )
                         return _finalize_success_result({
                             "success": True,
@@ -1747,8 +1767,11 @@ class AgentSelenium:
                 
                 try:
                     # Determine selector type
-                    if selector.startswith('/') or selector.startswith('//'):
+                    if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
+                    elif selector.startswith('xpath='):
+                        by_type = By.XPATH
+                        selector = selector[6:]  # Remove "xpath=" prefix
                     else:
                         by_type = By.CSS_SELECTOR
                     

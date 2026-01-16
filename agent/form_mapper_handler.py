@@ -359,9 +359,10 @@ class FormMapperTaskHandler:
         print(f"[Handler] Step result: success={result.get('success')}, action={step.get('action')}")
         print(f"[Handler] Step has full_xpath: {bool(step.get('full_xpath'))}, value: {step.get('full_xpath', 'NONE')[:80] if step.get('full_xpath') else 'NONE'}")
 
-
-        # If failed and full_xpath exists and action is not verify - try fallback
-        if not result.get("success") and step.get("full_xpath") and step.get("action", "").lower() != "verify":
+        # If failed and full_xpath exists and it's a locator error - try fallback
+        # Don't try fallback for content mismatch (element found but wrong value)
+        is_locator_error = result.get("locator_error") or "not found" in result.get("error", "").lower()
+        if not result.get("success") and step.get("full_xpath") and is_locator_error:
             original_error = result.get("error", "unknown")
             full_xpath = step.get("full_xpath")
             print(f"[Handler] Primary selector failed, trying full_xpath fallback: {full_xpath}...")
@@ -389,8 +390,8 @@ class FormMapperTaskHandler:
                 print(f"[Handler] ❌ Step failed but fallback NOT attempted because:")
                 if not step.get("full_xpath"):
                     print(f"[Handler]    - No full_xpath in step")
-                if step.get("action", "").lower() == "verify":
-                    print(f"[Handler]    - Action is verify (excluded)")
+                if not is_locator_error:
+                    print(f"[Handler]    - Not a locator error (content mismatch - fallback won't help)")
         # Wait as specified
         if wait_seconds:
             time.sleep(wait_seconds)

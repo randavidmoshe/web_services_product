@@ -59,9 +59,6 @@ class MapperState(str, Enum):
     NO_MORE_PATHS = "no_more_paths"
     VALIDATION_ERROR_RECOVERY = "validation_error_recovery"
     VALIDATION_ERROR_GETTING_DOM = "validation_error_getting_dom"
-    JUNCTION_GETTING_BEFORE_SCREENSHOT = "junction_getting_before_screenshot"
-    JUNCTION_GETTING_AFTER_SCREENSHOT = "junction_getting_after_screenshot"
-    JUNCTION_VERIFYING = "junction_verifying"
 
 
 class SessionStatus:
@@ -322,7 +319,6 @@ class FormMapperOrchestrator:
             "user_provided_inputs": json.dumps(user_provided_inputs) if user_provided_inputs else "{}",
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
             "pending_screenshot_base64": "", "pending_new_steps": "[]",
-            "junction_before_screenshot": "", "junction_pending_step_result": "{}",
             "final_steps": "[]", "last_error": "",
             "upload_urls": json.dumps(
                 self._generate_upload_urls(company_id or 0, project_id or 0, session_id, "mapping", form_route_id or 0)),
@@ -362,9 +358,6 @@ class FormMapperOrchestrator:
         dict_fields = ["critical_fields_checklist", "pending_alert_info", "pending_validation_errors", "user_provided_inputs"]
         int_fields = ["current_step_index", "current_path", "user_id", "company_id",
                      "network_id", "form_route_id", "product_id", "consecutive_failures"]
-
-        bool_fields = ["in_recovery_mode", "pending_validation_error_recovery", "no_more_paths"]
-
         for k, v in data.items():
             ks = k.decode() if isinstance(k, bytes) else k
             vs = v.decode() if isinstance(v, bytes) else v
@@ -377,10 +370,7 @@ class FormMapperOrchestrator:
             elif ks in int_fields:
                 try: decoded[ks] = int(vs) if vs else 0
                 except: decoded[ks] = 0
-            elif ks in bool_fields:
-                decoded[ks] = vs.lower() == "true" if vs else False
-            else:
-                decoded[ks] = vs
+            else: decoded[ks] = vs
         return decoded
     
     def update_session(self, session_id: str, updates: Dict) -> None:
@@ -710,33 +700,21 @@ class FormMapperOrchestrator:
                                               "scenario_description": "after_recovery"})
                 return {"success": True, "agent_task": task}
 
-            # It looks like This block never executes - can be removed ?
             # Check if we just finished verify recovery steps
-            #if session.get("in_verify_recovery_mode"):
-            #    logger.info(
-            #        f"[Orchestrator] Verify recovery steps complete, getting DOM for regenerate_verify_steps")
-            #    self.update_session(session_id,
-            #                        {"in_verify_recovery_mode": False, "pending_verify_regenerate": True})
-            #    self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
-            #   task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
-            #                                 {"encode_base64": True, "save_to_folder": False,
-            #                                  "scenario_description": "after_verify_recovery"})
-            #    return {"success": True, "agent_task": task}
+            if session.get("in_verify_recovery_mode"):
+                logger.info(
+                    f"[Orchestrator] Verify recovery steps complete, getting DOM for regenerate_verify_steps")
+                self.update_session(session_id,
+                                    {"in_verify_recovery_mode": False, "pending_verify_regenerate": True})
+                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                             {"encode_base64": True, "save_to_folder": False,
+                                              "scenario_description": "after_verify_recovery"})
+                return {"success": True, "agent_task": task}
 
             return self._handle_path_complete(session_id)
 
         step = all_steps[current_index]
-
-        # If junction step, capture "before" screenshot first (unless already captured from before failure/recovery)
-        if step.get("is_junction") and not session.get("junction_before_screenshot"):
-            logger.info(f"[Orchestrator] Junction step detected, capturing before screenshot")
-            log = self._get_logger(session_id)
-            log.debug("Junction step - capturing before screenshot", category="junction")
-            self.transition_to(session_id, MapperState.JUNCTION_GETTING_BEFORE_SCREENSHOT)
-            task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
-                                         {"encode_base64": True, "save_to_folder": False,
-                                          "scenario_description": "junction_before"})
-            return {"success": True, "state": "junction_getting_before_screenshot", "agent_task": task}
 
         self.transition_to(session_id, MapperState.EXECUTING_STEP)
         task = self._push_agent_task(session_id, "form_mapper_exec_step", {
@@ -748,70 +726,7 @@ class FormMapperOrchestrator:
         log.update_context(current_step=current_index + 1, total_steps=len(all_steps))
         log.step_executing(current_index + 1, step.get('action'), step.get('selector'))
         return {"success": True, "agent_task": task}
-
-    def handle_junction_before_screenshot_result(self, session_id: str, result: Dict) -> Dict:
-        """Handle before screenshot capture for junction step, then execute the step"""
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-
-        screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
-        self.update_session(session_id, {"junction_before_screenshot": screenshot_base64})
-
-        logger.info(f"[Orchestrator] Junction before screenshot captured, executing step")
-        log = self._get_logger(session_id)
-        log.debug("Junction before screenshot captured", category="junction", has_screenshot=bool(screenshot_base64))
-
-        # Now execute the step
-        all_steps = session.get("all_steps", [])
-        current_index = session.get("current_step_index", 0)
-        step = all_steps[current_index] if current_index < len(all_steps) else {}
-
-        self.transition_to(session_id, MapperState.EXECUTING_STEP)
-        task = self._push_agent_task(session_id, "form_mapper_exec_step", {
-            "step": step, "step_index": current_index, "total_steps": len(all_steps),
-            "current_dom_hash": session.get("current_dom_hash", "")})
-        logger.info(f"[Orchestrator] Step {current_index + 1}/{len(all_steps)}: {step.get('action')}")
-        log.update_context(current_step=current_index + 1, total_steps=len(all_steps))
-        log.step_executing(current_index + 1, step.get('action'), step.get('selector'))
-        return {"success": True, "agent_task": task}
-
-    def handle_junction_after_screenshot_result(self, session_id: str, result: Dict) -> Dict:
-        """Handle after screenshot capture for junction step, trigger AI verification"""
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-
-        after_screenshot = result.get("screenshot_base64", "") if result.get("success") else ""
-        before_screenshot = session.get("junction_before_screenshot", "")
-
-        all_steps = session.get("all_steps", [])
-        current_index = session.get("current_step_index", 0)
-        step = all_steps[current_index] if current_index < len(all_steps) else {}
-
-        logger.info(f"[Orchestrator] Junction after screenshot captured, triggering AI verification")
-        log = self._get_logger(session_id)
-        log.debug("Junction after screenshot captured - triggering AI verification", category="junction",
-                  has_before=bool(before_screenshot), has_after=bool(after_screenshot))
-
-        # Trigger Celery task for AI verification
-        self.transition_to(session_id, MapperState.JUNCTION_VERIFYING)
-        return {
-            "success": True,
-            "trigger_celery": True,
-            "celery_task": "verify_junction_visual",
-            "celery_args": {
-                "session_id": session_id,
-                "before_screenshot": before_screenshot,
-                "after_screenshot": after_screenshot,
-                "step_info": {
-                    "action": step.get("action"),
-                    "selector": step.get("selector"),
-                    "value": step.get("value"),
-                    "description": step.get("description"),
-                    "junction_info": step.get("junction_info", {})
-                }
-            }
-        }
-
+    
     def handle_step_result(self, session_id: str, result: Dict) -> Dict:
         logger.info(f"[handle_step_result] ENTER session={session_id}, result_success={result.get('success')}")
         # Structured logging
@@ -906,11 +821,17 @@ class FormMapperOrchestrator:
         if consecutive_failures >= max_retries:
             # For verify steps - skip to next step instead of failing session (don't add to executed_steps)
             if step.get("action") == "verify":
-                logger.info(f"[Orchestrator] Verify step max retries ({max_retries}) reached - skipping to next step")
-                print(f"[Orchestrator] ⚠️ Verify step max retries reached - skipping to next step")
+                logger.info(
+                    f"[Orchestrator] Verify step max retries ({max_retries}) reached - skipping and triggering verify regenerate")
+                print(f"[Orchestrator] ⚠️ Verify step max retries reached - triggering verify regenerate")
                 self.update_session(session_id, {"current_step_index": current_index + 1,
-                                                 "consecutive_failures": 0})
-                return self._execute_next_step(session_id)
+                                                 "consecutive_failures": 0,
+                                                 "pending_verify_regenerate": True})
+                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                             {"encode_base64": True, "save_to_folder": False,
+                                              "scenario_description": "after_verify_max_retries"})
+                return {"success": True, "agent_task": task}
 
             log = self._get_logger(session_id)
             log.error(f"!!!!! Max consecutive failures ({max_retries}) reached", category="error",
@@ -987,7 +908,7 @@ class FormMapperOrchestrator:
             error_type = result.get("error_type", "unknown")
             logger.error(f"[Orchestrator] Page error detected: {error_type} - failing session")
             log = self._get_logger(session_id)
-            log.error(f"!!!!!! Page error detected: {error_type}", category="error", error_type=error_type)
+            log.error(f"Page error detected: {error_type}", category="error", error_type=error_type)
             self._push_agent_task(session_id, "form_mapper_log_bug", {
                 "bug_description": f"Page error: {error_type}",
                 "log_level": "error",
@@ -1005,19 +926,24 @@ class FormMapperOrchestrator:
             failed_step = all_steps[current_index] if current_index < len(all_steps) else {}
 
             if failed_step.get("action") == "verify":
-                logger.info(f"[Orchestrator] AI returned 0 recovery steps for verify - skipping and continuing")
-                # Structured logging
+                logger.info(
+                    f"[Orchestrator] AI returned 0 recovery steps for verify - skipping and triggering verify regenerate")
                 log = self._get_logger(session_id)
-                log.info("Recovery: skipping verify step (0 recovery steps)", category="recovery")
-                print(f"[Orchestrator] ℹ️ AI returned 0 recovery steps for verify - skipping and continuing")
+                log.info("Recovery: skipping verify step, triggering verify regenerate", category="recovery")
+                print(f"[Orchestrator] ℹ️ AI returned 0 recovery steps for verify - triggering verify regenerate")
                 executed_steps = session.get("executed_steps", [])
                 executed_steps.append(failed_step)
                 self.update_session(session_id, {
                     "executed_steps": executed_steps,
                     "current_step_index": current_index + 1,
-                    "consecutive_failures": 0
+                    "consecutive_failures": 0,
+                    "pending_verify_regenerate": True
                 })
-                return self._execute_next_step(session_id)
+                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                             {"encode_base64": True, "save_to_folder": False,
+                                              "scenario_description": "after_verify_skip"})
+                return {"success": True, "agent_task": task}
 
 
             # 0 recovery steps means "skip this step and regenerate remaining steps"
@@ -1046,12 +972,13 @@ class FormMapperOrchestrator:
         current_index = session.get("current_step_index", 0)
         failed_step = all_steps[current_index] if current_index < len(all_steps) else {}
 
-        # For verify steps: insert fixed step, keep remaining steps
+        # For verify steps: execute recovery step(s), then regenerate verify steps
         if failed_step.get("action") == "verify":
-            new_all_steps = all_steps[:current_index] + recovery_steps + all_steps[current_index + 1:]
+            executed_steps = session.get("executed_steps", [])
             self.update_session(session_id, {
-                "all_steps": new_all_steps,
-                "current_step_index": current_index,
+                "all_steps": executed_steps + recovery_steps,
+                "current_step_index": len(executed_steps),
+                "in_verify_recovery_mode": True
             })
             return self._execute_next_step(session_id)
 
@@ -1094,33 +1021,7 @@ class FormMapperOrchestrator:
         
         # Check for alert
         if result.get("alert_present") or result.get("alert_detected"):
-            # Clean up junction state if we were in junction flow
-            if session.get("junction_before_screenshot"):
-                self.update_session(session_id,
-                                    {"junction_before_screenshot": "", "junction_pending_step_result": "{}"})
             return self._handle_alert(session_id, result)
-
-        # Check for junction verification needed
-        junction_before = session.get("junction_before_screenshot", "")
-        if step.get("is_junction") and junction_before:
-            logger.info(f"[Orchestrator] Junction step completed, triggering visual verification")
-            log = self._get_logger(session_id)
-            log.debug("Junction step completed - triggering visual verification", category="junction")
-            # Store step result for later continuation
-            self.update_session(session_id, {
-                "junction_pending_step_result": json.dumps({
-                    "new_dom_hash": result.get("new_dom_hash", ""),
-                    "fields_changed_dom": result.get("fields_changed_dom", False),
-                    "fields_changed_js": result.get("fields_changed_js", False),
-                    "fields_changed": result.get("fields_changed", False)
-                })
-            })
-            # Capture after screenshot
-            self.transition_to(session_id, MapperState.JUNCTION_GETTING_AFTER_SCREENSHOT)
-            task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
-                                         {"encode_base64": True, "save_to_folder": False,
-                                          "scenario_description": "junction_after"})
-            return {"success": True, "state": "junction_getting_after_screenshot", "agent_task": task}
         
         # Check for DOM change
         old_hash = session.get("current_dom_hash", "")
@@ -1257,9 +1158,7 @@ class FormMapperOrchestrator:
                 log = self._get_logger(session_id)
                 log.warning("Alert recovery: no form URL, using steps directly", category="recovery")
                 self.update_session(session_id, {"all_steps": alert_steps, "executed_steps": [],
-                                                 "current_step_index": 0,
-                                                 "junction_before_screenshot": "",
-                                                 "junction_pending_step_result": "{}"})
+                                                 "current_step_index": 0})
                 return self._execute_next_step(session_id)
 
 
@@ -1327,8 +1226,7 @@ class FormMapperOrchestrator:
 
         # Clear old steps and pending_new_steps - we'll generate fresh with critical_fields_checklist
         self.update_session(session_id, {"all_steps": [], "executed_steps": [],
-                                         "current_step_index": 0, "pending_new_steps": [],
-                                         "junction_before_screenshot": "", "junction_pending_step_result": "{}"})
+                                         "current_step_index": 0, "pending_new_steps": []})
         logger.info(f"[Orchestrator] Navigated back, extracting DOM for fresh step generation")
         # Structured logging
         log = self._get_logger(session_id)
@@ -1588,7 +1486,8 @@ class FormMapperOrchestrator:
         current_index = session.get("current_step_index", 0)
         step = all_steps[current_index] if current_index < len(all_steps) else {}
 
-        if step.get("force_regenerate_verify"):
+        if step.get("force_regenerate_verify") or session.get("pending_verify_regenerate"):
+            self.update_session(session_id, {"pending_verify_regenerate": False})
             return self._trigger_regenerate_verify_steps(session_id, session.get("pending_screenshot_base64", ""))
 
         return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
@@ -1637,7 +1536,7 @@ class FormMapperOrchestrator:
             logger.info(f"[Orchestrator] Validation errors detected, getting fresh DOM for recovery")
             # Structured logging
             log = self._get_logger(session_id)
-            log.info("!!!!! Validation errors in regenerate - getting fresh DOM", category="recovery")
+            log.info("Validation errors in regenerate - getting fresh DOM", category="recovery")
             self.update_session(session_id, {"pending_validation_error_recovery": True})
             self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
             task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
@@ -1650,7 +1549,7 @@ class FormMapperOrchestrator:
             error_type = result.get("error_type", "unknown")
             logger.error(f"[Orchestrator] Page error detected during verification: {error_type} - failing session")
             log = self._get_logger(session_id)
-            log.error(f"!!!!! Page error detected during verification: {error_type}", category="error", error_type=error_type)
+            log.error(f"Page error detected during verification: {error_type}", category="error", error_type=error_type)
             self._push_agent_task(session_id, "form_mapper_log_bug", {
                 "bug_description": f"Page error during verification: {error_type}",
                 "log_level": "error",
@@ -1673,8 +1572,7 @@ class FormMapperOrchestrator:
         executed_steps = session.get("executed_steps", [])
         current_index = session.get("current_step_index", 0)
         self.update_session(session_id, {"all_steps": executed_steps + new_steps,
-                                         "current_step_index": len(executed_steps),
-                                         "in_recovery_mode": False})
+                                         "current_step_index": len(executed_steps)})
         logger.info(f"[Orchestrator] Regenerated {len(new_steps)} steps, continuing from step {len(executed_steps) + 1}")
         # Structured logging
         log = self._get_logger(session_id)
@@ -1695,7 +1593,7 @@ class FormMapperOrchestrator:
             logger.info(f"[Orchestrator] Validation errors detected in verify, getting fresh DOM for recovery")
             # Structured logging
             log = self._get_logger(session_id)
-            log.info("!!!!!! Validation errors in verify regenerate - getting fresh DOM", category="recovery")
+            log.info("Validation errors in verify regenerate - getting fresh DOM", category="recovery")
             self.update_session(session_id, {"pending_validation_error_recovery": True})
             self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
             task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
@@ -1708,7 +1606,7 @@ class FormMapperOrchestrator:
             error_type = result.get("error_type", "unknown")
             logger.error(f"[Orchestrator] Page error detected in verify: {error_type} - failing session")
             log = self._get_logger(session_id)
-            log.error(f"!!!!! Page error detected in verify: {error_type}", category="error", error_type=error_type)
+            log.error(f"Page error detected in verify: {error_type}", category="error", error_type=error_type)
             self._push_agent_task(session_id, "form_mapper_log_bug", {
                 "bug_description": f"Page error in verify: {error_type}",
                 "log_level": "error",
@@ -1731,8 +1629,7 @@ class FormMapperOrchestrator:
         self.update_session(session_id, {
             "all_steps": executed_steps + new_steps,
             "current_step_index": len(executed_steps),
-            "pending_new_steps": [],
-            "in_recovery_mode": False
+            "pending_new_steps": []
         })
 
         logger.info(
@@ -2049,8 +1946,6 @@ class FormMapperOrchestrator:
                 "executed_steps": "[]",
                 "all_steps": "[]",
                 "current_step_index": 0,
-                "junction_before_screenshot": "",
-                "junction_pending_step_result": "{}",
             })
             # Start new AI analysis with junction instructions
             return self._restart_for_next_path(session_id)
@@ -2068,66 +1963,6 @@ class FormMapperOrchestrator:
             "complete_logging": True
         })
         return {"success": True, "state": "completed", "total_steps": len(final_stages)}
-
-    def handle_junction_visual_result(self, session_id: str, result: Dict) -> Dict:
-        """Handle AI junction visual verification result, then continue normal flow"""
-        session = self.get_session(session_id)
-        if not session: return {"success": False, "error": "Session not found"}
-
-        is_junction = result.get("is_junction", False)
-        reason = result.get("reason", "")
-
-        logger.info(f"[Orchestrator] Junction visual verification: is_junction={is_junction}, reason={reason}")
-        log = self._get_logger(session_id)
-        log.debug(f"Junction visual verification result: is_junction={is_junction}",
-                  category="junction", is_junction=is_junction, reason=reason)
-
-        all_steps = session.get("all_steps", [])
-        current_index = session.get("current_step_index", 0)
-        step = all_steps[current_index] if current_index < len(all_steps) else {}
-        executed_steps = session.get("executed_steps", [])
-
-        # If AI says not a junction, strip the flag
-        if not is_junction:
-            logger.info(f"[Orchestrator] AI determined not a junction - stripping is_junction flag")
-            step.pop("is_junction", None)
-            step.pop("junction_info", None)
-            # Also strip from executed_steps if already added
-            if executed_steps and executed_steps[-1].get("selector") == step.get("selector"):
-                executed_steps[-1].pop("is_junction", None)
-                executed_steps[-1].pop("junction_info", None)
-                self.update_session(session_id, {"executed_steps": executed_steps})
-
-        # Clean up junction screenshots
-        self.update_session(session_id, {"junction_before_screenshot": ""})
-
-        # Restore pending step result and continue normal flow
-        pending_result_json = session.get("junction_pending_step_result", "{}")
-        pending_result = json.loads(pending_result_json) if pending_result_json else {}
-        self.update_session(session_id, {"junction_pending_step_result": "{}"})
-
-        config = session.get("config", {})
-        new_hash = pending_result.get("new_dom_hash", "")
-        old_hash = session.get("current_dom_hash", "")
-
-        # Continue with normal flow: check DOM change
-        if new_hash and new_hash != old_hash:
-            # Strip is_junction from local step to prevent _handle_dom_change from re-evaluating
-            # (AI visual verification already made the decision)
-            step.pop("is_junction", None)
-            step.pop("junction_info", None)
-            # Reconstruct result for _handle_dom_change
-            reconstructed_result = {
-                "new_dom_hash": new_hash,
-                "fields_changed_dom": pending_result.get("fields_changed_dom", False),
-                "fields_changed_js": pending_result.get("fields_changed_js", False),
-                "fields_changed": pending_result.get("fields_changed", False)
-            }
-            return self._handle_dom_change(session_id, session, step, reconstructed_result, new_hash)
-
-        # No DOM change - move to next step
-        self.update_session(session_id, {"current_step_index": current_index + 1})
-        return self._execute_next_step(session_id)
 
     def handle_ai_path_evaluation_result(self, session_id: str, result: Dict) -> Dict:
         """Handle result from AI path evaluation Celery task"""
@@ -2383,10 +2218,6 @@ class FormMapperOrchestrator:
             return self.handle_navigate_back_result(session_id, result)
         elif state == MapperState.NEXT_PATH_NAVIGATING.value:
             return self.handle_next_path_navigate_result(session_id, result)
-        elif state == MapperState.JUNCTION_GETTING_BEFORE_SCREENSHOT.value:
-            return self.handle_junction_before_screenshot_result(session_id, result)
-        elif state == MapperState.JUNCTION_GETTING_AFTER_SCREENSHOT.value:
-            return self.handle_junction_after_screenshot_result(session_id, result)
         elif state == MapperState.DOM_CHANGE_GETTING_SCREENSHOT.value:
             validation_errors = session.get("pending_validation_errors", {})
             if validation_errors.get("has_errors"):
@@ -2424,8 +2255,6 @@ class FormMapperOrchestrator:
             return self.handle_regenerate_steps_result(session_id, result)
         elif task_name == "regenerate_verify_steps":
             return self.handle_regenerate_verify_steps_result(session_id, result)
-        elif task_name == "verify_junction_visual":
-            return self.handle_junction_visual_result(session_id, result)
         elif task_name == "evaluate_paths_with_ai":
             return self.handle_ai_path_evaluation_result(session_id, result)
         elif task_name == "save_mapping_result":

@@ -158,6 +158,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "regenerate_steps": regenerate_steps,
         "evaluate_paths_with_ai": evaluate_paths_with_ai,
         "save_mapping_result": save_mapping_result,
+        "verify_junction_visual": verify_junction_visual,
     }
     
     task = task_map.get(task_name)
@@ -450,6 +451,18 @@ def analyze_failure_and_recover(
             _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
             return result
 
+        # Check if page error was detected - fail session
+        if isinstance(recovery_result, dict) and recovery_result.get("page_error_detected"):
+            print(f"[FormMapperTask] ❌ Page error detected: {recovery_result.get('error_type')} - failing session")
+            result = {
+                "success": False,
+                "page_error_detected": True,
+                "error_type": recovery_result.get("error_type", "unknown")
+            }
+            _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+            return result
+
+
         recovery_steps = recovery_result if isinstance(recovery_result, list) else []
         ai_result = {"steps": recovery_steps, "no_more_paths": False}
 
@@ -669,7 +682,7 @@ def handle_validation_error_recovery(
         ai_recovery = helpers["alert_recovery"]
 
         #print(f"!!!! 🔴 Analyzing validation errors...")
-        msg = f"!!!! 🔴 Analyzing validation errors..."
+        msg = f"!!!! 🔴 Analyzing validation errors prompter ..."
         print(msg)
         log.debug(msg, category="debug_trace")
 
@@ -927,7 +940,9 @@ def regenerate_steps(
             "success": True,
             "new_steps": ai_result.get("steps", []),
             "no_more_paths": ai_result.get("no_more_paths", False),
-            "validation_errors_detected": ai_result.get("validation_errors_detected", False)
+            "validation_errors_detected": ai_result.get("validation_errors_detected", False),
+            "page_error_detected": ai_result.get("page_error_detected", False),
+            "error_type": ai_result.get("error_type", "")
         }
         
 
@@ -1051,7 +1066,9 @@ def regenerate_verify_steps(
             "success": True,
             "new_steps": new_steps,
             "no_more_paths": no_more_paths,
-            "validation_errors_detected": ai_result.get("validation_errors_detected", False)
+            "validation_errors_detected": ai_result.get("validation_errors_detected", False),
+            "page_error_detected": ai_result.get("page_error_detected", False),
+            "error_type": ai_result.get("error_type", ""),
         }
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
@@ -1075,6 +1092,103 @@ def regenerate_verify_steps(
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=2)
+def verify_junction_visual(
+        self,
+        session_id: str,
+        before_screenshot: str,
+        after_screenshot: str,
+        step_info: Dict
+) -> Dict:
+    """Celery task: Use AI vision to verify if junction revealed new fields."""
+    logger.info(f"[FormMapperTask] Junction visual verification for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "verify_junction_visual", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"), company_name=ctx.get("company_name"))
+        log.info("Celery task: verify_junction_visual started", category="celery_task")
+
+        msg = f"!!!! 🔀 Junction Visual Verification for session {session_id}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Step info: {step_info}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        log.ai_call("verify_junction_visual", prompt_size=len(before_screenshot) + len(after_screenshot))
+
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "verify_junction_visual", result)
+            return result
+
+        from services.ai_form_mapper_junction_visual_prompter import create_junction_visual_verifier
+        verifier = create_junction_visual_verifier(api_key, session_logger=log)
+
+        # Call AI to verify junction
+        ai_result = verifier.verify_junction(
+            before_screenshot=before_screenshot,
+            after_screenshot=after_screenshot,
+            step_info=step_info
+        )
+
+        msg = f"!!!! ✅ Junction Visual Verification result: is_junction={ai_result.get('is_junction')}, reason={ai_result.get('reason')}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("verify_junction_visual", success=True)
+
+        logger.info(f"[FormMapperTask] Junction visual verification result: {ai_result}")
+
+        # Record AI usage
+        from services.ai_budget_service import AIOperationType
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx.get("user_id", 0),
+            AIOperationType.FORM_MAPPER_REGENERATE,
+            500,  # Approximate input tokens (images are ~1000 tokens each but we use a rough estimate)
+            100,  # Approximate output tokens
+            session_id
+        )
+
+        result = {
+            "success": True,
+            "is_junction": ai_result.get("is_junction", True),
+            "reason": ai_result.get("reason", ""),
+            "new_fields_detected": ai_result.get("new_fields_detected", [])
+        }
+        _continue_orchestrator_chain(session_id, "verify_junction_visual", result)
+        return result
+
+    except Exception as e:
+        logger.error(f"[FormMapperTask] Junction visual verification error: {e}")
+        msg = f"!!!! ❌ Junction Visual Verification error: {e}"
+        print(msg)
+        if 'log' in locals():
+            log.debug(msg, category="debug_trace")
+
+        # On error, default to keeping junction (safer)
+        result = {
+            "success": True,
+            "is_junction": True,
+            "reason": f"Verification error: {str(e)} - keeping junction flag as precaution"
+        }
+        _continue_orchestrator_chain(session_id, "verify_junction_visual", result)
+        return result
     finally:
         db.close()
 

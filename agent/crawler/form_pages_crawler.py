@@ -1063,7 +1063,12 @@ class FormPagesCrawler:
 
             # Call server to extract form name
             # Get page HTML - use outerHTML to get fully rendered DOM (includes Vue.js/React content)
-            page_html = self.driver.execute_script("return document.documentElement.outerHTML")
+            #page_html = self.driver.execute_script("return document.documentElement.outerHTML")
+            page_html = self.driver.execute_script("""
+                const clone = document.documentElement.cloneNode(true);
+                clone.querySelectorAll('svg').forEach(svg => svg.innerHTML = '');
+                return clone.outerHTML;
+            """)
             
             # Take screenshot of the form page for AI vision analysis
             screenshot_base64 = None

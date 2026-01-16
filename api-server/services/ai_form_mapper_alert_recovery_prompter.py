@@ -516,7 +516,7 @@ Return ONLY the JSON object.
             # Call API
             # Debug mode: log full prompt (DOM truncated)
             if self.session_logger and self.session_logger.debug_mode:
-                import re
+                #import re
                 prompt_for_log = re.sub(r'## Current DOM.*?(?=\n##|\n\*\*|$)', '## Current DOM\n[DOM TRUNCATED]\n\n',
                                         prompt, flags=re.DOTALL)
                 self.session_logger.ai_call("analyze_validation_errors", prompt_size=len(prompt), prompt=prompt_for_log)
