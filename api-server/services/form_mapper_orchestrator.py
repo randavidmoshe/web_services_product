@@ -62,6 +62,8 @@ class MapperState(str, Enum):
     JUNCTION_GETTING_BEFORE_SCREENSHOT = "junction_getting_before_screenshot"
     JUNCTION_GETTING_AFTER_SCREENSHOT = "junction_getting_after_screenshot"
     JUNCTION_VERIFYING = "junction_verifying"
+    VISUAL_PAGE_VERIFYING = "visual_page_verifying"
+    VISUAL_PAGE_GETTING_SCREENSHOT = "visual_page_getting_screenshot"
 
 
 class SessionStatus:
@@ -323,6 +325,7 @@ class FormMapperOrchestrator:
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
             "pending_screenshot_base64": "", "pending_new_steps": "[]",
             "junction_before_screenshot": "", "junction_pending_step_result": "{}",
+            "visual_verify_results": "[]", "visual_verify_total_wait_seconds": 0, "visual_verify_failed_fields": "[]",
             "final_steps": "[]", "last_error": "",
             "upload_urls": json.dumps(
                 self._generate_upload_urls(company_id or 0, project_id or 0, session_id, "mapping", form_route_id or 0)),
@@ -673,6 +676,21 @@ class FormMapperOrchestrator:
     def handle_generate_initial_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+
+        # Check if page error detected - fail session
+        if result.get("page_error_detected"):
+            error_type = result.get("error_type", "unknown")
+            logger.error(f"[Orchestrator] Page error detected during initial analysis: {error_type}")
+            log = self._get_logger(session_id)
+            log.error(f"!!!!! Page error detected: {error_type}", category="error", error_type=error_type)
+            self._push_agent_task(session_id, "form_mapper_log_bug", {
+                "bug_description": f"Page error during initial analysis: {error_type}",
+                "log_level": "error",
+                "screenshot": True,
+                "bug_type": "page_error"
+            })
+            return self._fail_session(session_id, f"Page error: {error_type}")
+
         if result.get("no_more_paths", False) and session.get("current_path", 1) > 1:
             self.transition_to(session_id, MapperState.NO_MORE_PATHS)
             return self._complete_all_paths(session_id)
@@ -871,6 +889,10 @@ class FormMapperOrchestrator:
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
         step = all_steps[current_index] if current_index < len(all_steps) else {}
+
+        # Clear junction state so recovery step captures fresh before screenshot
+        if session.get("junction_before_screenshot"):
+            self.update_session(session_id, {"junction_before_screenshot": "", "junction_pending_step_result": "{}"})
 
         # Verification failure handling
         if step.get("action") == "verify":
@@ -1567,6 +1589,43 @@ class FormMapperOrchestrator:
 
         #return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
 
+        # Check if this is a force_regenerate_verify step - trigger visual page verification
+        all_steps = session.get("all_steps", [])
+        current_index = session.get("current_step_index", 0)
+        step = all_steps[current_index] if current_index < len(all_steps) else {}
+
+        if step.get("force_regenerate_verify"):
+            screenshot_base64 = session.get("pending_screenshot_base64", "")
+            if screenshot_base64:
+                logger.info(
+                    f"[Orchestrator] force_regenerate_verify step - triggering visual page verification")
+                log = self._get_logger(session_id)
+                log.debug("force_regenerate_verify - triggering visual page verification", category="milestone")
+
+                # Reset visual verify state for new verification cycle
+                self.update_session(session_id, {
+                    "visual_verify_results": "[]",
+                    "visual_verify_total_wait_seconds": 0,
+                    "visual_verify_failed_fields": "[]",
+                    "visual_verify_retry_count": 0
+                })
+
+                self.transition_to(session_id, MapperState.VISUAL_PAGE_VERIFYING)
+                executed_steps = session.get("executed_steps", [])
+                return {
+                    "success": True,
+                    "trigger_celery": True,
+                    "celery_task": "verify_page_visual",
+                    "celery_args": {
+                        "session_id": session_id,
+                        "screenshot_base64": screenshot_base64,
+                        "executed_steps": executed_steps,
+                        "already_verified_fields": [],
+                        "retry_count": 0,
+                        "total_wait_seconds": 0
+                    }
+                }
+
         # Get fresh DOM before regeneration
         self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_DOM)
         task = self._push_agent_task(session_id, "form_mapper_extract_dom", {})
@@ -2079,7 +2138,7 @@ class FormMapperOrchestrator:
 
         logger.info(f"[Orchestrator] Junction visual verification: is_junction={is_junction}, reason={reason}")
         log = self._get_logger(session_id)
-        log.debug(f"Junction visual verification result: is_junction={is_junction}",
+        log.debug(f"!!!!!!!!!!  Junction visual verification result: is_junction={is_junction}",
                   category="junction", is_junction=is_junction, reason=reason)
 
         all_steps = session.get("all_steps", [])
@@ -2093,7 +2152,7 @@ class FormMapperOrchestrator:
             step.pop("is_junction", None)
             step.pop("junction_info", None)
             # Also strip from executed_steps if already added
-            if executed_steps and executed_steps[-1].get("selector") == step.get("selector"):
+            if executed_steps:
                 executed_steps[-1].pop("is_junction", None)
                 executed_steps[-1].pop("junction_info", None)
                 self.update_session(session_id, {"executed_steps": executed_steps})
@@ -2128,6 +2187,239 @@ class FormMapperOrchestrator:
         # No DOM change - move to next step
         self.update_session(session_id, {"current_step_index": current_index + 1})
         return self._execute_next_step(session_id)
+
+    def handle_visual_page_verify_result(self, session_id: str, result: Dict) -> Dict:
+        """Handle AI visual page verification result - verify field values on result page"""
+        session = self.get_session(session_id)
+        if not session: return {"success": False, "error": "Session not found"}
+
+        # Check if validation errors detected - route to validation error recovery
+        if result.get("validation_errors_detected"):
+            logger.info(f"[Orchestrator] Visual page verify detected validation errors - routing to recovery")
+            log = self._get_logger(session_id)
+            log.info("!!!! Visual page verify: validation errors detected - routing to recovery", category="recovery")
+            self.update_session(session_id, {"pending_validation_error_recovery": True})
+            self.transition_to(session_id, MapperState.VALIDATION_ERROR_GETTING_DOM)
+            task = self._push_agent_task(session_id, "form_mapper_extract_dom", {
+                "capture_screenshot": True
+            })
+            return {"success": True, "state": "validation_error_getting_dom", "agent_task": task}
+
+        page_ready = result.get("page_ready", True)
+        page_type = result.get("page_type", "unknown")
+        results = result.get("results", [])
+        reason = result.get("reason", "")
+        retry_count = result.get("retry_count", 0)
+        total_wait_seconds = result.get("total_wait_seconds", 0)
+
+        config = session.get("config", {})
+        max_wait = config.get("visual_verify_max_wait_seconds", 180)
+
+        log = self._get_logger(session_id)
+        logger.info(
+            f"[Orchestrator] Visual page verify: page_ready={page_ready}, results={len(results)}, waited={total_wait_seconds}s")
+        log.debug(
+            f"Visual page verify result: page_ready={page_ready}, page_type={page_type}, results_count={len(results)}",
+            category="milestone", page_ready=page_ready, page_type=page_type)
+
+        # Page not ready - retry with progressive backoff
+        if not page_ready:
+            # Calculate next delay: 10s, 30s, 60s, 60s...
+            if retry_count == 0:
+                next_delay = 10
+            elif retry_count == 1:
+                next_delay = 30
+            else:
+                next_delay = 60
+
+            new_total_wait = total_wait_seconds + next_delay
+
+            if new_total_wait > max_wait:
+                logger.error(f"[Orchestrator] Visual page verify timeout after {total_wait_seconds}s - failing session")
+                log.error(f"!!!! Visual page verify timeout after {total_wait_seconds}s", category="error")
+
+                # Report endless spinner as a BUG first
+                self._push_agent_task(session_id, "form_mapper_log_bug", {
+                    "bug_description": f"Endless spinner - page stuck loading for {total_wait_seconds}s after form submission",
+                    "log_level": "error",
+                    "screenshot": True,
+                    "bug_type": "page_load_timeout",
+                    "extra_data": {
+                        "wait_time_seconds": total_wait_seconds,
+                        "max_wait_seconds": max_wait,
+                        "retry_count": retry_count
+                    }
+                })
+
+                return self._fail_session(session_id, f"Page not ready after {total_wait_seconds}s wait")
+
+            logger.info(
+                f"[Orchestrator] Page not ready, scheduling fresh screenshot in {next_delay}s (total waited: {new_total_wait}s)")
+            log.debug(f"Page not ready - will get fresh screenshot in {next_delay}s (total: {new_total_wait}s)",
+                      category="milestone")
+
+            # Store retry state in Redis for stateless recovery
+            self.update_session(session_id, {
+                "visual_verify_total_wait_seconds": new_total_wait,
+                "visual_verify_retry_count": retry_count + 1
+            })
+
+            # Transition to getting screenshot state - will request fresh screenshot after delay
+            self.transition_to(session_id, MapperState.VISUAL_PAGE_GETTING_SCREENSHOT)
+
+            # Schedule delayed trigger to get fresh screenshot from agent
+            return {
+                "success": True,
+                "trigger_celery": True,
+                "celery_task": "trigger_visual_page_screenshot",
+                "celery_countdown": next_delay,
+                "celery_args": {
+                    "session_id": session_id
+                }
+            }
+
+        # Page is ready - process results
+        existing_results = json.loads(session.get("visual_verify_results", "[]"))
+        existing_failed = json.loads(session.get("visual_verify_failed_fields", "[]"))
+
+        new_failures = []
+        for field_result in results:
+            field_name = field_result.get("field", "")
+            status = field_result.get("status", "")
+            already_sent = field_result.get("already_sent", False)
+
+            # Add to cumulative results
+            existing_results.append(field_result)
+
+            # Log new failures (not already sent)
+            if status == "failed" and not already_sent and field_name not in existing_failed:
+                new_failures.append(field_result)
+                existing_failed.append(field_name)
+
+        # Update session with cumulative results
+        self.update_session(session_id, {
+            "visual_verify_results": json.dumps(existing_results),
+            "visual_verify_failed_fields": json.dumps(existing_failed)
+        })
+
+        # Log and report new failures
+        for failure in new_failures:
+            field_name = failure.get("field", "unknown")
+            expected = failure.get("expected", "")
+            actual = failure.get("actual", "")
+            failure_reason = failure.get("reason", "value mismatch")
+            field_page_type = failure.get("page_type", page_type)
+
+            msg = f"!!!!!! Visual verify FAILED: {field_name} on {field_page_type} - expected: '{expected}', actual: '{actual}', reason: {failure_reason}"
+            logger.warning(f"[Orchestrator] {msg}")
+            log.warning(msg, category="verify_failure", field=field_name, expected=expected, actual=actual,
+                        page_type=field_page_type)
+
+            # Push bug log to agent
+            self._push_agent_task(session_id, "form_mapper_log_bug", {
+                "bug_description": f"Verify failed: {field_name} - expected '{expected}', got '{actual}', reason: {failure_reason}",
+                "log_level": "warning",
+                "screenshot": True,
+                "bug_type": "visual_verify_failure",
+                "extra_data": {
+                    "field": field_name,
+                    "expected": expected,
+                    "actual": actual,
+                    "page_type": field_page_type
+                }
+            })
+
+        # Log summary
+        passed_count = len([r for r in results if r.get("status") == "passed"])
+        failed_count = len([r for r in results if r.get("status") == "failed"])
+        log.info(
+            f"!!!!!!! Visual page verification complete: {passed_count} passed, {failed_count} failed, page_type={page_type}",
+            category="milestone", passed=passed_count, failed=failed_count, page_type=page_type)
+
+        # Continue to DOM extraction for regenerate_verify_steps
+        self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_DOM)
+        task = self._push_agent_task(session_id, "form_mapper_extract_dom", {})
+        return {"success": True, "state": "dom_change_getting_dom", "agent_task": task}
+
+    def handle_visual_page_screenshot_trigger(self, session_id: str, result: Dict) -> Dict:
+        """
+        Handle delayed trigger to get fresh screenshot for visual page verification retry.
+        Called by Celery after countdown delay - pushes agent task to capture screenshot.
+        Fully stateless - all state retrieved from Redis session.
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        log = self._get_logger(session_id)
+        retry_count = session.get("visual_verify_retry_count", 0)
+        total_wait = session.get("visual_verify_total_wait_seconds", 0)
+
+        logger.info(
+            f"[Orchestrator] Requesting fresh screenshot for visual page verify (retry #{retry_count}, waited {total_wait}s)")
+        log.debug(f"Requesting fresh screenshot for visual page verify retry #{retry_count}", category="milestone")
+
+        # Push agent task to capture fresh screenshot
+        task = self._push_agent_task(session_id, "form_mapper_get_screenshot", {
+            "scenario": "visual_page_verify_retry"
+        })
+        return {"success": True, "state": "visual_page_getting_screenshot", "agent_task": task}
+
+    def handle_visual_page_screenshot_result(self, session_id: str, result: Dict) -> Dict:
+        """
+        Handle fresh screenshot from agent for visual page verification retry.
+        Triggers verify_page_visual Celery task with the new screenshot.
+        Fully stateless - all state retrieved from Redis session.
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        log = self._get_logger(session_id)
+
+        if not result.get("success"):
+            error_msg = result.get("error", "Unknown error")
+            logger.error(f"[Orchestrator] Failed to capture screenshot for visual page verify: {error_msg}")
+            log.error(f"Failed to capture screenshot for visual page verify: {error_msg}", category="error")
+            return self._fail_session(session_id, f"Screenshot capture failed: {error_msg}")
+
+        screenshot_base64 = result.get("screenshot_base64", "")
+        if not screenshot_base64:
+            logger.error(f"[Orchestrator] No screenshot in agent result for visual page verify")
+            log.error("No screenshot in agent result for visual page verify", category="error")
+            return self._fail_session(session_id, "No screenshot in agent result")
+
+        # Update session with fresh screenshot
+        self.update_session(session_id, {"pending_screenshot_base64": screenshot_base64})
+
+        # Retrieve retry state from Redis session (stateless)
+        retry_count = session.get("visual_verify_retry_count", 0)
+        total_wait_seconds = session.get("visual_verify_total_wait_seconds", 0)
+        executed_steps = session.get("executed_steps", [])
+        already_verified = json.loads(session.get("visual_verify_results", "[]"))
+
+        logger.info(
+            f"[Orchestrator] Fresh screenshot captured ({len(screenshot_base64)} chars), triggering visual page verify (retry #{retry_count})")
+        log.debug(f"Fresh screenshot captured, triggering visual page verify retry #{retry_count}",
+                  category="milestone")
+
+        # Transition to verifying state
+        self.transition_to(session_id, MapperState.VISUAL_PAGE_VERIFYING)
+
+        # Trigger visual page verification with fresh screenshot
+        return {
+            "success": True,
+            "trigger_celery": True,
+            "celery_task": "verify_page_visual",
+            "celery_args": {
+                "session_id": session_id,
+                "screenshot_base64": screenshot_base64,
+                "executed_steps": executed_steps,
+                "already_verified_fields": already_verified,
+                "retry_count": retry_count,
+                "total_wait_seconds": total_wait_seconds
+            }
+        }
 
     def handle_ai_path_evaluation_result(self, session_id: str, result: Dict) -> Dict:
         """Handle result from AI path evaluation Celery task"""
@@ -2396,6 +2688,8 @@ class FormMapperOrchestrator:
             return self.handle_dom_change_dom_result(session_id, result)
         elif state == MapperState.VALIDATION_ERROR_GETTING_DOM.value:
             return self.handle_validation_error_dom_result(session_id, result)
+        elif state == MapperState.VISUAL_PAGE_GETTING_SCREENSHOT.value:
+            return self.handle_visual_page_screenshot_result(session_id, result)
         else:
             logger.warning(f"[Orchestrator] Unhandled state {state} for task {task_type}")
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
@@ -2426,6 +2720,10 @@ class FormMapperOrchestrator:
             return self.handle_regenerate_verify_steps_result(session_id, result)
         elif task_name == "verify_junction_visual":
             return self.handle_junction_visual_result(session_id, result)
+        elif task_name == "verify_page_visual":
+            return self.handle_visual_page_verify_result(session_id, result)
+        elif task_name == "trigger_visual_page_screenshot":
+            return self.handle_visual_page_screenshot_trigger(session_id, result)
         elif task_name == "evaluate_paths_with_ai":
             return self.handle_ai_path_evaluation_result(session_id, result)
         elif task_name == "save_mapping_result":

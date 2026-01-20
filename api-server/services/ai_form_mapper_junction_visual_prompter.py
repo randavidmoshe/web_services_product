@@ -102,11 +102,13 @@ class JunctionVisualVerifier:
         description = step_info.get("description", "")
         junction_info = step_info.get("junction_info", {})
 
-        prompt = f"""You are analyzing two screenshots of a web form to determine if a field is a TRUE JUNCTION.
+        prompt = f"""You are analyzing two screenshots to determine if THIS SPECIFIC STEP revealed new form fields.
 
 **What is a Junction?**
 A junction is a field (dropdown, radio buttons, etc.) where DIFFERENT options reveal DIFFERENT sets of form fields.
 The key question: Would selecting a DIFFERENT option reveal DIFFERENT fields?
+
+**IMPORTANT:** The first image is BEFORE this step was executed. The second image is AFTER this step was executed. Compare them to see if THIS step caused new form fields to appear. Focus ONLY on changes caused by this action on selector "{selector}".
 
 **TRUE JUNCTION:**
 - Different options show completely different field sets
@@ -142,9 +144,16 @@ Ask yourself: Are the new fields SPECIFIC to this option, or would ANY option re
 - The new field would logically appear for ANY option selected
 
 **Do NOT count as new fields:**
+- The dropdown/select opening to show its options list (that's just the dropdown expanding)
 - The same field with a different selected value
 - Validation messages or error text
 - Minor styling changes, loading indicators, tooltips
+
+**NOT a junction - examples:**
+- Before: dropdown is closed. After: dropdown is open showing its options → NOT a junction (just the dropdown expanding)
+- Before: accordion is collapsed. After: accordion is expanded showing same content → NOT a junction
+- Before: field empty. After: field has selected value → NOT a junction (just showing selection)
+
 
 **Response format - return ONLY valid JSON:**
 {{
@@ -189,6 +198,13 @@ Set is_junction to FALSE if this is a parent-child dependency where any option r
         ]
 
         response = self._call_api_with_retry_multimodal(content, max_tokens=1024)
+
+        # Log raw AI response
+        if response:
+            msg = f"!!!! 🔀 Junction Visual RAW AI Response: {response}"
+            print(msg)
+            if self.session_logger:
+                self.session_logger.debug(msg, category="debug_trace")
 
         if not response:
             # Default to keeping junction if AI fails (safer)

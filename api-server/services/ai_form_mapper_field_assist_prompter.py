@@ -8,7 +8,7 @@
 import logging
 import anthropic
 from typing import Dict, Any, Optional
-
+import json
 logger = logging.getLogger(__name__)
 
 
@@ -37,7 +37,9 @@ class AIFieldAssist:
         description = step.get("description", "")
 
         prompt = f"""Look at this screenshot. I just typed in a field to trigger autocomplete suggestions.
-
+    
+    
+    
 Field info:
 - Selector: {selector}
 - Description: {description}
@@ -95,6 +97,8 @@ REASON: (brief explanation - what do you see?)"""
                 "reason": f"Error: {str(e)}",
                 "error": True
             }
+
+
 
     def query(self, query_type: str, screenshot_base64: str, step: Dict) -> Dict[str, Any]:
         """

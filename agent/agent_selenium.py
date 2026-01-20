@@ -505,6 +505,27 @@ class AgentSelenium:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def get_element_bounds(self, selector: str) -> Dict:
+        """Get bounding rectangle for an element."""
+        try:
+            element = self._find_element(selector)
+            if not element:
+                return {"success": False, "error": f"Element not found: {selector}"}
+
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+            time.sleep(0.2)
+
+            rect = element.rect
+            return {
+                "success": True,
+                "left": rect["x"],
+                "top": rect["y"],
+                "width": rect["width"],
+                "height": rect["height"]
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
 
     def extract_form_dom_with_js(self) -> Dict:
         """
@@ -1323,6 +1344,68 @@ class AgentSelenium:
                     "action": "fill_autocomplete",
                     "selector": selector,
                     "value": value
+                })
+
+            # SLIDER ACTION
+            elif action == "slider":
+                element = self._find_element(selector)
+                if not element:
+                    return {"success": False, "error": f"Element not found: {selector}", "locator_error": True}
+
+                click_x = step.get("click_x")
+                click_y = step.get("click_y")
+
+                if click_x is None or click_y is None:
+                    return {"success": False, "error": "click_x and click_y required for slider"}
+
+                elem_rect = element.rect
+                elem_center_x = elem_rect["x"] + elem_rect["width"] / 2
+                elem_center_y = elem_rect["y"] + elem_rect["height"] / 2
+
+                offset_x = int(click_x - elem_center_x)
+                offset_y = int(click_y - elem_center_y)
+
+                ActionChains(self.driver).move_to_element_with_offset(element, offset_x, offset_y).click().perform()
+
+                return _finalize_success_result({
+                    "success": True,
+                    "action": "slider",
+                    "selector": selector
+                })
+
+            # RANGE SLIDER ACTION
+            elif action == "range_slider":
+                element = self._find_element(selector)
+                if not element:
+                    return {"success": False, "error": f"Element not found: {selector}", "locator_error": True}
+
+                click_x1 = step.get("click_x1")
+                click_y1 = step.get("click_y1")
+                click_x2 = step.get("click_x2")
+                click_y2 = step.get("click_y2")
+
+                if None in (click_x1, click_y1, click_x2, click_y2):
+                    return {"success": False,
+                            "error": "click_x1, click_y1, click_x2, click_y2 required for range_slider"}
+
+                elem_rect = element.rect
+                elem_center_x = elem_rect["x"] + elem_rect["width"] / 2
+                elem_center_y = elem_rect["y"] + elem_rect["height"] / 2
+
+                offset1_x = int(click_x1 - elem_center_x)
+                offset1_y = int(click_y1 - elem_center_y)
+                ActionChains(self.driver).move_to_element_with_offset(element, offset1_x, offset1_y).click().perform()
+
+                time.sleep(0.3)
+
+                offset2_x = int(click_x2 - elem_center_x)
+                offset2_y = int(click_y2 - elem_center_y)
+                ActionChains(self.driver).move_to_element_with_offset(element, offset2_x, offset2_y).click().perform()
+
+                return _finalize_success_result({
+                    "success": True,
+                    "action": "range_slider",
+                    "selector": selector
                 })
 
             # CLICK ACTION

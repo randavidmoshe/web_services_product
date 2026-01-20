@@ -24,8 +24,8 @@ class AIHelper:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        #self.model = "claude-sonnet-4-5-20250929"
-        self.model = "claude-haiku-4-5-20251001"
+        self.model = "claude-sonnet-4-5-20250929"
+        #self.model = "claude-haiku-4-5-20251001"
         self.session_logger = session_logger  # For debug mode logging
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
@@ -601,11 +601,21 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         **DO NOT skip tabs! Every tab must be filled before moving forward!**
         
-        **Junctions:** Mark any element where user selects ONE option from multiple choices, and different choices may reveal different form fields.
+        **Junctions:** Mark a step as a junction if ANY of these are true:
+        - The element is one of several options the user can choose from (radio buttons, option cards, dropdown, toggle buttons, etc.)
+        - Selecting it MIGHT reveal/show different fields than selecting a sibling option
+        - The element looks like a choice/option/selection among alternatives
+        
+        **When in doubt, mark it as a junction** - we verify junctions automatically, so false positives are OK but missing a junction is bad.
 
-        **Junction types:** dropdowns (`<select>`), radio buttons, checkboxes, styled toggle buttons, option cards, segmented controls, or any clickable elements that switch between different field sets.
+        **Junction types:** dropdowns, radio buttons, checkboxes, toggle buttons, option cards, segmented controls, or any element where you choose ONE option from several alternatives.
 
-        **IMPORTANT:** When clicking a `<label>` that contains a radio button or wraps a selection option, check if selecting it shows/hides different panels or field sets. If yes, mark it as junction using the inner `input`'s `name` attribute for `junction_name` and list all sibling options in `all_options`.
+        **CRITICAL - ALWAYS MARK AS JUNCTION:**
+        - If you are clicking ONE of SEVERAL similar elements (e.g., one radio button among many, one card among several cards, one option among choices) → it IS a junction
+        - If the element is part of a group where user must choose ONE and the choice affects which fields appear (radio group, option cards) → it IS a junction
+        - If clicking this element could potentially show different fields than clicking its sibling elements → it IS a junction
+
+        **IMPORTANT:** When clicking any element that LOOKS LIKE it could show/hide different panels or field sets (e.g., it's one of several similar options, it's a radio button, it's an option card), mark it as a junction. Use the selector of the element you actually click for the action, and use the most relevant `name` or `id` attribute for `junction_name`.
         
         **Junction format:**
         ```json
@@ -672,10 +682,11 @@ When you have a step for these junctions, use the specified option. If a junctio
         **⚠️ DATE FIELDS - CRITICAL:** For date fields with "mm/dd/yyyy" placeholder → enter digits only: "01152025" (no slashes)
         
         **⚠️ ONLY THE MAIN/PRIMARY FIELD NEEDS UNIQUE SUFFIX:** 
-        - ONLY the main identifying field (e.g., Person Name, Company Name, Title) gets a random suffix of 5 digits)
+        - ONLY the main identifying field (e.g., Person Name, Company Name, Title) gets prefix "quattera_" + name + random suffix of 5 TRULY RANDOM digits
+        - Generate NEW random digits each time - do NOT reuse digits like 12345, 84729, or 00000
         - ALL OTHER FIELDS should have NORMAL realistic values WITHOUT any suffix!
         
-        - Name (main field): {'Add unique suffix (e.g., TestUser_184093)'}
+        - Name (main field): {'Add quattera_ prefix + unique suffix (e.g., quattera_TestUser_184093)'}
         - Email: {'Normal email like john@example.com (NO suffix!)'}
         - Phone, Address, City, State, Zip, Country, Numbers: Normal realistic values (NO suffix!)
         - Dates: Look at screenshot/placeholder for required format
@@ -705,6 +716,8 @@ When you have a step for these junctions, use the specified option. If a junctio
         - slider: Set range slider to percentage (value: 0-100)
         - drag_and_drop: Drag element to target (selector: source, value: target selector)
         - press_key: Send keyboard key (value: ENTER, TAB, ESCAPE, ARROW_DOWN, etc.)
+        - slider: Set single-handle slider. Provide ONLY the rail/track selector.
+        - range_slider: Set two-handle range slider. Provide ONLY the rail/track selector.
         - wait_for_visible: Wait for element to become visible
         - wait: Wait for duration (MAX 10 seconds!) OR wait for element to be ready if selector provided
         - wait_for_ready: Wait for AJAX-loaded element to become interactable (use for dynamic fields)
@@ -745,6 +758,12 @@ When you have a step for these junctions, use the specified option. If a junctio
         ```
         Available keys: ENTER, TAB, ESCAPE, SPACE, BACKSPACE, DELETE, ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT, HOME, END, PAGE_UP, PAGE_DOWN
         
+        **SLIDER ACTIONS:**
+        For sliders, provide only the rail/track selector - agent handles clicking and reading values:
+        ```json
+        {{"action": "slider", "selector": "input[type='range']#volume", "description": "Set volume slider"}}
+        {{"action": "range_slider", "selector": ".price-range-track", "description": "Set price range filter"}}
+        ```
         **CHECKBOX ACTIONS:**
         Use `check` and `uncheck` for explicit checkbox control (better than click):
         ```json
@@ -983,7 +1002,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "fill",
             "description": "Enter name in form",
             "selector": "input[name='name']",
-            "value": "TestUser123",
+            "value": "quattera_TestUser_184093",
             "verification": null,
             "wait_seconds": 0.5,
             "full_xpath": "/html/body/div[1]/form/input[1]"
@@ -1234,6 +1253,17 @@ When you have a step for these junctions, use the specified option. If a junctio
                     logger.info(f"[AIHelper] Successfully parsed {len(steps)} steps")
                     print(f"[AIHelper] Successfully parsed {len(steps)} steps")
 
+                    # Check if AI detected page errors
+                    if result.get("page_error_detected"):
+                        print(f"[AIHelper] ⚠️ !!!!!!! Page error detected in DOM/screenshot")
+                        return {
+                            "steps": [],
+                            "page_error_detected": True,
+                            "error_type": result.get("error_type", "unknown"),
+                            "ui_issue": "",
+                            "no_more_paths": False
+                        }
+
                     
                     return {"steps": steps, "ui_issue": "", "no_more_paths": False}
                 elif isinstance(result, list):
@@ -1399,8 +1429,35 @@ Do NOT skip fields just because they are not in the required selections list.
 
 Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
 
-**If validation errors are visible:** Include `"validation_errors_detected": true` in your response, but STILL generate the remaining steps normally.
+**NOT validation errors (ignore these):**
+- Colored field backgrounds (pink, red, yellow) that are just styling - not errors
+- Required field indicators (* or colored labels)
+- Empty fields that haven't been submitted yet
 
+**If validation errors are visible, return ONLY:**
+```json
+{{{{
+  "validation_errors_detected": true
+}}}}
+```
+
+**If NO validation errors:** Continue below.
+
+## SECOND: CHECK FOR PAGE ERRORS
+
+Scan DOM and screenshot for unrecoverable state:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+
+**If page error detected, return ONLY:**
+```json
+{{{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}}}
+```
+(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+
+**If NO page errors:** Continue below.
 
 {screenshot_section}{critical_fields_section}{route_planning_section}
 {user_inputs_section}
@@ -1420,6 +1477,8 @@ Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cas
 **⚠️ FIRST: CHECK FOR PAGE ERRORS**
 Scan DOM and screenshot for unrecoverable state:
 - "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "This site can't be reached", "refused to connect", "took too long to respond"
+- "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
 
 **If page error detected, return ONLY:**
 ```json
@@ -1546,10 +1605,12 @@ If ANY check fails → FIX the xpath before returning.
 - Set to `true` for navigation actions: Next, Continue, Edit, Delete, Back to List buttons
 - Set to `false` for: fill, select, click tab, check, hover, scroll, ALL wait actions, switch_to_frame, switch_to_default
 
-**dont_regenerate field (optional):**
+**Mandatory - dont_regenerate field:**
 - Set to `true` ONLY for:
   * Opening/closing modals or dialogs
   * Adding/removing items in a list or table
+  * Saving an item in a list that was added
+  * CLicking a new TAB
   * Expanding/collapsing accordion sections
 - Set to `false` (or omit) for all other actions
 
@@ -1652,11 +1713,22 @@ Some fields require multiple atomic steps to complete.
 Analyze the DOM, understand the field's structure, and generate appropriate atomic steps.
 
 ---
-**Junctions:** Mark a step as a junction if: (1) the step has multiple options to choose from, AND (2) selecting an option may uncover/reveal new fields, AND (3) different options might reveal different fields.
+**Junctions:** Mark a step as a junction if ANY of these are true:
+- The element is one of several options the user can choose from (radio buttons, option cards, dropdown, tabs, toggle buttons, etc.)
+- Selecting it MIGHT reveal/show different fields than selecting a sibling option
+- The element looks like a choice/option/selection among alternatives
 
-**Junction types:** dropdowns (`<select>` or div based), radio buttons, checkboxes, styled toggle buttons, option cards, segmented controls, or any clickable elements that switch between different field sets.
+**When in doubt, mark it as a junction** - we verify junctions automatically with before/after screenshots, so false positives are OK but missing a junction is bad.
 
-**IMPORTANT:** When clicking any element that shows/hides different panels or field sets, mark it as a junction. Use the selector of the element you actually click for the action, and use the most relevant `name` or `id` attribute for `junction_name`.
+**Junction types:** dropdowns, radio buttons, checkboxes, toggle buttons, option cards, segmented controls, or any element where you choose ONE option from several alternatives.
+
+**CRITICAL - ALWAYS MARK AS JUNCTION:**
+- If you are clicking ONE of SEVERAL similar elements (e.g., one radio button among many, one card among several cards, one option among choices) → it IS a junction
+- If the element is part of a group where user must choose ONE (radio group, option cards, tabs) → it IS a junction
+- If clicking this element could potentially show different fields than clicking its sibling elements → it IS a junction
+- If the element is part of a group where user must choose ONE and the choice affects which fields appear (radio group, option cards) → it IS a junction
+
+**IMPORTANT:** When clicking any element that LOOKS LIKE it could show/hide different panels or field sets (e.g., it's one of several similar options, it's a tab, it's a radio button, it's an option card), mark it as a junction. Use the selector of the element you actually click for the action, and use the most relevant `name` or `id` attribute for `junction_name`.
 
 **Junction format:**
 ```json
@@ -1909,9 +1981,21 @@ The "screenshot_self_check" field is MANDATORY.
                 # Check if AI detected validation errors
                 if response_data.get("validation_errors_detected"):
                     print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
+                    print(response_text)
                     return {
                         "steps": [],
                         "validation_errors_detected": True,
+                        "ui_issue": "",
+                        "no_more_paths": False
+                    }
+
+                # Check if AI detected page errors
+                if response_data.get("page_error_detected"):
+                    print(f"[AIHelper] ⚠️ !!!!!!! Page error detected in DOM/screenshot")
+                    return {
+                        "steps": [],
+                        "page_error_detected": True,
+                        "error_type": response_data.get("error_type", "unknown"),
                         "ui_issue": "",
                         "no_more_paths": False
                     }
@@ -1999,6 +2083,11 @@ Use the screenshot to understand the current page layout and identify where fiel
 
 Scan DOM and screenshot for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
 
+**NOT validation errors (ignore these):**
+- Colored field backgrounds (pink, red, yellow) that are just styling - not errors
+- Required field indicators (* or colored labels)
+- Empty fields that haven't been submitted yet
+
 **If validation errors are visible, return ONLY:**
 ```json
 {{{{
@@ -2010,8 +2099,13 @@ Scan DOM and screenshot for validation errors (red boxes, error messages like "P
 
 ## SECOND: CHECK FOR PAGE ERRORS
 
-Scan DOM and screenshot for unrecoverable state:
-- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+Scan the DOM and screenshot for signs of unrecoverable state:
+    - "Page Not Found", "404", "Not Found", "Error 404"
+    - Empty page with no form elements
+    - "Session Expired", "Access Denied", "Unauthorized"
+    - Server error messages ("500", "Internal Server Error")
+    - "This site can't be reached", "refused to connect", "took too long to respond"
+    - "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
 
 **If page error detected, return ONLY:**
 ```json
@@ -2035,7 +2129,7 @@ If loading spinner is visible in screenshot, return ONLY the wait_spinner_hidden
 }}}}
 ```
 Find spinner in DOM (patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations).
-After spinner disappears, you will be called again to generate verify steps.
+After spinner disappears, you will be called to generate verify steps.
 
 **If no spinner:** Continue with verification below.
 
@@ -2044,7 +2138,7 @@ After spinner disappears, you will be called again to generate verify steps.
 ## VERIFICATION MODE - AFTER SAVE/SUBMIT
 
 You are now in VERIFICATION MODE. The form has been saved/submitted successfully.
-Your task is to VERIFY that all entered data is displayed correctly.
+Your task is to add verification steps.
 
 {screenshot_section}
 ## Current Context:
@@ -2060,11 +2154,10 @@ Your task is to VERIFY that all entered data is displayed correctly.
 Generate steps to VERIFY all fields that were filled during the test, plus any navigation needed to access view pages.
 
 **What you must do:**
-1. **Check "Steps Already Completed" for `"action": "verify"` entries - NEVER re-generate verify steps that already exist for the SAME page. If current page's fields are already verified → Return `"steps": []`**
-2. Look at "Steps Already Completed" - find ALL fill/select/check steps
-3. For EACH field that was filled, generate a VERIFY step (unless already verified on THIS page)
-4. If data is on a different page (e.g., need to click "View" button), add navigation steps
-5. A field MAY be verified on BOTH list page AND detail page - but NEVER twice on the same page
+1. Look at "Steps Already Completed" - find ALL fill/select/check steps
+2. For EACH field that was filled, generate a VERIFY step
+3. If data is on a different page (e.g., need to click "View" button), add navigation steps
+4. A field MAY be verified on BOTH list page AND detail page - but NEVER twice on the same page
 
 **⚠️ CRITICAL - YOU MUST GENERATE VERIFY STEPS:**
 - Your job is to OUTPUT verify step JSON objects, NOT to visually confirm data yourself
@@ -2108,7 +2201,7 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
 - ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
 - ALWAYS examine the CURRENT DOM structure before generating verify selectors
 
-**VERIFY ALL FIELDS - NO SKIPPING:**
+**CREATE VERIFY STEPS FOR ALL FIELDS - NO SKIPPING:**
 1. Look through "Steps Already Completed" for ALL fill/select/check steps
 2. Generate a VERIFY step for EACH field that YOU FILLED (unless already verified on THIS page)
 3. A field can be verified on BOTH list page AND detail page - but NEVER generate duplicate verify for the same field on the SAME page
@@ -2120,7 +2213,7 @@ After clicking View/Edit/Details button, you are on a READ-ONLY display page:
    - The field seems empty or missing
    - Verification failures are VALID test results - we WANT to catch mismatches, not hide them
 
-**⚠️ ONLY VERIFY FIELDS YOU FILLED - NEVER INVENT:**
+**⚠️ ONLY CREATE VERIFY STEPS FOR FIELDS YOU FILLED - NEVER INVENT:**
 - ✅ ONLY generate verify steps for fields that have a corresponding fill/select/check in "Steps Already Completed"
 - ❌ NEVER verify that a field is "empty", "disabled", or "blank" - verify POSITIVE values only
 - ❌ NEVER invent fields to verify - if you didn't fill it, don't verify it
@@ -2287,15 +2380,7 @@ Return ONLY the JSON object.
                         "text": prompt
                     }
                 ]
-                #print("\n" + "!" * 80)
-                #print("!!!!!!!! GENERATE RECOVERY PROMPT - FINAL PROMPT TO AI !!!!")
-                #print("!" * 80)
-                #import re
-                #prompt_no_dom = re.sub(r'## Current DOM:.*', '## Current DOM:\n[DOM REMOVED FOR LOGGING]\n', prompt,
-                #                       flags=re.DOTALL)
-                print(prompt)
-                #print("!" * 80 + "\n")
-                # Debug mode: log full prompt (DOM truncated)
+
                 if self.session_logger and self.session_logger.debug_mode:
                     import re
                     prompt_for_log = re.sub(r'## Current DOM:.*?(?=\n##|\n\*\*|$)',
@@ -2307,6 +2392,8 @@ Return ONLY the JSON object.
                                                                      max_retries=3)
             else:
                 response_text = self._call_api_with_retry(prompt, max_tokens=16000, max_retries=3)
+
+            print(response_text)
 
             if response_text is None:
                 print("[AIHelper] ❌ Failed to regenerate verify steps after retries")
@@ -2352,6 +2439,17 @@ Return ONLY the JSON object.
                         return {
                             "steps": [],
                             "validation_errors_detected": True,
+                            "ui_issue": "",
+                            "no_more_paths": False
+                        }
+
+                    # If page error detected, return immediately
+                    if parsed.get("page_error_detected") == True:
+                        print(f"[AIHelper] ⚠️ !!!!!!! Page error detected in DOM/screenshot")
+                        return {
+                            "steps": [],
+                            "page_error_detected": True,
+                            "error_type": parsed.get("error_type", "unknown"),
                             "ui_issue": "",
                             "no_more_paths": False
                         }
@@ -2614,6 +2712,12 @@ Return ONLY the JSON object.
                         f"[AIHelper] ⚠️ Validation errors detected in step recovery - routing to validation error handler")
                     logger.warning(f"[AIHelper] ⚠️ Validation errors detected in step recovery")
                     return {"validation_errors_detected": True}
+
+                if isinstance(response_obj, dict) and response_obj.get("page_error_detected"):
+                    print(f"[AIHelper] ⚠️ Page error detected in step recovery")
+                    logger.warning(f"[AIHelper] ⚠️ Page error detected in step recovery")
+                    return {"page_error_detected": True, "error_type": response_obj.get("error_type", "unknown")}
+
             except json.JSONDecodeError:
                 pass  # Not a simple dict, continue with array parsing
 
@@ -2688,6 +2792,11 @@ Return ONLY the JSON object.
     - Elements with "error" in class name (error-message, error, validation-error, has-error, is-invalid, field-error)
     - Text containing "Validation Error", "Please fill", "required", "must be", "invalid"
     - Red/orange styled error boxes or messages
+    
+    **NOT validation errors (ignore these):**
+    - Colored field backgrounds (pink, red, yellow) that are just styling - not errors
+    - Required field indicators (* or colored labels)
+    - Empty fields that haven't been submitted yet
 
     **If ANY validation errors exist, return ONLY:**
     ```json
@@ -2707,6 +2816,8 @@ Return ONLY the JSON object.
     - Empty page with no form elements
     - "Session Expired", "Access Denied", "Unauthorized"
     - Server error messages ("500", "Internal Server Error")
+    - "This site can't be reached", "refused to connect", "took too long to respond"
+    - "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
     
     **If page is unrecoverable, return ONLY:**
     ```json

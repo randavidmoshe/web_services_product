@@ -123,6 +123,13 @@ class FormMapperConfig(BaseModel):
         description="Days to keep archived logs in S3 before auto-delete"
     )
 
+    visual_verify_max_wait_seconds: int = Field(
+        default=180,
+        ge=30,
+        le=600,
+        description="Maximum seconds to wait for page to be ready during visual verification"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -169,6 +176,7 @@ class FormMapperConfigUpdate(BaseModel):
     screenshots_retention_days: Optional[int] = Field(default=None, ge=7, le=365)
     logs_hot_retention_days: Optional[int] = Field(default=None, ge=1, le=90)
     logs_cold_retention_days: Optional[int] = Field(default=None, ge=14, le=365)
+    visual_verify_max_wait_seconds: Optional[int] = Field(default=None, ge=30, le=600)
 
 
 # Default config as dict
@@ -192,7 +200,10 @@ DEFAULT_FORM_MAPPER_CONFIG = {
     "screenshots_retention_days": 90,
     "logs_hot_retention_days": 14,
     "logs_cold_retention_days": 90,
+    "visual_verify_max_wait_seconds": 180,
 }
+
+
 
 
 def get_company_config(db_session, company_id: int) -> FormMapperConfig:

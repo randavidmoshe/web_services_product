@@ -234,6 +234,15 @@ class ChromeManager:
     def get_isolated_profile_dir(self) -> str:
         """Get isolated Chrome profile directory (never interferes with user's Chrome)"""
         profile_dir = os.path.join(tempfile.gettempdir(), "quattera-selenium-profile")
+
+        # Clear old profile to avoid stale cache issues
+        if os.path.exists(profile_dir):
+            try:
+                shutil.rmtree(profile_dir, ignore_errors=True)
+                print("[ChromeManager] Cleared old browser profile cache")
+            except Exception as e:
+                print(f"[ChromeManager] Could not clear profile: {e}")
+
         os.makedirs(profile_dir, exist_ok=True)
         return profile_dir
     

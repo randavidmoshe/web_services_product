@@ -131,8 +131,9 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
         if response.get("trigger_celery") and response.get("celery_task"):
             next_task_name = response.get("celery_task")
             celery_args = response.get("celery_args", {})
+            countdown = response.get("celery_countdown")
             logger.info(f"[FormMapperTask] Chaining to next task: {next_task_name}")
-            _trigger_celery_task(next_task_name, celery_args)
+            _trigger_celery_task(next_task_name, celery_args, countdown)
         
         if response.get("push_agent_task"):
             logger.info(f"[FormMapperTask] Agent task queued: {response.get('agent_task_type')}")
@@ -140,7 +141,11 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
         return response
 
     except Exception as e:
+        msg = f"!!!! ❌ Orchestrator crashed in {task_name}: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Orchestrator crashed in {task_name}: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         sync_mapper_session_status.delay(session_id, "failed", f"Orchestrator error: {e}")
         return {"success": False, "error": str(e)}
         
@@ -148,7 +153,7 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
         db.close()
 
 
-def _trigger_celery_task(task_name: str, celery_args: dict):
+def _trigger_celery_task(task_name: str, celery_args: dict, countdown: int = None):
     """Trigger another Celery task by name"""
     task_map = {
         "analyze_form_page": analyze_form_page,
@@ -159,13 +164,35 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "evaluate_paths_with_ai": evaluate_paths_with_ai,
         "save_mapping_result": save_mapping_result,
         "verify_junction_visual": verify_junction_visual,
+        "verify_page_visual": verify_page_visual,
+        "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
     }
     
     task = task_map.get(task_name)
     if task:
-        task.delay(**celery_args)
+        if countdown:
+            task.apply_async(kwargs=celery_args, countdown=countdown)
+        else:
+            task.delay(**celery_args)
     else:
+        msg = f"!!!! ❌ Unknown task: {task_name}"
+        print(msg)
         logger.error(f"[FormMapperTask] Unknown task: {task_name}")
+        # CloudWatch logging
+        session_id = celery_args.get("session_id")
+        if session_id:
+            try:
+                from services.session_logger import get_session_logger, ActivityType
+                cw_log = get_session_logger(
+                    db_session=None,
+                    activity_type=ActivityType.MAPPING.value,
+                    session_id=str(session_id),
+                    company_id=None,
+                    user_id=None
+                )
+                cw_log.error(msg, category="error")
+            except:
+                pass
 
 
 # ============================================================================
@@ -307,7 +334,9 @@ def analyze_form_page(
             "success": True,
             "steps": ai_result.get("steps", []),
             "no_more_paths": ai_result.get("no_more_paths", False),
-            "form_fields": ai_result.get("form_fields", [])
+            "form_fields": ai_result.get("form_fields", []),
+            "page_error_detected": ai_result.get("page_error_detected", False),
+            "error_type": ai_result.get("error_type", "")
         }
         
 
@@ -322,13 +351,21 @@ def analyze_form_page(
         return result
 
     except AIParseError as e:
+        msg = f"!!!! ❌ AI parse failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
         result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
         _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
 
     except Exception as e:
+        msg = f"!!!! ❌ Analysis failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Analysis failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
@@ -511,7 +548,11 @@ def analyze_failure_and_recover(
         return result
         
     except Exception as e:
+        msg = f"!!!! ❌ Failure analysis failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Failure analysis failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
@@ -632,7 +673,11 @@ def handle_alert_recovery(
         return result
         
     except Exception as e:
+        msg = f"!!!! ❌ Alert recovery failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Alert recovery failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
@@ -696,7 +741,7 @@ def handle_validation_error_recovery(
         )
 
         #print(f"!!!! ✅ AI validation error analysis returned: {ai_result}")
-        msg = f"!!!! ✅ AI validation error analysis returned: {ai_result}"
+        msg = f"!*!*!*!!!*!  ✅ AI validation error analysis returned: {ai_result}"
         print(msg)
         log.debug(msg, category="debug_trace")
 
@@ -728,7 +773,11 @@ def handle_validation_error_recovery(
         return result
 
     except Exception as e:
+        msg = f"!!!! ❌ Validation error recovery failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Validation error recovery failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
@@ -805,7 +854,11 @@ def verify_ui_visual(
         return result
         
     except Exception as e:
+        msg = f"!!!! ❌ UI verification failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] UI verification failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
@@ -955,13 +1008,21 @@ def regenerate_steps(
         return result
 
     except AIParseError as e:
+        msg = f"!!!! ❌ AI parse failed (regenerate): {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
         result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
         _continue_orchestrator_chain(session_id, "regenerate_steps", result)
         return result
 
     except Exception as e:
+        msg = f"!!!! ❌ Step regeneration failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Step regeneration failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             sync_mapper_session_status.delay(session_id, "failed", str(e))
         raise
@@ -1080,13 +1141,21 @@ def regenerate_verify_steps(
         return result
 
     except AIParseError as e:
+        msg = f"!!!! ❌ AI parse failed (verify regenerate): {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] AI parse failed: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
         result = {"success": False, "error": f"AI parse failed: {e}", "ai_parse_failed": True}
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 
     except Exception as e:
+        msg = f"!!!! ❌ Verify regeneration error: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Verify regeneration error: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
@@ -1175,11 +1244,12 @@ def verify_junction_visual(
         return result
 
     except Exception as e:
-        logger.error(f"[FormMapperTask] Junction visual verification error: {e}")
-        msg = f"!!!! ❌ Junction Visual Verification error: {e}"
+        msg = f"!!!! ❌ Junction visual verification error: {e}"
         print(msg)
+        logger.error(f"[FormMapperTask] Junction visual verification error: {e}")
         if 'log' in locals():
-            log.debug(msg, category="debug_trace")
+            log.error(msg, category="error")
+
 
         # On error, default to keeping junction (safer)
         result = {
@@ -1192,6 +1262,122 @@ def verify_junction_visual(
     finally:
         db.close()
 
+
+@shared_task(bind=True, max_retries=2)
+def verify_page_visual(
+        self,
+        session_id: str,
+        screenshot_base64: str,
+        executed_steps: List[Dict],
+        already_verified_fields: List[Dict],
+        retry_count: int = 0,
+        total_wait_seconds: int = 0
+) -> Dict:
+    """Celery task: Use AI vision to verify form field values on result page (view/list page)."""
+    logger.info(f"[FormMapperTask] Visual page verification for session {session_id}, retry={retry_count}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "verify_page_visual", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"), company_name=ctx.get("company_name"))
+        log.info(f"Celery task: verify_page_visual started (retry={retry_count}, waited={total_wait_seconds}s)", category="celery_task")
+
+        msg = f"!!!! 👁️ Visual Page Verification for session {session_id}, retry={retry_count}, total_wait={total_wait_seconds}s"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        log.ai_call("verify_page_visual", prompt_size=len(screenshot_base64))
+
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "verify_page_visual", result)
+            return result
+
+        from services.ai_form_mapper_page_visual_verifier import create_page_visual_verifier
+        verifier = create_page_visual_verifier(api_key, session_logger=log)
+
+        # Call AI to verify page
+        ai_result = verifier.verify_page(
+            screenshot_base64=screenshot_base64,
+            executed_steps=executed_steps,
+            already_verified_fields=already_verified_fields
+        )
+
+        msg = f"!!!! 👁️ Visual Page Verification result: page_ready={ai_result.get('page_ready')}, results_count={len(ai_result.get('results', []))}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        log.ai_response("verify_page_visual", success=True)
+
+        logger.info(f"[FormMapperTask] Visual page verification result: page_ready={ai_result.get('page_ready')}")
+
+        # Record AI usage
+        from services.ai_budget_service import AIOperationType
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx.get("user_id", 0),
+            AIOperationType.FORM_MAPPER_REGENERATE,
+            800,  # Approximate input tokens
+            200,  # Approximate output tokens
+            session_id
+        )
+
+        result = {
+            "success": True,
+            "page_ready": ai_result.get("page_ready", True),
+            "page_type": ai_result.get("page_type", "unknown"),
+            "results": ai_result.get("results", []),
+            "reason": ai_result.get("reason", ""),
+            "retry_count": retry_count,
+            "total_wait_seconds": total_wait_seconds
+        }
+        _continue_orchestrator_chain(session_id, "verify_page_visual", result)
+        return result
+
+    except Exception as e:
+        msg = f"!!!! ❌ Visual page verification error: {e}"
+        print(msg)
+        logger.error(f"[FormMapperTask] Visual page verification error: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
+
+        # On error, continue without verification (don't block mapping)
+        result = {
+            "success": True,
+            "page_ready": True,
+            "page_type": "unknown",
+            "results": [],
+            "reason": f"Verification error: {str(e)} - continuing without visual verification",
+            "retry_count": retry_count,
+            "total_wait_seconds": total_wait_seconds
+        }
+        _continue_orchestrator_chain(session_id, "verify_page_visual", result)
+        return result
+    finally:
+        db.close()
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=5)
+def trigger_visual_page_screenshot(self, session_id: str) -> Dict:
+    """
+    Celery task: Delayed trigger for visual page screenshot capture.
+    This task does NO work - just signals orchestrator to request fresh screenshot from agent.
+    Keeps architecture fully scalable (Celery handles delay, agent handles browser).
+    """
+    logger.info(f"[FormMapperTask] trigger_visual_page_screenshot fired for session {session_id}")
+
+    result = {"success": True, "session_id": session_id}
+    _continue_orchestrator_chain(session_id, "trigger_visual_page_screenshot", result)
+    return result
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=5)
 def evaluate_paths_with_ai(
@@ -1280,11 +1466,11 @@ def evaluate_paths_with_ai(
 
     except Exception as e:
 
-        logger.error(f"[FormMapperTask] AI path evaluation error: {e}")
         msg = f"!!!! ❌ AI Path Evaluation error: {e}"
         print(msg)
+        logger.error(f"[FormMapperTask] AI path evaluation error: {e}")
         if 'log' in locals():
-            log.debug(msg, category="debug_trace")
+            log.error(msg, category="error")
 
         sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
@@ -1384,7 +1570,11 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
         return result
 
     except Exception as e:
+        msg = f"!!!! ❌ Save mapping result failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Save mapping result failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         sync_mapper_session_status.delay(session_id, "failed", str(e))
         result = {"success": False, "error": str(e)}
         _continue_orchestrator_chain(session_id, "save_mapping_result", result)
@@ -1400,7 +1590,9 @@ def field_assist_query(
         session_id: str,
         screenshot_base64: str,
         step: Dict,
-        query_type: str
+        query_type: str,
+        rail_bounds: Dict = None,
+        action_type: str = None
 ) -> Dict:
     """Celery task: Field assist query (lightweight AI check)."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -1420,15 +1612,24 @@ def field_assist_query(
         if not api_key:
             return {"success": False, "error": "No API key available"}
 
-        from services.form_mapper_ai_helpers import create_ai_helpers
-        helpers = create_ai_helpers(api_key)
+        # Route slider queries to dedicated prompter
+        if query_type in ("slider_click_points", "slider_read_value"):
+            from services.ai_form_mapper_field_assist_slider_prompter import AIFieldAssistSliderPrompter
+            slider_prompter = AIFieldAssistSliderPrompter(api_key)
 
-        field_assist = helpers["field_assist"]
-        result = field_assist.query(
-            query_type=query_type,
-            screenshot_base64=screenshot_base64,
-            step=step
-        )
+            if query_type == "slider_click_points":
+                result = slider_prompter.generate_click_points(rail_bounds, action_type, step)
+            else:
+                result = slider_prompter.read_value(screenshot_base64, action_type, step)
+        else:
+            from services.form_mapper_ai_helpers import create_ai_helpers
+            helpers = create_ai_helpers(api_key)
+            field_assist = helpers["field_assist"]
+            result = field_assist.query(
+                query_type=query_type,
+                screenshot_base64=screenshot_base64,
+                step=step
+            )
 
         # Record usage (lightweight - small tokens)
         input_tokens = len(screenshot_base64) // 100 + 200
@@ -1448,7 +1649,11 @@ def field_assist_query(
         return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
 
     except Exception as e:
+        msg = f"!!!! ❌ Field assist query failed: {e}"
+        print(msg)
         logger.error(f"[FormMapperTask] Field assist query failed: {e}", exc_info=True)
+        if 'log' in locals():
+            log.error(msg, category="error")
         if self.request.retries >= self.max_retries:
             return {"success": False, "error": str(e)}
         raise
@@ -1495,11 +1700,41 @@ def sync_mapper_session_status(session_id: str, status: str, error: str = None):
                     _get_redis_client().lpush(f"agent:{user_id}", json.dumps(task))
                     logger.info(f"[MapperTasks] Pushed form_mapper_close to agent:{user_id}")
                 except Exception as close_err:
+                    msg = f"!!!! ❌ Failed to push close task: {close_err}"
+                    print(msg)
                     logger.error(f"[MapperTasks] Failed to push close task: {close_err}")
+                    # CloudWatch logging
+                    try:
+                        from services.session_logger import get_session_logger, ActivityType
+                        cw_log = get_session_logger(
+                            db_session=None,
+                            activity_type=ActivityType.MAPPING.value,
+                            session_id=str(session_id),
+                            company_id=None,
+                            user_id=None
+                        )
+                        cw_log.error(msg, category="error")
+                    except:
+                        pass
 
 
     except Exception as e:
+        msg = f"!!!! ❌ Failed to sync DB session {session_id}: {e}"
+        print(msg)
         logger.error(f"[MapperTasks] Failed to sync DB session {session_id}: {e}")
+        # CloudWatch logging
+        try:
+            from services.session_logger import get_session_logger, ActivityType
+            cw_log = get_session_logger(
+                db_session=None,
+                activity_type=ActivityType.MAPPING.value,
+                session_id=str(session_id),
+                company_id=None,
+                user_id=None
+            )
+            cw_log.error(msg, category="error")
+        except:
+            pass
         db.rollback()
     finally:
         db.close()

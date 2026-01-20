@@ -562,7 +562,7 @@ class FormDiscovererAgent:
         except Exception as e:
             self.logger.error(f"❌ Error reporting Form Mapper result: {e}")
 
-    def field_assist_query(self, session_id: str, screenshot_base64: str, step: Dict, query_type: str) -> Dict:
+    def field_assist_query(self, session_id: str, screenshot_base64: str, step: Dict, query_type: str, rail_bounds: Dict = None, action_type: str = None) -> Dict:
         """
         Make field-assist API call (POST to queue task, then poll for result).
         Used by fill_autocomplete and other AI-assisted actions.
@@ -574,7 +574,9 @@ class FormDiscovererAgent:
                 "session_id": session_id,
                 "screenshot_base64": screenshot_base64,
                 "step": step,
-                "query_type": query_type
+                "query_type": query_type,
+                "rail_bounds": rail_bounds,
+                "action_type": action_type
             }
 
             response = requests.post(url, json=payload, headers=self._get_headers(), timeout=30, verify=self.ssl_verify)

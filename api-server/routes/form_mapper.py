@@ -161,7 +161,11 @@ async def start_form_mapping(
     
     if not form_page_route:
         raise HTTPException(status_code=404, detail="Form page route not found")
-    
+
+    # Use network_id from request, or fall back to form_page_route.network_id
+    if not network_id:
+        network_id = form_page_route.network_id
+
     # Validate test_cases
     if not request.test_cases:
         raise HTTPException(status_code=400, detail="At least one test case is required")
@@ -234,6 +238,25 @@ async def start_form_mapping(
         
     except Exception as e:
         logger.error(f"[API] Error starting mapping: {e}", exc_info=True)
+        # CloudWatch logging
+        try:
+            from services.session_logger import get_session_logger, ActivityType
+            log = get_session_logger(
+                db_session=db,
+                activity_type=ActivityType.MAPPING.value,
+                session_id=str(db_session.id) if 'db_session' in locals() and db_session else "unknown",
+                company_id=company_id if 'company_id' in locals() else None,
+                user_id=user_id if 'user_id' in locals() else None
+            )
+            msg = f"!!!! ❌ Error starting mapping: {e}"
+            print(msg)
+            log.error(msg, category="error")
+        except:
+            pass
+        # If session was created, properly fail it and close agent
+        if 'db_session' in locals() and db_session.id:
+            from tasks.form_mapper_tasks import sync_mapper_session_status
+            sync_mapper_session_status.delay(str(db_session.id), "failed", f"Start error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -520,12 +543,24 @@ async def agent_task_result(
         
     except Exception as e:
         logger.error(f"[API] Error processing agent result: {e}", exc_info=True)
+        # CloudWatch logging
         try:
-            session.status = 'failed'
-            session.last_error = str(e)
-            db.commit()
+            from services.session_logger import get_session_logger, ActivityType
+            log = get_session_logger(
+                db_session=db,
+                activity_type=ActivityType.MAPPING.value,
+                session_id=str(session_id),
+                company_id=session.company_id if session else None,
+                user_id=session.user_id if session else None
+            )
+            msg = f"!!!! ❌ Error processing agent result: {e}"
+            print(msg)
+            log.error(msg, category="error")
         except:
             pass
+        # Properly fail session and close agent
+        from tasks.form_mapper_tasks import sync_mapper_session_status
+        sync_mapper_session_status.delay(session_id, "failed", f"Server error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -545,7 +580,10 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         regenerate_steps,
         regenerate_verify_steps,
         evaluate_paths_with_ai,
-        save_mapping_result
+        save_mapping_result,
+        verify_junction_visual,
+        verify_page_visual,
+        trigger_visual_page_screenshot
     )
     
     task_map = {
@@ -557,14 +595,34 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "regenerate_steps": regenerate_steps,
         "regenerate_verify_steps": regenerate_verify_steps,
         "evaluate_paths_with_ai": evaluate_paths_with_ai,
-        "save_mapping_result": save_mapping_result
+        "save_mapping_result": save_mapping_result,
+        "verify_junction_visual": verify_junction_visual,
+        "verify_page_visual": verify_page_visual,
+        "trigger_visual_page_screenshot": trigger_visual_page_screenshot
     }
     
     task = task_map.get(task_name)
     if task:
         task.delay(**celery_args)
     else:
+        msg = f"!!!! ❌ Unknown Celery task requested: {task_name}"
+        print(msg)
         logger.error(f"[API] Unknown Celery task requested: {task_name}")
+        # CloudWatch logging
+        session_id = celery_args.get("session_id")
+        if session_id:
+            try:
+                from services.session_logger import get_session_logger, ActivityType
+                log = get_session_logger(
+                    db_session=None,
+                    activity_type=ActivityType.MAPPING.value,
+                    session_id=str(session_id),
+                    company_id=None,
+                    user_id=None
+                )
+                log.error(msg, category="error")
+            except:
+                pass
         raise ValueError(f"Unknown Celery task: {task_name}")
 
 

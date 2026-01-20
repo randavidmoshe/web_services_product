@@ -18,6 +18,7 @@ from selenium.common.exceptions import (
     TimeoutException, NoAlertPresentException, 
     ElementNotInteractableException, StaleElementReferenceException
 )
+from services.ai_form_mapper_field_assist_slider_prompter import AIFieldAssistSliderPrompter
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,9 @@ class FormMapperTaskHandler:
         logger.info(f"[FormMapper] Executing step {step_index}: {action} on {selector[:50] if selector else 'N/A'}")
 
         # Special handling for fill_autocomplete (requires AI field-assist)
-        if action == "fill_autocomplete":
+        if action in ("slider", "range_slider"):
+            result = self._handle_slider(session_id, step)
+        elif action == "fill_autocomplete":
             result = self._handle_fill_autocomplete(session_id, step)
         else:
             # Execute the step using agent_selenium (returns full result with fields_changed)
@@ -444,6 +447,82 @@ class FormMapperTaskHandler:
                 return result
 
         return {"success": False, "error": "No autocomplete suggestions after trying all characters"}
+
+    def _handle_slider(self, session_id: int, step: Dict) -> Dict:
+        """Handle slider and range_slider actions."""
+        action = step.get("action", "slider")
+        selector = step.get("selector", "")
+
+        # Step 1: Get element bounds
+        bounds_result = self.selenium.get_element_bounds(selector)
+        if not bounds_result.get("success"):
+            return {"success": False, "error": bounds_result.get("error", "Failed to get bounds"),
+                    "locator_error": True}
+
+        rail_bounds = {
+            "left": bounds_result["left"],
+            "top": bounds_result["top"],
+            "width": bounds_result["width"],
+            "height": bounds_result["height"]
+        }
+
+        # Step 2: Get click points from AI
+        if not self.api_client:
+            return {"success": False, "error": "No API client for slider AI"}
+
+        click_result = self.api_client.field_assist_query(
+            session_id=str(session_id),
+            screenshot_base64="",
+            step=step,
+            query_type="slider_click_points",
+            rail_bounds=rail_bounds,
+            action_type=action
+        )
+
+        if not click_result.get("success"):
+            return {"success": False,
+                    "error": f"AI failed to generate click points: {click_result.get('error', 'unknown')}"}
+
+        # Step 3: Execute slider click via selenium
+        step_with_clicks = step.copy()
+        if action == "range_slider":
+            step_with_clicks["click_x1"] = click_result["x1"]
+            step_with_clicks["click_y1"] = click_result["y1"]
+            step_with_clicks["click_x2"] = click_result["x2"]
+            step_with_clicks["click_y2"] = click_result["y2"]
+        else:
+            step_with_clicks["click_x"] = click_result["x"]
+            step_with_clicks["click_y"] = click_result["y"]
+
+        result = self.selenium.execute_step(step_with_clicks)
+
+        if not result.get("success"):
+            return result
+
+        # Step 4: Take screenshot and read value from AI
+        screenshot_result = self.selenium.capture_screenshot(save_to_folder=False)
+        if not screenshot_result.get("success"):
+            result["value"] = "unknown"
+            result["warning"] = "Could not capture screenshot"
+            return result
+
+        value_result = self.api_client.field_assist_query(
+            session_id=str(session_id),
+            screenshot_base64=screenshot_result.get("screenshot", ""),
+            step=step,
+            query_type="slider_read_value",
+            action_type=action
+        )
+
+        # Step 5: Add value to result and return
+        if action == "range_slider":
+            result["min_value"] = value_result.get("min_value", "unknown")
+            result["max_value"] = value_result.get("max_value", "unknown")
+            result["value"] = f"{result['min_value']}-{result['max_value']}"
+        else:
+            result["value"] = value_result.get("value", "unknown")
+
+        return result
 
     def _handle_screenshot(self, session_id: int, payload: Dict) -> Dict:
         """
