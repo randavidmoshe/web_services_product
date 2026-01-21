@@ -1314,8 +1314,11 @@ class AgentSelenium:
                 element = self._find_element(selector)
                 if not element:
                     return {"success": False, "error": f"Element not found: {selector}"}
-                
-                element.clear()
+
+                # Clear field using Ctrl+A + Delete (more reliable than .clear())
+                from selenium.webdriver.common.keys import Keys
+                element.send_keys(Keys.CONTROL + "a")
+                element.send_keys(Keys.DELETE)
                 element.send_keys(value)
                 return _finalize_success_result({
                     "success": True,
@@ -1488,38 +1491,7 @@ class AgentSelenium:
                 
                 return _finalize_success_result({"success": True, "action": "scroll"})
             
-            # SLIDER ACTION
-            elif action == "slider":
-                element = self._find_element(selector)
-                if not element:
-                    return {"success": False, "error": f"Slider not found: {selector}"}
-                
-                # Value should be percentage (0-100)
-                try:
-                    percentage = float(value)
-                    if percentage < 0 or percentage > 100:
-                        return {"success": False, "error": f"Slider percentage must be 0-100, got: {percentage}"}
-                    
-                    # Get slider dimensions
-                    slider_width = element.size['width']
-                    
-                    # Calculate offset from left (percentage of width)
-                    # Subtract half width to start from center of slider
-                    offset_x = int((slider_width * percentage / 100) - (slider_width / 2))
-                    
-                    # Use ActionChains to drag slider to position
-                    actions = ActionChains(self.driver)
-                    actions.click_and_hold(element).move_by_offset(offset_x, 0).release().perform()
-                    
-                    return _finalize_success_result({
-                        "success": True,
-                        "action": "slider",
-                        "selector": selector,
-                        "value": value
-                    })
-                except ValueError:
-                    return {"success": False, "error": f"Invalid slider value (must be 0-100): {value}"}
-            
+
             # DRAG AND DROP ACTION
             elif action == "drag_and_drop":
                 # Selector is the source element to drag
@@ -1608,7 +1580,23 @@ class AgentSelenium:
                     return {"success": False, "error": "wait_for_visible requires a selector"}
                 
                 try:
-                    # Determine selector type
+                    # Check if in shadow root context
+                    if self.shadow_root_context:
+                        end_time = time.time() + 10
+                        while time.time() < end_time:
+                            try:
+                                element = self.shadow_root_context.find_element(By.CSS_SELECTOR, selector)
+                                if element.is_displayed():
+                                    return _finalize_success_result({
+                                        "success": True,
+                                        "action": "wait_for_visible",
+                                        "selector": selector
+                                    })
+                            except NoSuchElementException:
+                                pass
+                            time.sleep(0.5)
+                        return {"success": False, "error": f"Element not visible after 10s: {selector}"}
+
                     if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
                     elif selector.startswith('xpath='):
@@ -1651,7 +1639,28 @@ class AgentSelenium:
                     return {"success": False, "error": "wait_for_hidden requires a selector"}
 
                 try:
-                    # Determine selector type
+                    # Check if in shadow root context
+                    if self.shadow_root_context:
+                        end_time = time.time() + 60
+                        while time.time() < end_time:
+                            try:
+                                element = self.shadow_root_context.find_element(By.CSS_SELECTOR, selector)
+                                if not element.is_displayed():
+                                    return _finalize_success_result({
+                                        "success": True,
+                                        "action": "wait_for_hidden",
+                                        "selector": selector
+                                    })
+                            except NoSuchElementException:
+                                return _finalize_success_result({
+                                    "success": True,
+                                    "action": "wait_for_hidden",
+                                    "selector": selector,
+                                    "note": "Element no longer exists"
+                                })
+                            time.sleep(0.5)
+                        return {"success": False, "error": f"Element still visible after 60s: {selector}"}
+
                     if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
                     elif selector.startswith('xpath='):
@@ -1766,7 +1775,32 @@ class AgentSelenium:
                     timeout = min(float(value) if value else 10.0, 10.0)
                     
                     try:
-                        # Determine selector type
+                        # Check if in shadow root context
+                        if self.shadow_root_context:
+                            end_time = time.time() + timeout
+                            while time.time() < end_time:
+                                try:
+                                    element = self.shadow_root_context.find_element(By.CSS_SELECTOR, selector)
+                                    if element.is_displayed() and element.is_enabled():
+                                        return _finalize_success_result({
+                                            "success": True,
+                                            "action": "wait",
+                                            "selector": selector,
+                                            "message": "Element is ready"
+                                        })
+                                except NoSuchElementException:
+                                    pass
+                                time.sleep(0.5)
+                            error_msg = f"Element not ready after {timeout}s: {selector}"
+                            print(f"[Agent] ⚠️  Wait timeout: {error_msg}")
+                            return _finalize_success_result({
+                                "success": True,
+                                "action": "wait",
+                                "selector": selector,
+                                "message": f"Timeout but continuing: {error_msg}",
+                                "warning": error_msg
+                            })
+
                         if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                             by_type = By.XPATH
                         elif selector.startswith('xpath='):
@@ -1849,7 +1883,32 @@ class AgentSelenium:
                         return {"success": False, "error": f"Wait for DOM ready failed: {str(e)}"}
                 
                 try:
-                    # Determine selector type
+                    # Check if in shadow root context
+                    if self.shadow_root_context:
+                        end_time = time.time() + 10
+                        while time.time() < end_time:
+                            try:
+                                element = self.shadow_root_context.find_element(By.CSS_SELECTOR, selector)
+                                if element.is_displayed() and element.is_enabled():
+                                    return _finalize_success_result({
+                                        "success": True,
+                                        "action": "wait_for_ready",
+                                        "selector": selector,
+                                        "message": "Element is ready for interaction"
+                                    })
+                            except NoSuchElementException:
+                                pass
+                            time.sleep(0.5)
+                        error_msg = f"Element not ready after timeout: {selector}"
+                        print(f"[Agent] ⚠️  wait_for_ready timeout: {error_msg}")
+                        return _finalize_success_result({
+                            "success": True,
+                            "action": "wait_for_ready",
+                            "selector": selector,
+                            "message": f"Timeout but continuing: {error_msg}",
+                            "warning": error_msg
+                        })
+
                     if selector.startswith('//') or selector.startswith('(//') or selector.startswith('/'):
                         by_type = By.XPATH
                     elif selector.startswith('xpath='):
@@ -2164,7 +2223,147 @@ class AgentSelenium:
             return None
         except Exception:
             return None
-    
+
+    def find_element_by_field_name(self, field_name: str, action_type: str = "click") -> Dict:
+        """
+        Fallback: Find element near a field label using JS.
+        Generic - works for any web app.
+
+        Args:
+            field_name: The label/text of the field (e.g., "Blood Type")
+            action_type: "click" or "fill" - determines what element type to look for
+
+        Returns:
+            Dict with success, xpath, element info
+        """
+        try:
+            result = self.driver.execute_script("""
+                function findElementByFieldName(fieldName, actionType) {
+                    // Step 1: Find ALL elements with EXACT direct text matching fieldName
+                    var allElements = document.querySelectorAll('*');
+                    var matchingElements = [];
+                    var fieldNameLower = fieldName.toLowerCase().trim();
+
+                    for (var i = 0; i < allElements.length; i++) {
+                        var el = allElements[i];
+                        // Check DIRECT text nodes only (not inherited from children)
+                        var childNodes = el.childNodes;
+                        for (var j = 0; j < childNodes.length; j++) {
+                            var node = childNodes[j];
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                var text = node.textContent.trim().toLowerCase();
+                                // EXACT match only
+                                if (text === fieldNameLower) {
+                                    matchingElements.push(el);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Exit if no match or multiple matches
+                    if (matchingElements.length === 0) {
+                        return {success: false, error: 'Text not found: ' + fieldName};
+                    }
+                    if (matchingElements.length > 1) {
+                        return {success: false, error: 'Multiple elements (' + matchingElements.length + ') found with text: ' + fieldName};
+                    }
+
+                    var textElement = matchingElements[0];
+
+                    // Step 2: Walk DOWN in DOM order, find target based on action type
+                    var current = textElement;
+                    var maxSteps = 50;
+                    var steps = 0;
+
+                    function getNextInDOM(el) {
+                        if (el.firstElementChild) return el.firstElementChild;
+                        if (el.nextElementSibling) return el.nextElementSibling;
+                        var parent = el.parentElement;
+                        while (parent) {
+                            if (parent.nextElementSibling) return parent.nextElementSibling;
+                            parent = parent.parentElement;
+                        }
+                        return null;
+                    }
+
+                    function isTargetElement(el, actionType) {
+                        var rect = el.getBoundingClientRect();
+                        if (rect.width < 10 || rect.height < 10 || rect.top < 0) {
+                            return false;
+                        }
+
+                        if (actionType === 'fill') {
+                            // Look for fillable elements
+                            var tag = el.tagName.toLowerCase();
+                            if (tag === 'input') {
+                                var type = (el.getAttribute('type') || 'text').toLowerCase();
+                                // Fillable input types
+                                if (['text', 'email', 'password', 'number', 'tel', 'url', 'search'].includes(type)) {
+                                    return !el.disabled && !el.readOnly;
+                                }
+                            }
+                            if (tag === 'textarea') {
+                                return !el.disabled && !el.readOnly;
+                            }
+                            if (el.getAttribute('contenteditable') === 'true') {
+                                return true;
+                            }
+                            return false;
+                        } else {
+                            // For click: look for cursor:pointer
+                            var style = window.getComputedStyle(el);
+                            return style.cursor === 'pointer';
+                        }
+                    }
+
+                    while (current && steps < maxSteps) {
+                        current = getNextInDOM(current);
+                        steps++;
+
+                        if (!current) break;
+
+                        if (isTargetElement(current, actionType)) {
+                            // Found it! Generate XPath
+                            return {
+                                success: true,
+                                xpath: generateXPath(current),
+                                tagName: current.tagName,
+                                className: current.className || ''
+                            };
+                        }
+                    }
+
+                    return {success: false, error: 'No ' + actionType + ' element found within ' + maxSteps + ' elements after: ' + fieldName};
+                }
+
+                function generateXPath(el) {
+                    var path = [];
+                    while (el && el.nodeType === Node.ELEMENT_NODE && el.tagName !== 'HTML') {
+                        var tag = el.tagName.toLowerCase();
+                        if (el.id) {
+                            path.unshift("*[@id='" + el.id + "']");
+                            break;
+                        }
+                        var siblings = el.parentElement ? 
+                            Array.from(el.parentElement.children).filter(function(c) { return c.tagName === el.tagName; }) : [];
+                        if (siblings.length > 1) {
+                            tag += '[' + (siblings.indexOf(el) + 1) + ']';
+                        }
+                        path.unshift(tag);
+                        el = el.parentElement;
+                    }
+                    return '//' + path.join('/');
+                }
+
+                return findElementByFieldName(arguments[0], arguments[1]);
+            """, field_name, action_type)
+
+            return result
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def close_browser(self) -> Dict:
         """Close browser and cleanup"""
         try:

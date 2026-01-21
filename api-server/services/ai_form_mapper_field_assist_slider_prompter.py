@@ -20,7 +20,7 @@ class AIFieldAssistSliderPrompter:
 
     def __init__(self, api_key: str):
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-20250514"
+        self.model = "claude-sonnet-4-5-20250929"
 
     def generate_click_points(
             self,
@@ -95,28 +95,36 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         if action_type == "range_slider":
             prompt = f"""Look at this screenshot of a RANGE SLIDER (two handles).
 
+
+
+**CRITICAL: Read the values from the IMAGE ONLY. Do NOT use the description for the values. The description is just context. you must look at the actual slider positions/labels in the screenshot.**
+
 Slider info:
 - Selector: {selector}
-- Description: {description}
 
-Read the current min and max values. Look for:
+
+IMPORTANT: Read the ACTUAL current values displayed in the screenshot. Look for:
 - Value labels/tooltips near the handles
 - Text displays showing the range
 - Input fields connected to the slider
+- The handle positions on the track
 
 Respond with ONLY JSON (no markdown):
 {{"min_value": "<lower value>", "max_value": "<higher value>"}}"""
         else:
             prompt = f"""Look at this screenshot of a SLIDER.
 
+**CRITICAL: Read the values from the IMAGE ONLY. Do NOT use the description field for the value. The description is just context. you must look at the actual slider positions/labels in the screenshot.**
+
 Slider info:
 - Selector: {selector}
-- Description: {description}
 
-Read the current value. Look for:
+
+IMPORTANT: Read the ACTUAL current value displayed in the screenshot. Look for:
 - Value label/tooltip near the handle
 - Text display showing current value
 - Input field connected to the slider
+- The handle position on the track
 
 Respond with ONLY JSON (no markdown):
 {{"value": "<current value>"}}"""

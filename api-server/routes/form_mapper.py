@@ -879,6 +879,8 @@ class FieldAssistRequest(BaseModel):
     screenshot_base64: str
     step: dict
     query_type: str  # "dropdown_visible", etc.
+    rail_bounds: Optional[dict] = None
+    action_type: Optional[str] = None
 
 
 @router.post("/field-assist")
@@ -896,7 +898,9 @@ async def start_field_assist_query(
         session_id=request.session_id,
         screenshot_base64=request.screenshot_base64,
         step=request.step,
-        query_type=request.query_type
+        query_type=request.query_type,
+        rail_bounds = request.rail_bounds,
+        action_type = request.action_type
     )
 
     return {"task_id": task.id, "status": "pending"}

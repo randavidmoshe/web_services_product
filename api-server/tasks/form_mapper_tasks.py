@@ -313,7 +313,7 @@ def analyze_form_page(
         log.debug(f"!!! AI Generated {len(ai_result.get('steps', []))} steps", category="ai_response",
                   steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}"
+            msg = f"    !!!! Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -453,7 +453,7 @@ def analyze_failure_and_recover(
         log.debug(msg, category="debug_trace")
 
         for s in executed_steps:
-            msg = f"    !!!! Executed Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}"
+            msg = f"    !!!! Executed Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
         #print(f"!!!! Regen remain steps errors and recover, recovery_context: {recovery_context} steps")
@@ -510,7 +510,7 @@ def analyze_failure_and_recover(
         log.debug(f"!!! Recovery generated {len(ai_result.get('steps', []))} steps", category="ai_response",
                   steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -535,7 +535,7 @@ def analyze_failure_and_recover(
         
         logger.info(f"[FormMapperTask] Recovery generated: {len(result.get('recovery_steps', []))} steps")
         for step in result.get('recovery_steps', []):
-            msg = f"    !!!! Recovery Step: {step.get('action')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]}"
+            msg = f"    !!!! Recovery Step: {step.get('action')} | {step.get('selector', '')[:50]} | {step.get('description', '')[:40]} | field_name: {step.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
 
@@ -881,7 +881,8 @@ def regenerate_steps(
     field_requirements: Optional[str] = None,
     enable_junction_discovery: bool = True,
     junction_instructions: str = None,
-    user_provided_inputs: dict = None
+    user_provided_inputs: dict = None,
+    regenerate_retry_message: str = ""
 ) -> Dict:
     """Celery task: Regenerate remaining steps after DOM change."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -963,7 +964,8 @@ def regenerate_steps(
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
             junction_instructions=_build_junction_instructions_text(junction_instructions),
-            user_provided_inputs=user_provided_inputs or {}
+            user_provided_inputs=user_provided_inputs or {},
+            retry_message=regenerate_retry_message
         )
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
@@ -972,7 +974,7 @@ def regenerate_steps(
         log.ai_response("regenerate_steps", success=True)
 
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -1617,10 +1619,22 @@ def field_assist_query(
             from services.ai_form_mapper_field_assist_slider_prompter import AIFieldAssistSliderPrompter
             slider_prompter = AIFieldAssistSliderPrompter(api_key)
 
+            log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                     company_id=ctx.get("company_id"), company_name=ctx.get("company_name"))
+
             if query_type == "slider_click_points":
                 result = slider_prompter.generate_click_points(rail_bounds, action_type, step)
             else:
+
+                screenshot_size_bytes = len(screenshot_base64) if screenshot_base64 else 0
+                screenshot_size_kb = screenshot_size_bytes / 1024
+                log.info(
+                    f"!!!!! ENTERING slider read_value - action_type: {action_type}, screenshot_size: {screenshot_size_kb:.2f} KB ({screenshot_size_bytes} bytes)",
+                    category="ai_request")
+
                 result = slider_prompter.read_value(screenshot_base64, action_type, step)
+
+                log.info(f"!!!!! RAW AI OUTPUT for slider read_value: {result}", category="ai_response")
         else:
             from services.form_mapper_ai_helpers import create_ai_helpers
             helpers = create_ai_helpers(api_key)

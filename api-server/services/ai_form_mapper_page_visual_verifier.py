@@ -141,6 +141,7 @@ Scan the screenshot for validation errors (red boxes, red borders around fields,
 - "Please wait" or "Loading..." messages
 - Grayed out or skeleton content
 - Progress bars
+- You cant see any of the fields that you are supposed tp verify
 
 **Full Executed Steps (in order - includes clicks, tabs, field fills, etc.):**
 {json.dumps(steps_for_ai, indent=2)}

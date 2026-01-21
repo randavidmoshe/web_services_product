@@ -697,7 +697,9 @@ class FormMapperOrchestrator:
         steps = result.get("steps", [])
         if not steps: return self._fail_session(session_id, "AI generated no steps")
         self.update_session(session_id, {"all_steps": steps, "executed_steps": [],
-                                         "current_step_index": 0, "consecutive_failures": 0})
+                                         "current_step_index": 0, "consecutive_failures": 0,
+                                         "in_verify_mode": False, "regenerate_retry_count": 0,
+                                         "regenerate_retry_message": ""})
         logger.info(f"[Orchestrator] Generated {len(steps)} initial steps")
         # Structured logging
         log = self._get_logger(session_id)
@@ -740,6 +742,18 @@ class FormMapperOrchestrator:
             #                                 {"encode_base64": True, "save_to_folder": False,
             #                                  "scenario_description": "after_verify_recovery"})
             #    return {"success": True, "agent_task": task}
+
+            # If not in verify mode, call regenerate again to check for more steps
+            if not session.get("in_verify_mode"):
+                logger.info(f"[Orchestrator] Out of steps (regular mode), calling regenerate to check for more")
+                log = self._get_logger(session_id)
+                log.info("!!!!! OUT OF STEPS (regular mode) - calling regenerate again",
+                         category="regenerate_decision")
+                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                             {"encode_base64": True, "save_to_folder": False,
+                                              "scenario_description": "out_of_steps_check"})
+                return {"success": True, "agent_task": task}
 
             return self._handle_path_complete(session_id)
 
@@ -856,13 +870,15 @@ class FormMapperOrchestrator:
 
         status = 'PASSED' if result.get('success') else 'FAILED'
         used_full_xpath_str = " (used full_xpath)" if result.get('used_full_xpath') else ""
+        used_field_name_str = " (used field_name_fallback)" if result.get('used_field_name_fallback') else ""
 
         # Build log messages
         log_messages = [
-            f"!!!!!!!!!!!!!!!!!!!! Got a {status}{used_full_xpath_str} result from Agent step: action={step.get('action')}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}{verify_info_str}{force_info_str}",
+            f"!!!!!!!!!!!!!!!!!!!! Got a {status}{used_full_xpath_str}{used_field_name_str} result from Agent step: action={step.get('action')}, success={result.get('success')}, fields_changed={result.get('fields_changed')}{junction_info_str}{verify_info_str}{force_info_str}",
             f"!!!! Selector: {step.get('selector', '')}",
             f"!!!! Full XPath: {step.get('full_xpath', '')}",
             f"!!!! Description: {step.get('description', '')}",
+            f"!!!! Field Name: {step.get('field_name', '')}" if step.get('field_name') else None,
             f"!!!! Value: {step.get('value', '')}" if step.get('value') else None
         ]
         if not result.get('success'):
@@ -1105,11 +1121,16 @@ class FormMapperOrchestrator:
         clean_step = step.copy()
         if result.get("used_full_xpath") and result.get("effective_selector"):
             clean_step["selector"] = result.get("effective_selector")
+        if result.get("used_field_name_fallback") and result.get("effective_selector"):
+            clean_step["selector"] = result.get("effective_selector")
         clean_step.pop("full_xpath", None)
 
         # Update value if fill_autocomplete used different character
         if step.get("action") == "fill_autocomplete" and result.get("actual_value"):
             clean_step["value"] = result.get("actual_value")
+
+        if step.get("action") in ("slider", "range_slider") and result.get("value"):
+            clean_step["value"] = result.get("value")
 
         executed_steps.append(clean_step)
         self.update_session(session_id, {"executed_steps": executed_steps, "consecutive_failures": 0})
@@ -1143,7 +1164,20 @@ class FormMapperOrchestrator:
                                          {"encode_base64": True, "save_to_folder": False,
                                           "scenario_description": "junction_after"})
             return {"success": True, "state": "junction_getting_after_screenshot", "agent_task": task}
-        
+
+        # Check for force_regenerate_verify (triggers verify flow even if DOM didn't change)
+        if step.get("force_regenerate_verify"):
+            logger.info(f"[Orchestrator] Step has force_regenerate_verify=True, triggering verify flow")
+            log = self._get_logger(session_id)
+            log.info("!!!!! force_regenerate_verify=True - triggering verify regeneration",
+                     category="regenerate_decision")
+            self.update_session(session_id, {"in_verify_mode": True})
+            self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+            task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                         {"encode_base64": True, "save_to_folder": False,
+                                          "scenario_description": "force_regenerate_verify"})
+            return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
+
         # Check for DOM change
         old_hash = session.get("current_dom_hash", "")
         new_hash = result.get("new_dom_hash", "")
@@ -1423,7 +1457,7 @@ class FormMapperOrchestrator:
             log = self._get_logger(session_id)
             log.debug("!!! force_regenerate=True - triggering regeneration", category="milestone")
         elif config.get("use_detect_fields_change", True):
-            should_regen, trigger_reason = self._should_regenerate(step, result, config)
+            should_regen, trigger_reason = self._should_regenerate(session_id, step, result, config)
             if not should_regen:
                 print(
                     f"!!!!!!!!! ℹ️  DOM changed. Fields detection says no regeneration needed - skipping AI regeneration")
@@ -1499,13 +1533,13 @@ class FormMapperOrchestrator:
             return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
         return self._trigger_regenerate_steps(session_id, None)
 
-    def _should_regenerate(self, step: Dict, result: Dict, config: Dict) -> tuple:
+    def _should_regenerate(self, session_id: str, step: Dict, result: Dict, config: Dict) -> tuple:
         """
         Decide if regeneration is needed based on agent detection and AI hint.
 
         Logic:
-        1. If fields_changed_dom (method 1) → always regenerate
-        2. If fields_changed_js (method 2) → regenerate UNLESS AI said dont_regenerate
+        1. If AI said dont_regenerate → ALWAYS skip (AI knows best)
+        2. If fields_changed_dom (method 1) → regenerate
         3. Otherwise → don't regenerate
 
         Returns:
@@ -1519,25 +1553,43 @@ class FormMapperOrchestrator:
         # Backward compatibility: if new fields not present, use old field
         if "fields_changed_dom" not in result and "fields_changed_js" not in result:
             fields_changed = result.get("fields_changed", True)
-            return (fields_changed, f"legacy mode: fields_changed={fields_changed}")
+            if use_ai_hint and dont_regenerate:
+                reason = f"legacy mode but AI said dont_regenerate → skip"
+                log = self._get_logger(session_id)
+                log.info(f"!!!!! REGENERATE DECISION: NO - {reason}", category="regenerate_decision")
+                return (False, reason)
+
+            reason = f"legacy mode: fields_changed={fields_changed}"
+            log = self._get_logger(session_id)
+            decision = "YES" if fields_changed else "NO"
+            log.info(f"!!!!! REGENERATE DECISION: {decision} - {reason}", category="regenerate_decision")
+            return (fields_changed, reason)
 
         # Build status string
         status = f"dom={fields_changed_dom}, js={fields_changed_js}, ai_dont_regen={dont_regenerate}, use_ai_hint={use_ai_hint}"
+
+        # AI said dont_regenerate → ALWAYS skip (check this FIRST)
+        if use_ai_hint and dont_regenerate:
+            reason = f"AI said dont_regenerate → skip ({status})"
+            logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+            log = self._get_logger(session_id)
+            log.info(f"!!!!! REGENERATE DECISION: NO - {reason}", category="regenerate_decision")
+            return (False, reason)
 
         # Method 1 (DOM structure change) always triggers regeneration
         if fields_changed_dom:
             reason = f"DOM structure changed → regenerate ({status})"
             logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+            log = self._get_logger(session_id)
+            log.info(f"!!!!! REGENERATE DECISION: YES - {reason}", category="regenerate_decision")
             return (True, reason)
 
         # Method 2 (JS visibility change) - check AI hint
         if fields_changed_js:
-            if use_ai_hint and dont_regenerate:
-                reason = f"JS visibility changed but AI said dont_regenerate → skip ({status})"
-                logger.info(f"[Orchestrator] _should_regenerate: {reason}")
-                return (False, reason)
             reason = f"JS visibility changed → regenerate ({status})"
             logger.info(f"[Orchestrator] _should_regenerate: {reason}")
+            log = self._get_logger(session_id)
+            log.info(f"!!!!! REGENERATE DECISION: YES - {reason}", category="regenerate_decision")
             return (True, reason)
 
         reason = f"No field changes detected → skip ({status})"
@@ -1671,7 +1723,8 @@ class FormMapperOrchestrator:
                     "field_requirements": session.get("field_requirements_for_recovery", ""),
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
                     "junction_instructions": session.get("junction_instructions", "{}"),
-                    "user_provided_inputs": session.get("user_provided_inputs", {})}}
+                    "user_provided_inputs": session.get("user_provided_inputs", {}),
+                    "regenerate_retry_message": session.get("regenerate_retry_message", "")}}
 
     def _trigger_regenerate_verify_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
         session = self.get_session(session_id)
@@ -1728,12 +1781,37 @@ class FormMapperOrchestrator:
                 return self._handle_path_complete(session_id)
 
         new_steps = result.get("new_steps", []) or result.get("steps", [])
-        if not new_steps: return self._handle_path_complete(session_id)
+        if not new_steps:
+            regenerate_retry_count = int(session.get("regenerate_retry_count") or 0)
+            if regenerate_retry_count < 2:
+                logger.info(f"[Orchestrator] Regenerate returned 0 steps, retrying ({regenerate_retry_count + 1}/2)")
+                log = self._get_logger(session_id)
+                log.info(f"!!!!! REGENERATE 0 STEPS - triggering retry {regenerate_retry_count + 1}/2",
+                         category="regenerate_decision")
+                retry_message = "CRITICAL: You previously returned 0 steps, but the form is NOT complete. There are more steps to generate. You MUST provide them now."
+                self.update_session(session_id, {
+                    "regenerate_retry_count": regenerate_retry_count + 1,
+                    "regenerate_retry_message": retry_message
+                })
+                self.transition_to(session_id, MapperState.DOM_CHANGE_GETTING_SCREENSHOT)
+                task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
+                                             {"encode_base64": True, "save_to_folder": False,
+                                              "scenario_description": "regenerate_retry"})
+                return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
+            else:
+                logger.info(f"[Orchestrator] Regenerate returned 0 steps after 2 retries, completing path")
+                log = self._get_logger(session_id)
+                log.info("!!!!! REGENERATE 0 STEPS after 2 retries - completing path", category="regenerate_decision")
+                return self._handle_path_complete(session_id)
+
         executed_steps = session.get("executed_steps", [])
         current_index = session.get("current_step_index", 0)
         self.update_session(session_id, {"all_steps": executed_steps + new_steps,
                                          "current_step_index": len(executed_steps),
-                                         "in_recovery_mode": False})
+                                         "in_recovery_mode": False,
+                                         "in_verify_mode": False,
+                                         "regenerate_retry_count": 0,
+                                         "regenerate_retry_message": ""})
         logger.info(f"[Orchestrator] Regenerated {len(new_steps)} steps, continuing from step {len(executed_steps) + 1}")
         # Structured logging
         log = self._get_logger(session_id)
@@ -1791,7 +1869,8 @@ class FormMapperOrchestrator:
             "all_steps": executed_steps + new_steps,
             "current_step_index": len(executed_steps),
             "pending_new_steps": [],
-            "in_recovery_mode": False
+            "in_recovery_mode": False,
+            "in_verify_mode": True
         })
 
         logger.info(

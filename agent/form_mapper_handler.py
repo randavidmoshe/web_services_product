@@ -18,7 +18,6 @@ from selenium.common.exceptions import (
     TimeoutException, NoAlertPresentException, 
     ElementNotInteractableException, StaleElementReferenceException
 )
-from services.ai_form_mapper_field_assist_slider_prompter import AIFieldAssistSliderPrompter
 
 logger = logging.getLogger(__name__)
 
@@ -385,8 +384,42 @@ class FormMapperTaskHandler:
                 result["effective_selector"] = full_xpath
             else:
                 print(f"[Handler] ❌ Full XPath fallback also failed: {fallback_result.get('error', 'unknown')}")
-                # Keep original error as it's usually more meaningful
-                result["error"] = f"Primary selector failed: {original_error} | Retry with full_xpath also failed: {fallback_result.get('error', 'unknown')}"
+
+                # Second fallback: Try to find clickable by field_name (only for click actions)
+                field_name = step.get("field_name") or step.get("description", "")
+                if action in ("click", "fill") and field_name:
+                    print(f"[Handler] Trying second fallback: find_element_by_field_name('{field_name}', '{action}')...")
+
+                    js_result = self.selenium.find_element_by_field_name(field_name, action)
+
+                    if js_result.get("success"):
+                        js_xpath = js_result.get("xpath")
+                        print(f"[Handler] Found clickable via JS: {js_xpath}")
+
+                        # Try executing with the JS-found xpath
+                        js_fallback_step = step.copy()
+                        js_fallback_step["selector"] = js_xpath
+                        js_fallback_result = self.selenium.execute_step(js_fallback_step)
+
+                        if js_fallback_result.get("success"):
+                            result = js_fallback_result
+                            print(f"[Handler] ✅ JS field_name fallback succeeded!")
+                            result["used_field_name_fallback"] = True
+                            result["effective_selector"] = js_xpath
+                        else:
+                            print(
+                                f"[Handler] ❌ JS field_name fallback failed: {js_fallback_result.get('error', 'unknown')}")
+                            result[
+                                "error"] = f"Primary selector failed: {original_error} | full_xpath failed | field_name fallback failed: {js_fallback_result.get('error', 'unknown')}"
+                    else:
+                        print(
+                            f"[Handler] ❌ JS find_clickable_by_field_name failed: {js_result.get('error', 'unknown')}")
+                        result[
+                            "error"] = f"Primary selector failed: {original_error} | full_xpath failed | field_name search failed: {js_result.get('error', 'unknown')}"
+                else:
+                    # Keep original error
+                    result[
+                        "error"] = f"Primary selector failed: {original_error} | Retry with full_xpath also failed: {fallback_result.get('error', 'unknown')}"
         else:
             # DEBUG: Why fallback wasn't tried
             if not result.get("success"):
@@ -401,6 +434,12 @@ class FormMapperTaskHandler:
 
         # Add step_index to result
         result["step_index"] = step_index
+
+        # Update step value for slider actions (AI reads actual position after click)
+        if action in ("slider", "range_slider") and result.get("value"):
+            step = step.copy()  # Don't mutate original
+            step["value"] = result.get("value")
+
         result["executed_step"] = step
 
         if not result.get("success"):

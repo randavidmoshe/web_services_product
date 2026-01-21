@@ -452,17 +452,17 @@ When you have a step for these junctions, use the specified option. If a junctio
         **force_regenerate field (REQUIRED):**
         - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
         
-        **dont_regenerate field (optional):**
+        **Mandatory-dont_regenerate field:**
         - Set to `true` ONLY for:
+          * Filling a field (fill action)
           * Opening/closing modals or dialogs
           * Adding/removing items in a list or table
           * Expanding/collapsing accordion sections
           * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
         - Set to `false` (or omit) for all other actions
         
-        **force_regenerate_verify field (for Save/Submit only):**
-        - Set to `true` ONLY for Save and Submit buttons
-        - This triggers verification-focused AI after form submission
+        ** CRITICAL AND MANDATORY - force_regenerate field (for Save/Submit only):**
+        - Set to `true` for Save and Submit buttons
         
         **full_xpath field (MANDATORY FOR ALL STEPS):**
         - Fallback selector if primary selector fails
@@ -601,6 +601,19 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         **DO NOT skip tabs! Every tab must be filled before moving forward!**
         
+        **Forms with Multiple Save Sections:**
+        Some forms have independent sections, each with its own Save button (not one final Submit).
+        If you see multiple Save buttons within the form (e.g., "Save Personal Info", "Save Address", "Save Employment"):
+        1. Fill all fields in Section 1
+        2. Click Section 1's Save button
+        3. Wait for save confirmation (if any)
+        4. Fill all fields in Section 2
+        5. Click Section 2's Save button
+        6. Continue for each section
+        
+        **How to identify:** Look for Save/Update buttons that appear WITHIN form sections, not just at the bottom.
+        **Do NOT set force_regenerate_verify: true for section saves** — only for the FINAL form submission (if any).
+        
         **Junctions:** Mark a step as a junction if ANY of these are true:
         - The element is one of several options the user can choose from (radio buttons, option cards, dropdown, toggle buttons, etc.)
         - Selecting it MIGHT reveal/show different fields than selecting a sibling option
@@ -690,7 +703,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         - Email: {'Normal email like john@example.com (NO suffix!)'}
         - Phone, Address, City, State, Zip, Country, Numbers: Normal realistic values (NO suffix!)
         - Dates: Look at screenshot/placeholder for required format
-        - **EXCEPTION for fill_autocomplete:** Even for main/leading fields, use ONLY a single character (like "a") - the full value with suffix will be selected from the dropdown suggestions in the next step
+        - **EXCEPTION for fill_autocomplete:** Even for main/leading fields, use ONLY "quattera" - the full value with suffix will be selected from the dropdown suggestions in the next step
         
         **⚠️ SPECIAL INPUT FIELDS (Date, Time, Phone, etc.) - CRITICAL:**
         For date, time, and specially formatted fields:
@@ -708,12 +721,11 @@ When you have a step for these junctions, use the specified option. If a junctio
         - click: Click element (buttons, links, tabs)
         - double_click: Double-click element (some elements require it)
         - fill: Enter text in input field (use ONLY for regular text inputs WITHOUT autocomplete/suggestions)
-        - fill_autocomplete: Type SINGLE CHARACTER (like "a") in autocomplete field to trigger suggestions. The actual value is selected in the next step by clicking on suggestion. MUST always have force_regenerate: true
-        - clear: Clear input field before filling
+        - fill_autocomplete: Type "quattera" in autocomplete field to trigger suggestions. The actual value is selected in the next step by clicking on suggestion. MUST always have force_regenerate: true
+        - NOTE: fill action automatically clears field first - NO separate clear step needed
         - select: Choose from dropdown OR select radio button
         - check: Check checkbox (only if not already checked)
         - uncheck: Uncheck checkbox (only if currently checked)
-        - slider: Set range slider to percentage (value: 0-100)
         - drag_and_drop: Drag element to target (selector: source, value: target selector)
         - press_key: Send keyboard key (value: ENTER, TAB, ESCAPE, ARROW_DOWN, etc.)
         - slider: Set single-handle slider. Provide ONLY the rail/track selector.
@@ -734,15 +746,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         - switch_to_window: Switch to window/tab by index (value: 0, 1, 2, etc.)
         - switch_to_parent_window: Return to original/main window
         
-        **SLIDER ACTION:**
-        For range sliders (like employment status slider):
-        ```json
-        {{"action": "slider", "selector": "input[type='range']#employmentStatus", "value": "50", "description": "Set employment status to 50% (Partially Employed)"}}
-        ```
-        Value must be 0-100 (percentage). Examples:
-        - "0" = leftmost (Unemployed)
-        - "50" = middle (Partially Employed) 
-        - "100" = rightmost (Employed)
+        
         
         **DRAG AND DROP ACTION:**
         For drag-and-drop elements (like project priority assignment):
@@ -791,9 +795,9 @@ When you have a step for these junctions, use the specified option. If a junctio
         **AJAX/Dynamic Field Handling:**
         When a field loads via AJAX (e.g., Field B appears after filling Field A):
         ```json
-        {{"action": "fill", "selector": "input#fieldA", "value": "SomeValue"}},
+        {{"action": "fill", "selector": "input#fieldA", "value": "SomeValue", "field_name": "Field A"}},
         {{"action": "wait_for_ready", "selector": "input#fieldB", "description": "Wait for Field B to load via AJAX"}},
-        {{"action": "fill", "selector": "input#fieldB", "value": "AnotherValue"}}
+        {{"action": "fill", "selector": "input#fieldB", "value": "AnotherValue", "field_name": "Field B"}}
         ```
 
         **IMPORTANT: Use 'select' action for BOTH:**
@@ -822,18 +826,32 @@ When you have a step for these junctions, use the specified option. If a junctio
 
         **Custom Dropdown Example:**
         Step 1:
-        {{"action": "click", "selector": ".dropdown-trigger", "description": "Open dropdown", "force_regenerate": true}}
+        {{"action": "click", "selector": ".dropdown-trigger", "field_name": "gender", "description": "Open dropdown", "force_regenerate": true}}
 
         Step 2 (after regeneration - options now visible):
-        {{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "description": "Select Option A"}}
-
+        {{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "field_name": "male", "description": "Select Option A"}}
+        
+        **⚠️ field_name (REQUIRED for ALL click and fill actions):**
+        For ALL click and fill actions, ALWAYS include `field_name` with the EXACT label text:
+        - `field_name` must match the field's label EXACTLY as shown on page (case-insensitive)
+        - Used as fallback if selector fails
+        - Example: If label shows "Hair Type", use `"field_name": "Hair Type"`
+        ## Exception - for dropdown items field_name is the dropdown item name
+        
         **Fill Autocomplete Example:**
         Step 1:
-        {{"action": "fill_autocomplete", "selector": "input#city", "value": "a", "description": "Type to trigger suggestions", "force_regenerate": true}}
+        {{"action": "fill_autocomplete", "selector": "input#city", "value": "quattera", "description": "Type to trigger suggestions", "force_regenerate": true}}
 
         Step 2 (after regeneration - suggestions now visible):
-        {{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "description": "Select first suggestion"}}
+        {{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "field_name": "quattera_first", "description": "Select first suggestion"}}
 
+        **⚠️ field_name (REQUIRED for ALL click and fill actions):**
+        For ALL click and fill actions, ALWAYS include `field_name` with the EXACT label text:
+        - `field_name` must match the field's label EXACTLY as shown on page (case-insensitive)
+        - Used as fallback if selector fails
+        - Example: If label shows "House Color", use `"field_name": "House Color"`
+        ** Exception - for dropdown items the field_name is the dropdown specific item name
+        
         **RULE:** If you cannot see in the DOM what you need to select/click after an action, use force_regenerate: true.
 
         === COMPLEX FIELDS (Atomic Step Sequences) ===
@@ -887,10 +905,7 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         
         
-        2. **Clear the field** (for text inputs only):
-           - Action: "clear"
-           - Selector: the field selector
-           - Skip this step for: select dropdowns, checkboxes, radio buttons, sliders
+        2. **Fill automatically clears** - no separate clear step needed
         
         3. **Update the field** with new value:
            - Action: "fill" or "select" or "check" (depending on field type)
@@ -903,14 +918,12 @@ When you have a step for these junctions, use the specified option. If a junctio
         
         **Example for field in iframe:**
         - switch_to_frame (navigate to iframe)
-        - clear (clear the field)
         - fill (update with new value)
         - switch_to_default (exit iframe)
         
         **Example for field requiring hover:**
         - hover (reveal hidden field)
         - wait_for_visible (wait for field to appear)
-        - clear (clear the field)
         - fill (update with new value)
 
         === OUTPUT REQUIREMENTS ===
@@ -991,6 +1004,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "click",
             "description": "Click 'Add New' button to open form",
             "selector": "button.add-new",
+            "field_name": "Add New",
             "value": null,
             "verification": "form opens",
             "wait_seconds": 2,
@@ -1002,6 +1016,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "fill",
             "description": "Enter name in form",
             "selector": "input[name='name']",
+            "field_name": "Name",
             "value": "quattera_TestUser_184093",
             "verification": null,
             "wait_seconds": 0.5,
@@ -1013,6 +1028,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "click",
             "description": "Click address tab",
             "selector": "button[data-tab='address']",
+            "field_name": "Address",
             "value": null,
             "verification": null,
             "wait_seconds": 1,
@@ -1035,6 +1051,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "fill",
             "description": "Fill street address",
             "selector": "input[name='street']",
+            "field_name": "Street Address",
             "value": "123 Main St",
             "verification": null,
             "wait_seconds": 0.5,
@@ -1057,6 +1074,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "fill",
             "description": "Fill Field A (triggers AJAX)",
             "selector": "input#fieldA",
+            "field_name": "Field A",
             "value": "SampleValue",
             "verification": null,
             "wait_seconds": 0.5,
@@ -1068,6 +1086,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "wait_for_ready",
             "description": "Wait for Field B to load via AJAX",
             "selector": "input#fieldB",
+            
             "value": null,
             "verification": null,
             "wait_seconds": 0,
@@ -1079,6 +1098,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "fill",
             "description": "Fill Field B",
             "selector": "input#fieldB",
+            "field_name": "Field B",
             "value": "DependentValue",
             "verification": null,
             "wait_seconds": 0.5,
@@ -1090,6 +1110,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "click",
             "description": "Click the Add button to add a new finding item",
             "selector": "button.btn-add-finding",
+            "field_name": "Add",
             "value": null,
             "verification": null,
             "wait_seconds": 0.5,
@@ -1112,6 +1133,7 @@ When you have a step for these junctions, use the specified option. If a junctio
             "action": "click",
             "description": "Click submit button",
             "selector": "button[type='submit']",
+            "field_name": "Submit",
             "value": null,
             "verification": "form submitted",
             "wait_seconds": 2,
@@ -1147,8 +1169,8 @@ When you have a step for these junctions, use the specified option. If a junctio
         ```json
         {{
           "steps": [
-            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false, "dont_regenerate": false}},
-            {{"step_number": 2, "action": "click", "selector": "button.submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true, "dont_regenerate": false}}
+            {{"step_number": 1, "action": "fill", "selector": "input#field", "value": "value", "field_name": "Field", "description": "Fill field", "full_xpath": "/html/body/div[1]/form/input", "force_regenerate": false, "dont_regenerate": false}},
+            {{"step_number": 2, "action": "click", "selector": "button.submit", "field_name": "Submit", "description": "Submit form", "full_xpath": "/html/body/div[1]/form/button", "force_regenerate": true, "dont_regenerate": false}}
           ]
         }}
         ```
@@ -1157,8 +1179,9 @@ When you have a step for these junctions, use the specified option. If a junctio
         - Set to `true` for navigation actions: Edit, View, Next, Continue, Delete, Back to List buttons
         - Set to `false` for: fill, select, click tab, check, hover, verify, scroll, ALL wait actions, switch_to_frame, switch_to_default
         
-        **dont_regenerate field (optional):**
+        **MANDATORY-dont_regenerate field:**
         - Set to `true` ONLY for:
+          * Filling a field (fill action)
           * Opening/closing modals or dialogs
           * Adding/removing items in a list or table
           * Expanding/collapsing accordion sections
@@ -1253,6 +1276,25 @@ When you have a step for these junctions, use the specified option. If a junctio
                     logger.info(f"[AIHelper] Successfully parsed {len(steps)} steps")
                     print(f"[AIHelper] Successfully parsed {len(steps)} steps")
 
+                    # DEBUG: Print full response when 0 steps returned
+                    if len(steps) == 0:
+                        print("=" * 80)
+                        print("[AIHelper] ⚠️ DEBUG: GENERATE STEPS RETURNED 0 STEPS")
+                        print("=" * 80)
+                        print(f"[AIHelper] Full AI response:\n{response_text}")
+                        print("=" * 80)
+
+                    # Check if AI detected validation errors
+                    if result.get("validation_errors_detected"):
+                        print(f"[AIHelper] ⚠️ !!!!!!! Validation errors detected in DOM/screenshot")
+                        print(response_text)
+                        return {
+                            "steps": [],
+                            "validation_errors_detected": True,
+                            "ui_issue": "",
+                            "no_more_paths": False
+                        }
+
                     # Check if AI detected page errors
                     if result.get("page_error_detected"):
                         print(f"[AIHelper] ⚠️ !!!!!!! Page error detected in DOM/screenshot")
@@ -1300,7 +1342,8 @@ When you have a step for these junctions, use the specified option. If a junctio
             critical_fields_checklist: Optional[Dict[str, str]] = None,
             field_requirements: Optional[str] = None,
             junction_instructions: Optional[str] = None,
-            user_provided_inputs: Optional[Dict] = None
+            user_provided_inputs: Optional[Dict] = None,
+            retry_message: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Regenerate remaining steps after DOM change
@@ -1421,6 +1464,16 @@ Do NOT skip fields just because they are not in the required selections list.
 7. **JUNCTION CHECK:** Look for dropdowns/radio buttons/etc in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction=true + junction_info).
 """
 
+            # Build retry message section if present
+            retry_message_section = ""
+            if retry_message:
+                retry_message_section = f"""
+⚠️⚠️⚠️ CRITICAL RETRY MESSAGE ⚠️⚠️⚠️
+{retry_message}
+⚠️⚠️⚠️ END CRITICAL MESSAGE ⚠️⚠️⚠️
+
+"""
+
             # ==================== BUILD THE PROMPT ====================
 
             prompt = f"""You are a web automation expert generating Selenium WebDriver test steps.
@@ -1441,12 +1494,14 @@ Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "P
 }}}}
 ```
 
-**If NO validation errors:** Continue below.
+**If NO validation errors:** Continue below to SECOND check.
 
 ## SECOND: CHECK FOR PAGE ERRORS
 
 Scan DOM and screenshot for unrecoverable state:
 - "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "This site can't be reached", "refused to connect", "took too long to respond"
+- "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
 
 **If page error detected, return ONLY:**
 ```json
@@ -1457,10 +1512,42 @@ Scan DOM and screenshot for unrecoverable state:
 ```
 (error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
 
-**If NO page errors:** Continue below.
+**If NO page errors:** Continue below to THIRD CHECK.
+
+**⚠️ THIRD: CHECK FOR LOADING SPINNER**
+If loading spinner is visible in screenshot, return ONLY the wait step:
+```json
+{{
+  "steps": [
+    {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-class", "value": "15", "description": "Wait for loading to complete", "full_xpath": "", "force_regenerate_verify": true}}
+  ]
+}}
+```
+Find spinner in DOM (patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations).
+After spinner disappears, you will be called again to generate verify steps.
+
+**If no spinner:** Continue below to FORTH CHECK.
+
+**⚠️ FOURTH: CHECK IF FORM SUBMISSION COMPLETE**
+If the last step in "Steps Already Completed" was a save/submit/accept/ button:
+1. Look at "Steps Already Completed" to see what steps were created
+2. CHeck DOM and SCREENSHOT and if there are no more steps to be created that lead to more Save/submit button, RETURN ONLY:
+
+```json
+{{
+  "steps": [
+    {{"step_number": 1, "action": "wait_for_ready", "selector": "", "value": "2", "description": "Wait for page to stabilize after form submission", "full_xpath": "", "force_regenerate_verify": true}}
+  ]
+}}
+```
+This will trigger verification steps generation.
+
+**If more fields/buttons exist:** Continue below to generate remaining steps.
+
 
 {screenshot_section}{critical_fields_section}{route_planning_section}
 {user_inputs_section}
+{retry_message_section}
 
 ## Current Context:
 
@@ -1474,34 +1561,6 @@ Scan DOM and screenshot for unrecoverable state:
 ## Your Task:
 Generate the REMAINING steps to complete ONLY the test cases listed in "Test Cases" section above.
 
-**⚠️ FIRST: CHECK FOR PAGE ERRORS**
-Scan DOM and screenshot for unrecoverable state:
-- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
-- "This site can't be reached", "refused to connect", "took too long to respond"
-- "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
-
-**If page error detected, return ONLY:**
-```json
-{{
-  "page_error_detected": true,
-  "error_type": "page_not_found"
-}}
-```
-(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
-
-**⚠️ SECOND: CHECK FOR LOADING SPINNER**
-If loading spinner is visible in screenshot, return ONLY the wait step:
-```json
-{{
-  "steps": [
-    {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-class", "value": "15", "description": "Wait for loading to complete", "full_xpath": "", "force_regenerate_verify": true}}
-  ]
-}}
-```
-Find spinner in DOM (patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations).
-After spinner disappears, you will be called again to generate verify steps.
-
-**If no page error and no spinner:** Continue with verification steps below.
 
 **⚠️ STOP WHEN COMPLETE:**
 - Generate steps ONLY for test cases in the list - NEVER invent new ones (no TEST_4 if not listed)
@@ -1543,7 +1602,14 @@ For example if the last step already executed was to open a drop down then your 
 4. Only after ALL fields AND ALL "Add" buttons in current tab are done, navigate to next tab
 5. Submit form
 
-**For edit/update tests:** Navigate → Verify original value → Clear → Update → Navigate back
+**Forms with Multiple Save Sections:**
+If you see multiple Save buttons within the form (one per section):
+1. Fill all fields in current section
+2. Click that section's Save button
+3. Wait for save confirmation (if any)
+4. Move to next section and repeat
+
+**For edit/update tests:** Navigate → Verify original value → Update (fill auto-clears) → Navigate back
 
 ## Response Format:
 ```json
@@ -1607,23 +1673,22 @@ If ANY check fails → FIX the xpath before returning.
 
 **Mandatory - dont_regenerate field:**
 - Set to `true` ONLY for:
+  * Filling a field (fill action)
   * Opening/closing modals or dialogs
   * Adding/removing items in a list or table
   * Saving an item in a list that was added
-  * CLicking a new TAB
   * Expanding/collapsing accordion sections
 - Set to `false` (or omit) for all other actions
 
 
-** CRITICAL AND MANDATORY - force_regenerate_verify field (for Save/Submit only):**
+** CRITICAL AND MANDATORY - force_regenerate field (for Save/Submit only):**
 - Set to `true` for Save and Submit buttons
-- This triggers verification-focused AI after form submission
 
 ---
 
 ## Action Reference:
 
-**Available actions:** fill, fill_autocomplete, clear, select, click, double_click, check, uncheck, slider, drag_and_drop, press_key, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
+**Available actions:** fill, fill_autocomplete, select, click, double_click, check, uncheck, slider, range_slider, drag_and_drop, press_key, wait, wait_for_ready, wait_for_visible, wait_message_hidden, wait_spinner_hidden, scroll, hover, refresh, switch_to_frame, switch_to_default, switch_to_shadow_root, switch_to_window, switch_to_parent_window, create_file, upload_file
 
 **⚠️ NEVER generate "verify" action** during the creation stage - verify steps are generated separately AFTER form submission. Use `wait_for_visible` if you need to confirm an element appeared.
 
@@ -1643,11 +1708,13 @@ If ANY check fails → FIX the xpath before returning.
 
 **⚠️ CUSTOM DROPDOWN DETECTION:** If element tag is `<div>`, `<span>`, or anything other than `<select>`, it's a CUSTOM dropdown:
 - ❌ WRONG: `{{"action": "select", "selector": "//div[contains(@class, 'select')]"}}` (div is NOT a native select!)
-- ✅ RIGHT: `{{"action": "click", "selector": "//div[contains(@class, 'select')]", "force_regenerate": true}}` then click option
+- ✅ RIGHT: `{{"action": "click", "selector": "//div[contains(@class, 'select')]", "field_name": "Country", "force_regenerate": true}}` then click option
 
-**Slider:** value = 0-100 (percentage)
+**Slider Actions:**
+For sliders, provide only the rail/track selector - agent handles clicking and reading values:
 ```json
-{{"action": "slider", "selector": "input[type='range']", "value": "50", "description": "Set slider to 50%"}}
+{{"action": "slider", "selector": "input[type='range']#volume", "description": "Set volume slider"}}
+{{"action": "range_slider", "selector": ".price-range-track", "description": "Set price range filter"}}
 ```
 
 **Drag and drop:** selector = element to drag, value = drop target
@@ -1684,17 +1751,24 @@ When generating a step, ask yourself:
 
 **Custom Dropdown Example:**
 Step 1:
-{{"action": "click", "selector": ".dropdown-trigger", "description": "Open dropdown", "force_regenerate": true}}
+{{"action": "click", "selector": ".dropdown-trigger", "field_name": "gender", "description": "Open dropdown", "force_regenerate": true}}
 
 Step 2 (after regeneration - options now visible):
-{{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "description": "Select Option A"}}
+{{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "field_name": "male", "description": "Select Option A"}}
+
+**⚠️ field_name (REQUIRED for ALL click and fill actions):**
+For ALL click and fill actions, ALWAYS include `field_name` with the EXACT label text:
+- `field_name` must match the field's label EXACTLY as shown on page (case-insensitive)
+- Used as fallback if selector fails
+- Example: If label shows "Car Type", use `"field_name": "Car Type"`
+**Exception: for dropdown items field_name will be the dropdown item name
 
 **Autocomplete Example:**
 Step 1:
-{{"action": "fill_autocomplete", "selector": "input#city", "value": "a", "description": "Type to trigger suggestions", "force_regenerate": true}}
+{{"action": "fill_autocomplete", "selector": "input#city", "value": "quattera", "description": "Type to trigger suggestions", "force_regenerate": true}}
 
 Step 2 (after regeneration - suggestions now visible):
-{{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "description": "Select first suggestion"}}
+{{"action": "click", "selector": "//ul[@class='suggestions']/li[1]", "field_name": "City", "description": "Select first suggestion"}}
 
 **RULE:** If you cannot see in the DOM what you need to select/click after an action, use force_regenerate: true.
 
@@ -1768,68 +1842,6 @@ Always include `is_junction: true` and `junction_info` even when following junct
 
 **Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
----
-
-## VERIFICATION RULES
-
-**⚠️ CRITICAL - VIEW/DETAIL PAGE ≠ FORM PAGE:**
-After clicking View/Edit/Details button, you are on a READ-ONLY display page:
-- ❌ WRONG: `input#fieldName`, `select#type`, `textarea#notes` (FORM elements - won't exist!)
-- ✅ RIGHT: Data is displayed in `<span>`, `<div>`, `<td>`, `<dd>`, `<p>` - CHECK THE DOM!
-
-**⚠️ CRITICAL - WHERE TO GET EXPECTED VALUES:**
-- ✅ Get expected value from the `value` field in "Steps Already Completed" (what was ENTERED)
-- ❌ NEVER use values from the current DOM (what is DISPLAYED) as expected values
-- The whole point of verification is to CHECK if what was entered matches what is displayed
-- Example: If fill step had `"value": "15-1-1990"`, verify with `"value": "15-1-1990"` - NOT what DOM shows
-
-**VERIFY ALL FIELDS - NO SKIPPING:**
-1. Generate a VERIFY step for EACH fill/select/check step in "Steps Already Completed"
-2. Skip ONLY system-generated fields (timestamps, IDs, "Created At", "Updated At")
-3. **NEVER SKIP** - even if you suspect value might not match or format might differ - verification failures are VALID test results
-
-**⚠️ SELECTOR MUST INCLUDE FIELD IDENTIFIER:**
-Every verify selector MUST include the field name/label as an anchor (e.g., 'Email', 'First Name', 'Phone').
-- ✅ `//div[contains(@class, 'field-group')][.//label[contains(text(), 'Email')]]//div[@class='value']`  
-- ❌ `(//div[@class='field-value'])[3]` - position-only without field name won't work if layout changes
-
-**⚠️ DUPLICATE FIELD NAMES (e.g., two "City" fields):**
-When the same field label appears multiple times, scope the selector to the SECTION/PARENT container:
-- ✅ `//div[contains(@class, 'personal-info')]//div[.//label[contains(text(), 'City')]]//span`
-- ✅ `//section[@id='shipping']//div[.//label[contains(text(), 'City')]]//span`
-- ✅ `(//div[.//label[contains(text(), 'City')]]//span)[1]` - use index as last resort
-- ❌ `//label[contains(text(), 'City')]/..//span` - not unique when multiple exist
-
-**TABLE/LIST verification - MANDATORY FOR IT TO SUCCEED -> SEARCH FIRST:**
-Before generating ANY verify steps for a list/table, check for search input:
-1. Look for search box in DOM: `input[type='search']`, `input#search`, `input[placeholder*='Search']`, `input[placeholder*='Filter']`
-2. If search exists: Generate fill step to search, then wait_for_ready, then verify steps
-3. If NO search exists: Use positional selectors on first row (newly added items typically appear at top)
-
-**Why search first:** Positional selectors like `//tr[1]//td[1]` may fail on re-runs if multiple records exist. Searching isolates your record.
-
-**Example with search:**
-1. `{{"action": "fill", "selector": "input#searchBox", "value": "john@email.com", "description": "Search for created record", "force_regenerate_verify": true}}`
-2. `{{"action": "wait_for_ready", "selector": "table", "description": "Wait for search results"}}`
-3. `{{"action": "verify", "selector": "//table//tbody//tr[1]//td[1]", "value": "John", "description": "Verify name"}}`
-
-**Positional selectors (use after search, or if no search available):**
-- First data row, column 1: `//table//tbody//tr[1]//td[1]`
-- First data row, column 2: `//table//tbody//tr[1]//td[2]`
-- Last row (newly added): `(//table//tbody//tr)[last()]//td[1]`
-- By row with unique class: `//tr[contains(@class,'highlight')]//td[1]`
-
-
-**❌ WRONG selectors:**
-- `//div[contains(text(), 'john@email.com')]` - value in selector!
-- `//td[text()='TestValue']` - value in selector won't work with different test data!
-- `//tr[td[text()='SomeValue']]//td[2]` - finding row by value won't work for reusable tests!
-- `input#email` on view page - form elements don't exist on view pages!
-- Inventing class names not in DOM
-
-**⚠️ TABLE SELECTOR RULE:** Selectors must work with ANY test data. Use POSITION (row/column index) or STRUCTURE (classes, data-attributes), NEVER the actual field VALUES.
-
-**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
 
 ----
 
@@ -1841,60 +1853,13 @@ Before generating ANY verify steps for a list/table, check for search input:
 ---
 
 
-## ⚠️ MANDATORY FINAL REVIEW - FULL SCREENSHOT SCAN
-
-Before returning your response, you MUST perform this review:
-
-1. **SCAN THE ENTIRE SCREENSHOT** - Every area: top, bottom, left, right, center. Do NOT focus only on one area. Scan horizontally AND vertically - fields may be side-by-side, not just stacked.
-
-2. **LIST EVERY USER ACTION** visible on screen - any field or sub field a user can fill, select, check, or click - optional fields like Comments are also mandatory.
-   - Your LIST MUST INCLUDE EVERY ACTION/SUB ACTION USER CAN PERFORM - NO EXCEPTIONS 
-
-3. **FOR EACH ACTION - VERIFY IT HAS A STEP:**
-   - Is it in "Steps Already Completed"?
-   - Is it in YOUR generated steps array?
-   - If NEITHER → **ADD A STEP FOR IT NOW**
-
-4. **Cross-check your steps:** For EACH element you identified in step 3:
-   - Confirm you have a corresponding step in your generated steps list OR in "Steps Already Completed"
-   - If ANY element is missing from BOTH, find it in the DOM and ADD a step for it at the correct position (before tab navigation)
-
-    FOR EACH FIELD YOU SEE IN THE SCREENSHOT:
-    1. Is there a step for this field in "Steps Already Completed"? → found_in_completed_steps = true
-    2. Is there a step for this field in YOUR "steps" array? → was_added_to_steps = true
-    
-    🚨🚨🚨 CRITICAL - READ THIS 🚨🚨🚨
-    If was_added_to_steps=false AND found_in_completed_steps=false:
-    → YOU MUST ADD A STEP FOR THIS FIELD TO THE "steps" ARRAY RIGHT NOW!
-    → DUPLICATES ARE OK - IT IS BETTER TO ADD A FIELD TWICE THAN TO MISS IT!
-    → IF YOU DO NOT ADD IT, THE ENTIRE TEST WILL FAIL!
-    → NO EXCUSES, NO EXCEPTIONS!
-    🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
-
-5. **Check junctions:** Look for any element that appears to have multiple options to choose from (radio buttons, dropdowns that reveal new fields, toggle buttons, option cards, or anything else with multiple choices). For EACH such element, confirm that your corresponding step includes `is_junction: true` and complete `junction_info` with `junction_name`, `all_options`, and `chosen_option`.
-
-6. **Do NOT remove steps:** This review is ONLY for adding missing steps and junction info. Never remove a step just because you don't see it in the screenshot (it may be below the fold or in another tab).
-
----
-
 Return ONLY the following JSON object (no other text):
 ```json
 {{
-  "steps": [...],
-  "screenshot_self_check": {{
-    "fields_seen_in_screenshot": [
-      {{
-        "field_name": "field label as seen",
-        "field_type": "input/textarea/select/checkbox/radio/button",
-        "was_added_to_steps": true,
-        "found_in_completed_steps": false
-      }}
-    ]
-  }}
+  "steps": [...]
 }}
 ```
 
-The "screenshot_self_check" field is MANDATORY.
 """
 
             # Call Claude API with retry (with or without screenshot)
@@ -2001,6 +1966,20 @@ The "screenshot_self_check" field is MANDATORY.
                     }
 
                 steps = response_data.get("steps", [])
+
+                # DEBUG: Print full response when 0 steps returned to investigate why
+                if len(steps) == 0:
+                    print("=" * 80)
+                    print("[AIHelper] ⚠️ DEBUG: REGENERATE RETURNED 0 STEPS")
+                    print("=" * 80)
+                    print(f"[AIHelper] Full AI response:\n{response_text}")
+                    print("=" * 80)
+                    # CloudWatch logging
+                    if self.session_logger:
+                        self.session_logger.warning(
+                            f"!!!!! REGENERATE RETURNED 0 STEPS - Raw AI response: {response_text}",
+                            category="ai_response"
+                        )
 
                 print(f"[AIHelper] Successfully regenerated {len(steps)} new steps")
 
@@ -2478,6 +2457,12 @@ Return ONLY the JSON object.
                     print(f"[AIHelper] prompt given to AI:\n{prompt}")
                     print(f"[AIHelper] Full AI response:\n{response_text}")
                     print("=" * 80)
+                    # CloudWatch logging
+                    if self.session_logger:
+                        self.session_logger.warning(
+                            f"!!!!! VERIFY REGENERATE RETURNED 0 STEPS - Raw AI response: {response_text}",
+                            category="ai_response"
+                        )
 
                 return {"steps": steps, "ui_issue": "", "no_more_paths": False}
             else:
@@ -2973,7 +2958,7 @@ Return ONLY the JSON object.
     - Index only where truly needed
     
     ## Important - Save/Submit Buttons:
-    If the recovery step is clicking the FINAL Save or Submit button (the one that submits the entire form, not intermediate saves within sections/modals), set `force_regenerate_verify: true` to trigger verification after form submission.
+    If the recovery step is clicking the Save or Submit button , set `force_regenerate: true` to trigger verification after form submission.
     
     ## Important - Junction Detection:
     **Case 1 - Failed step is a junction:**

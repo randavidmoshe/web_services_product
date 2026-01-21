@@ -142,9 +142,10 @@ Go through EVERY visible form field one by one and check:
 
 **IMPORTANT:**
 - Don't stop after finding ONE issue - continue checking ALL areas and ALL fields
-- Some issues are subtle (small gray boxes) while others are obvious (bright red/green boxes)
-- Report ALL issues you find, comma-separated
 - Be specific: mention which field has which issue, or where in the page the issue appears
+
+**IMPORTANT - DONT REPORT THESE:
+validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
 
 **Example of complete report:**
 "Phone Number field has red border artifact on left side, Email Address field has gray box on right side, Green square visible in top-right corner of page"
