@@ -1529,9 +1529,11 @@ After spinner disappears, you will be called again to generate verify steps.
 **If no spinner:** Continue below to FORTH CHECK.
 
 **⚠️ FOURTH: CHECK IF FORM SUBMISSION COMPLETE**
-If the last step in "Steps Already Completed" was a save/submit/accept/ button:
-1. Look at "Steps Already Completed" to see what steps were created
-2. CHeck DOM and SCREENSHOT and if there are no more steps to be created that lead to more Save/submit button, RETURN ONLY:
+If the last step in "Steps Already Completed" was a save/create/submit/accept/ok button:
+1. Search DOM and SCREENSHOT for ALL VISIBLE Save/Submit/Create buttons on the page which saves your form page
+2. Compare with "Steps Already Completed" to see which Save buttons were already clicked
+3. If ANY VISIBLE Save/Submit button exists that was NOT already clicked → form is NOT complete, continue generating steps for remaining sections
+4. ONLY if ALL Save/Submit buttons have been clicked → form is complete, RETURN ONLY:
 
 ```json
 {{
@@ -1676,6 +1678,7 @@ If ANY check fails → FIX the xpath before returning.
   * Filling a field (fill action)
   * Opening/closing modals or dialogs
   * Adding/removing items in a list or table
+  * Clicking on new tabs
   * Saving an item in a list that was added
   * Expanding/collapsing accordion sections
 - Set to `false` (or omit) for all other actions

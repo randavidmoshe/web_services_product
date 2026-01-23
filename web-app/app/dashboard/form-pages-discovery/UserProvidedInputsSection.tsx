@@ -164,18 +164,16 @@ export default function UserProvidedInputsSection({
     <>
       {/* Section - Separate from URL block */}
       <div style={{
-        background: isLightTheme ? '#f0f9ff' : 'rgba(59, 130, 246, 0.1)',
+        background: 'transparent',
         borderRadius: '10px',
-        padding: '20px',
-        border: `1px solid ${isLightTheme ? '#bae6fd' : 'rgba(59, 130, 246, 0.2)'}`,
-        marginTop: '20px'
+        padding: '0'
       }}>
         {/* Header with info icon */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           <h4 style={{
             margin: 0,
-            fontSize: '15px',
-            color: isLightTheme ? '#0369a1' : '#7dd3fc',
+            fontSize: '18px',
+            color: themeColors.textSecondary,
             textTransform: 'uppercase',
             letterSpacing: '1px',
             fontWeight: 600
@@ -192,7 +190,7 @@ export default function UserProvidedInputsSection({
                 fontSize: '18px',
                 padding: '2px 6px',
                 borderRadius: '50%',
-                color: isLightTheme ? '#0369a1' : '#7dd3fc'
+                color: themeColors.textSecondary
               }}
               title="Click for more info"
             >
@@ -200,29 +198,46 @@ export default function UserProvidedInputsSection({
             </button>
             {showInfo && (
               <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
                 background: isLightTheme ? '#1e293b' : '#1e293b',
                 color: '#fff',
-                padding: '16px 20px',
-                borderRadius: '10px',
-                fontSize: '15px',
-                width: '320px',
-                zIndex: 100,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                lineHeight: 1.6
+                padding: '24px 28px',
+                borderRadius: '16px',
+                fontSize: '16px',
+                width: '400px',
+                zIndex: 2000,
+                boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
+                lineHeight: 1.7
               }}>
-                <p style={{ margin: '0 0 10px', fontWeight: 600, fontSize: '16px' }}>What is this?</p>
-                <p style={{ margin: '0 0 10px' }}>
+                <p style={{ margin: '0 0 14px', fontWeight: 700, fontSize: '20px' }}>What is this?</p>
+                <p style={{ margin: '0 0 14px', fontSize: '16px' }}>
                   Provide values for fields where you need specific inputs instead of random/generated values.
                 </p>
-                <p style={{ margin: '0 0 10px' }}>
+                <p style={{ margin: '0 0 14px', fontSize: '16px' }}>
                   <strong>Examples:</strong> Database ports, AD usernames, config file paths, license keys
                 </p>
-                <p style={{ margin: 0, color: '#fca5a5' }}>
+                <p style={{ margin: 0, color: '#fca5a5', fontSize: '16px' }}>
                   ⚠️ Not for test scenario fields - only for technical/system values that must be exact.
                 </p>
+                <button
+                  onClick={() => setShowInfo(false)}
+                  style={{
+                    position: 'absolute',
+                    top: '12px',
+                    right: '12px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    opacity: 0.7
+                  }}
+                >
+                  ×
+                </button>
               </div>
             )}
           </div>
@@ -236,8 +251,8 @@ export default function UserProvidedInputsSection({
         ) : userInputs?.status === 'ready' && userInputs.inputs ? (
           <div>
             <div style={{
-              fontSize: '16px',
-              color: isLightTheme ? '#166534' : '#4ade80',
+              fontSize: '18px',
+              color: themeColors.textPrimary,
               marginBottom: '14px',
               fontWeight: 500
             }}>
@@ -253,7 +268,7 @@ export default function UserProvidedInputsSection({
             }}>
               {userInputs.inputs.field_values?.map((fv, i) => (
                 <div key={`fv-${i}`} style={{
-                  fontSize: '15px',
+                  fontSize: '18px',
                   color: themeColors.textSecondary,
                   marginBottom: '8px',
                   display: 'flex',
@@ -286,7 +301,7 @@ export default function UserProvidedInputsSection({
             {/* Edit and Clear buttons */}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button onClick={openEditModal} style={{
-                background: isLightTheme ? '#0ea5e9' : themeColors.accentPrimary,
+                background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                 border: 'none',
                 color: '#fff',
                 padding: '10px 18px',
@@ -322,7 +337,7 @@ export default function UserProvidedInputsSection({
           <div>
             <p style={{
               fontSize: '16px',
-              color: themeColors.textSecondary,
+              color: themeColors.textPrimary,
               margin: '0 0 16px',
               lineHeight: 1.5
             }}>
@@ -330,7 +345,7 @@ export default function UserProvidedInputsSection({
             </p>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button onClick={() => setShowModal(true)} style={{
-                background: isLightTheme ? '#0ea5e9' : themeColors.accentPrimary,
+                background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                 color: '#fff',
                 border: 'none',
                 padding: '12px 20px',
@@ -345,8 +360,8 @@ export default function UserProvidedInputsSection({
                 ✏️ Enter Values
               </button>
               <label style={{
-                background: 'transparent',
-                border: `1px solid ${isLightTheme ? '#0ea5e9' : themeColors.accentPrimary}`,
+                border: `1px solid ${isLightTheme ? '#8b5cf6' : '#a78bfa'}`,
+                color: isLightTheme ? '#7c3aed' : '#a78bfa',
                 color: isLightTheme ? '#0ea5e9' : themeColors.accentPrimary,
                 padding: '12px 20px',
                 borderRadius: '8px',

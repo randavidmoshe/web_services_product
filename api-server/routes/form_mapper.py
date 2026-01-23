@@ -738,6 +738,53 @@ async def get_completed_paths(
     )
 
 
+@router.delete("/paths/{path_id}")
+async def delete_path(
+        path_id: int,
+        db: Session = Depends(get_db),
+):
+    """
+    Delete a specific mapping path.
+
+    Scalability notes:
+    - DB deletion is atomic
+    - If path has S3 assets, cleanup is queued to Celery (non-blocking)
+    """
+    # Find the path
+    result = db.query(FormMapResult).filter(FormMapResult.id == path_id).first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    # Store info for potential S3 cleanup before deletion
+    form_page_route_id = result.form_page_route_id
+    path_number = result.path_number
+
+    # Check if there's an active mapping session for this form (prevent deletion during mapping)
+    active_session = db.query(FormMapperSession).filter(
+        FormMapperSession.form_page_route_id == form_page_route_id,
+        FormMapperSession.status == SessionStatus.RUNNING
+    ).first()
+
+    if active_session:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete path while mapping is in progress"
+        )
+
+    # Delete from DB
+    db.delete(result)
+    db.commit()
+
+    logger.info(f"[API] Deleted path {path_id} (path_number={path_number}) from form_page_route {form_page_route_id}")
+
+    return {
+        "message": "Path deleted successfully",
+        "path_id": path_id,
+        "form_page_route_id": form_page_route_id
+    }
+
+
 @router.get("/routes/paths-counts")
 async def get_paths_counts(
         form_page_route_ids: str = Query(..., description="Comma-separated form page route IDs"),

@@ -138,7 +138,7 @@ const errorBoxStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.1))',
   border: '1px solid rgba(239, 68, 68, 0.3)',
   borderRadius: '12px',
-  color: '#fca5a5',
+  color: '#ef4444',
   marginBottom: '20px',
   animation: 'fadeIn 0.3s ease'
 }
@@ -290,7 +290,15 @@ export default function FormPageEditPanel({
   const [editablePathIds, setEditablePathIds] = useState<Set<number>>(new Set())
   const [showEditPathWarning, setShowEditPathWarning] = useState<number | null>(null)
   const [modifiedPathIds, setModifiedPathIds] = useState<Set<number>>(new Set())
-  
+
+  // More dropdown state
+  const [showMappingDropdown, setShowMappingDropdown] = useState(false)
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false)
+  const [showFieldValuesPanel, setShowFieldValuesPanel] = useState(false)
+  const [showSpecCompliancePanel, setShowSpecCompliancePanel] = useState(false)
+  const mappingDropdownRef = useRef<HTMLDivElement>(null)
+  const moreDropdownRef = useRef<HTMLDivElement>(null)
+
   // Navigation steps editing mode state
   const [navStepsEditable, setNavStepsEditable] = useState(false)
   const [showNavStepsEditWarning, setShowNavStepsEditWarning] = useState(false)
@@ -317,6 +325,26 @@ export default function FormPageEditPanel({
     setEditablePathIds(prev => new Set([...prev, pathId]))
     setShowEditPathWarning(null)
   }
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mappingDropdownRef.current && !mappingDropdownRef.current.contains(event.target as Node)) {
+        setShowMappingDropdown(false)
+      }
+      if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
+        setShowMoreDropdown(false)
+      }
+    }
+
+    if (showMappingDropdown || showMoreDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMappingDropdown, showMoreDropdown])
   
   // Initialize local path steps when path editing is enabled
   const initializeLocalPathSteps = (pathId: number, steps: any[]) => {
@@ -1261,47 +1289,232 @@ export default function FormPageEditPanel({
                 )
               ) : (
                 <>
-                  {/* Rediscover Form Page Button */}
-                  <button
-                    onClick={handleRediscoverFormPage}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                      border: 'none',
-                      color: '#fff',
-                      padding: '14px 28px',
-                      borderRadius: '12px',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)'
-                    }}
-                  >
-                    🔍 Rediscover Form Page
-                  </button>
-                  
-                  {/* Map/Remap Button */}
-                  <button
-                    onClick={() => onStartMapping(editingFormPage.id)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      background: 'linear-gradient(135deg, #10b981, #059669)',
-                      border: 'none',
-                      color: '#fff',
-                      padding: '14px 28px',
-                      borderRadius: '12px',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
-                    }}
-                  >
-                    {completedPaths.length > 0 ? '🔄 Heal/Remap Form Page' : '🗺️ Map Form Page'}
-                  </button>
+                  {/* Mapping Dropdown */}
+                  <div style={{ position: 'relative' }} ref={mappingDropdownRef}>
+                    <button
+                      onClick={() => setShowMappingDropdown(!showMappingDropdown)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                        color: getTheme().colors.textPrimary,
+                        padding: '14px 20px',
+                        borderRadius: '12px',
+                        fontSize: '16px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Mapping ▼
+                    </button>
+
+                    {showMappingDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        marginTop: '8px',
+                        background: isLightTheme() ? '#fff' : '#1f2937',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                        minWidth: '240px',
+                        zIndex: 100,
+                        overflow: 'hidden',
+                        padding: '8px'
+                      }}>
+                        <button
+                          onClick={() => { onStartMapping(editingFormPage.id); setShowMappingDropdown(false); }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            width: '100%',
+                            padding: '12px 16px',
+                            background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)',
+                            border: `1px solid ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.4)'}`,
+                            borderRadius: '10px',
+                            color: isLightTheme() ? '#065f46' : '#6ee7b7',
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            marginBottom: '8px'
+                          }}
+                        >
+                          <span style={{ fontSize: '18px' }}>{completedPaths.length > 0 ? '🔄' : '🗺️'}</span>
+                          <span>{completedPaths.length > 0 ? 'Heal/Remap Form Page' : 'Map Form Page'}</span>
+                        </button>
+                        <button
+                          onClick={() => { handleRediscoverFormPage(); setShowMappingDropdown(false); }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            width: '100%',
+                            padding: '12px 16px',
+                            background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
+                            border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
+                            borderRadius: '10px',
+                            color: isLightTheme() ? '#92400e' : '#fcd34d',
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <span style={{ fontSize: '18px' }}>🔍</span>
+                          <span>Rediscover Form Page</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* More Dropdown */}
+                  <div style={{ position: 'relative' }} ref={moreDropdownRef}>
+                    <button
+                      onClick={() => setShowMoreDropdown(!showMoreDropdown)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                        color: getTheme().colors.textPrimary,
+                        padding: '14px 20px',
+                        borderRadius: '12px',
+                        fontSize: '16px',
+                        fontWeight: 500,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      More ▼
+                    </button>
+
+                    {showMoreDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '8px',
+                        background: isLightTheme() ? '#fff' : '#1f2937',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                        minWidth: '260px',
+                        zIndex: 100,
+                        overflow: 'hidden'
+                      }}>
+                        {/* MAPPING */}
+                        <div style={{ padding: '12px 8px 8px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Mapping
+                          </div>
+                          <button
+                            onClick={() => { setShowFieldValuesPanel(true); setShowMoreDropdown(false); }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#065f46' : '#6ee7b7',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)'}
+                          >
+                            <span style={{ fontSize: '18px' }}>✏️</span>
+                            <span>Configure Field Values</span>
+                          </button>
+                        </div>
+
+                        {/* COMPLIANCE */}
+                        <div style={{ padding: '8px 8px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Compliance
+                          </div>
+                          <button
+                            onClick={() => { setShowSpecCompliancePanel(true); setShowMoreDropdown(false); }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
+                          >
+                            <span style={{ fontSize: '18px' }}>📋</span>
+                            <span>Check Spec Compliance</span>
+                          </button>
+                        </div>
+
+                        {/* AUTOMATION */}
+                        <div style={{ padding: '8px 8px 12px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Automation
+                          </div>
+                          <button
+                            onClick={() => { handleExportPom(); setShowMoreDropdown(false); }}
+                            disabled={completedPaths.length === 0}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: completedPaths.length === 0
+                                ? (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'),
+                              border: `1px solid ${completedPaths.length === 0
+                                ? (isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)')
+                                : (isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)')}`,
+                              borderRadius: '10px',
+                              color: completedPaths.length === 0
+                                ? getTheme().colors.textSecondary
+                                : (isLightTheme() ? '#92400e' : '#fcd34d'),
+                              fontSize: '15px',
+                              fontWeight: 600,
+                              cursor: completedPaths.length === 0 ? 'not-allowed' : 'pointer',
+                              textAlign: 'left',
+                              whiteSpace: 'nowrap',
+                              opacity: completedPaths.length === 0 ? 0.6 : 1,
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => { if (completedPaths.length > 0) e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)' }}
+                            onMouseLeave={(e) => { if (completedPaths.length > 0) e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)' }}
+                          >
+                            <span style={{ fontSize: '18px' }}>📄</span>
+                            <span>Export POM</span>
+                            {completedPaths.length === 0 && <span style={{ fontSize: '14px', marginLeft: 'auto', color: getTheme().colors.textPrimary }}>(map first)</span>}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
                 </>
               )
             )}
@@ -1319,9 +1532,9 @@ export default function FormPageEditPanel({
                 cursor: 'pointer'
               }}
             >
-              Cancel
+              Back
             </button>
-            <button
+            {false && <button
               onClick={onSave}
               disabled={savingFormPage}
               style={{
@@ -1338,7 +1551,7 @@ export default function FormPageEditPanel({
               }}
             >
               {savingFormPage ? 'Saving...' : 'Save Changes'}
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -1418,8 +1631,8 @@ export default function FormPageEditPanel({
               </div>
             </div>
 
-            {/* Two boxes side by side: User Provided Inputs & Spec Document - hidden for login/logout */}
-            {!isLoginLogout && token && (
+            {/* Two boxes side by side: User Provided Inputs & Spec Document - MOVED TO MORE DROPDOWN */}
+            {false && !isLoginLogout && token && (
               <div style={{ display: 'flex', gap: '16px', marginTop: '20px' }}>
                 {/* User Provided Inputs - Left Box */}
                 <div style={{ flex: 1 }}>
@@ -1705,12 +1918,12 @@ export default function FormPageEditPanel({
                       {completedPaths.length === 0 && (
                         <p style={{ 
                           color: getTheme().colors.textSecondary, 
-                          fontSize: '13px', 
+                          fontSize: '19px',
                           marginTop: '12px',
                           marginBottom: 0,
                           textAlign: 'center'
                         }}>
-                          ℹ️ Map the form first to generate a compliance report
+                          ℹ️ Compliance verification will be available after mapping this form page
                         </p>
                       )}
                     </div>
@@ -1744,7 +1957,7 @@ export default function FormPageEditPanel({
               <h3 style={{ margin: 0, fontSize: '20px', color: isLightTheme() ? '#1e40af' : getTheme().colors.textPrimary, fontWeight: 600 }}>
                 Steps ({editNavigationSteps.length})
               </h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              {false && <div style={{ display: 'flex', gap: '8px' }}>
                 {!navStepsEditable ? (
                   <button 
                     onClick={() => setShowNavStepsEditWarning(true)}
@@ -1803,7 +2016,7 @@ export default function FormPageEditPanel({
                     </button>
                   </>
                 )}
-              </div>
+              </div>}
             </div>
 
             {/* Steps List */}
@@ -2077,7 +2290,8 @@ export default function FormPageEditPanel({
               </span>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              {completedPaths.length > 0 && (
+              {/* Export POM button moved to More dropdown */}
+              {false && completedPaths.length > 0 && (
                 <button
                   onClick={handleExportPom}
                   style={{
@@ -2271,7 +2485,7 @@ export default function FormPageEditPanel({
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          {!isPathEditable(path.id) ? (
+                          {false && (!isPathEditable(path.id) ? (
                             /* Show "Edit Path Steps" button when not in edit mode */
                             <button
                               onClick={() => setShowEditPathWarning(path.id)}
@@ -2341,7 +2555,7 @@ export default function FormPageEditPanel({
                                 </button>
                               )}
                             </>
-                          )}
+                          ))}
                         </div>
                       </div>
                       
@@ -3066,13 +3280,13 @@ export default function FormPageEditPanel({
             
             {pomStatus === 'idle' && (
               <>
-                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
                   Generate Page Object Model code for "{editingFormPage.form_name}" with {completedPaths.length} path(s).
                 </p>
                 
                 <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textSecondary, fontWeight: 600 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '15px' }}>
                       Language
                     </label>
                     <select
@@ -3097,7 +3311,7 @@ export default function FormPageEditPanel({
                   </div>
                   
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textSecondary, fontWeight: 600 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '15px' }}>
                       Framework
                     </label>
                     <select
@@ -3123,7 +3337,7 @@ export default function FormPageEditPanel({
                 {/* Style dropdown - only show for Java */}
                 {pomLanguage === 'java' && (
                   <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textSecondary, fontWeight: 600 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '18px' }}>
                       Style
                     </label>
                     <select
@@ -3182,7 +3396,7 @@ export default function FormPageEditPanel({
                 <p style={{ color: '#ef4444', fontSize: '18px', fontWeight: 600 }}>
                   Generation Failed
                 </p>
-                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '18px' }}>
                   {pomError}
                 </p>
                 <button
@@ -3283,7 +3497,7 @@ export default function FormPageEditPanel({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000
+          zIndex: 1100
         }} onClick={() => setShowSpecComplianceModal(false)}>
           <div style={{
             background: isLightTheme() ? '#fff' : '#1f2937',
@@ -3612,6 +3826,204 @@ export default function FormPageEditPanel({
           </div>
         </div>
       )}
+
+      {/* Field Values Slide-in Panel */}
+      {showFieldValuesPanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowFieldValuesPanel(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
+                ✏️ Configure Field Values
+              </h3>
+              <button
+                onClick={() => setShowFieldValuesPanel(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
+              Add specific values that must be exact (not random) when mapping "{editingFormPage.form_name}".
+            </p>
+
+            <UserProvidedInputsSection
+              formPageId={editingFormPage.id}
+              token={token}
+              apiBase=""
+              isLightTheme={isLightTheme()}
+              themeColors={getTheme().colors}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Spec Compliance Slide-in Panel */}
+      {showSpecCompliancePanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowSpecCompliancePanel(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '700px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
+                📋 Check Spec Compliance
+              </h3>
+              <button
+                onClick={() => setShowSpecCompliancePanel(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
+              Upload a specification document and check if "{editingFormPage.form_name}" complies with requirements.
+            </p>
+
+            <input
+              ref={specFileInputRef}
+              type="file"
+              accept=".txt,.md,.pdf,.docx"
+              onChange={handleSpecFileUpload}
+              style={{ display: 'none' }}
+            />
+
+
+            {!specContent ? (
+              <div style={{
+                border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                borderRadius: '12px',
+                padding: '48px 24px',
+                textAlign: 'center',
+                background: isLightTheme() ? 'rgba(139, 92, 246, 0.05)' : 'rgba(139, 92, 246, 0.1)'
+              }}>
+                <input
+                  ref={specFileInputRef}
+                  type="file"
+                  accept=".txt,.md,.pdf,.docx"
+                  onChange={handleSpecFileUpload}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>
+                  No spec document uploaded
+                </p>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '15px' }}>
+                  Upload a document to check compliance
+                </p>
+                <button
+                  onClick={() => specFileInputRef.current?.click()}
+                  disabled={specLoading}
+                  style={{
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: specLoading ? 'not-allowed' : 'pointer',
+                    opacity: specLoading ? 0.7 : 1
+                  }}
+                >
+                  {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
+                </button>
+                <p style={{ color: getTheme().colors.textSecondary, fontSize: '13px', marginTop: '12px', marginBottom: 0 }}>
+                  Supports: .txt, .md, .pdf, .docx
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px',
+                  padding: '12px 16px',
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.15)',
+                  borderRadius: '8px',
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
+                }}>
+                  <span style={{ color: getTheme().colors.textPrimary, fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    📎 {specFilename}
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => specFileInputRef.current?.click()} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={() => { setSpecEditing(true); setSpecEditContent(specContent); }} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={handleSpecDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
+                  </div>
+                </div>
+
+                {specEditing ? (
+                  <div>
+                    <textarea
+                      value={specEditContent}
+                      onChange={(e) => setSpecEditContent(e.target.value)}
+                      style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${getTheme().colors.cardBorder}`, background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)', color: getTheme().colors.textPrimary, fontSize: '14px', fontFamily: 'monospace', resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                      <button onClick={handleSpecSave} disabled={specLoading} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>{specLoading ? 'Saving...' : '💾 Save'}</button>
+                      <button onClick={() => setSpecEditing(false)} disabled={specLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: isLightTheme() ? '#f8fafc' : 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: getTheme().colors.textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{specContent}</pre>
+                  </div>
+                )}
+
+                {completedPaths.length > 0 && !specEditing && (
+                  <button onClick={handleGenerateSpecCompliance} style={{ marginTop: '20px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                    📊 Generate Compliance Report
+                  </button>
+                )}
+                {completedPaths.length === 0 && !specEditing && (
+                  <p style={{ color: getTheme().colors.textSecondary, fontSize: '19px', marginTop: '19px', marginBottom: 0, textAlign: 'center' }}>
+                    ℹ️ Compliance verification will be available after mapping this form page
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

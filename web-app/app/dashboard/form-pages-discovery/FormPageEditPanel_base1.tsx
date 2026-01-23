@@ -1205,7 +1205,7 @@ export default function FormPageEditPanel({
           }}>
             <span style={{ fontSize: '28px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
             {isLoginLogout 
-              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence: <span style={{ color: loginLogoutType === 'login' ? '#10b981' : '#ef4444' }}>{editingFormPage.form_name.replace(/^🔐 Login - |^🚪 Logout - /, '')}</span></>
+              ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence</>
               : <>Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span></>
             }
           </h2>
@@ -2271,7 +2271,7 @@ export default function FormPageEditPanel({
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          {!isPathEditable(path.id) ? (
+                          {false && (!isPathEditable(path.id) ? (
                             /* Show "Edit Path Steps" button when not in edit mode */
                             <button
                               onClick={() => setShowEditPathWarning(path.id)}
@@ -2341,7 +2341,7 @@ export default function FormPageEditPanel({
                                 </button>
                               )}
                             </>
-                          )}
+                          ))}
                         </div>
                       </div>
                       

@@ -397,6 +397,12 @@ export default function DashboardPage() {
           ...data.production.map((n: Network) => ({ ...n, network_type: 'production' }))
         ]
         setNetworks(allNetworks)
+      } else if (response.status === 401 || response.status === 403) {
+        const errData = await response.json().catch(() => ({}))
+        console.error('Auth error:', errData.detail)
+        if (errData.detail && errData.detail.toLowerCase().includes('token')) {
+          setError(errData.detail)
+        }
       }
     } catch (err) {
       console.error('Failed to load networks:', err)
@@ -438,6 +444,12 @@ export default function DashboardPage() {
         
         // Check for active mapping sessions after loading form pages
         checkActiveMappingSessions(authToken)
+      } else if (response.status === 401 || response.status === 403) {
+        const errData = await response.json().catch(() => ({}))
+        console.error('Auth error:', errData.detail)
+        if (errData.detail && errData.detail.toLowerCase().includes('token')) {
+          setError(errData.detail)
+        }
       }
     } catch (err) {
       console.error('Failed to load form pages:', err)
@@ -674,7 +686,9 @@ export default function DashboardPage() {
         ...prev,
         [formPage.id]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
+
     }
   }
 
@@ -756,7 +770,8 @@ export default function DashboardPage() {
         ...prev,
         [selectedFormForMapping.id]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
     }
     
     setSelectedFormForMapping(null)
@@ -790,7 +805,8 @@ export default function DashboardPage() {
     // Use default template (first one) or create_verify if available
     const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
     if (!defaultTemplate) {
-      setError('No test template available')
+      console.error('No test template available')
+      setError('Mapping failed')
       return
     }
     
@@ -848,7 +864,8 @@ export default function DashboardPage() {
         ...prev,
         [formPageId]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
     }
   }
   
@@ -895,7 +912,8 @@ export default function DashboardPage() {
               // Always refresh paths when mapping completes
               fetchCompletedPaths(formPageId)
             } else if (data.status === 'failed') {
-              setError(`Mapping failed: ${data.error || 'Unknown error'}`)
+              console.error('Mapping failed:', data.error)
+              setError('Mapping failed')
             }
           }
         }
@@ -995,7 +1013,7 @@ export default function DashboardPage() {
         
       } else {
         const errorData = await response.json()
-        setError(`Failed to cancel mapping: ${errorData.detail || 'Unknown error'}`)
+        console.error('Failed to cancel mapping:', errorData.detail)
         // Revert to mapping state on error
         setMappingStatus(prev => ({
           ...prev,
@@ -1003,8 +1021,7 @@ export default function DashboardPage() {
         }))
       }
     } catch (err: any) {
-      console.error('Failed to cancel mapping:', err)
-      setError(`Failed to cancel mapping: ${err.message}`)
+      console.error('Failed to cancel mapping:', err.message)
       // Revert to mapping state on error
       setMappingStatus(prev => ({
         ...prev,
@@ -1278,7 +1295,7 @@ export default function DashboardPage() {
       const errorDetails = failedItems.map(f => `${f.networkName}: ${f.errorMessage || 'Unknown error'}`).join('; ')
       setMessage(`Discovery finished. Completed: ${completed}, Failed: ${failed}. Found ${totalForms} form pages.`)
       if (failedItems.length > 0 && failedItems[0].errorMessage) {
-        setError(errorDetails)
+        console.error('Error:', errorDetails)
       }
     } else {
       setMessage(`Discovery completed! Found ${totalForms} new form pages across ${completed} test site(s).`)
@@ -1591,10 +1608,10 @@ export default function DashboardPage() {
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to update form page')
+        console.error('Failed to update form page:', errData.detail)
       }
     } catch (err) {
-      setError('Connection error')
+      console.error('Connection error')
     } finally {
       setSavingFormPage(false)
     }
@@ -1628,7 +1645,7 @@ export default function DashboardPage() {
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete form page')
+        console.error('Failed to delete form page:', errData.detail)
       }
     } catch (err) {
       setError('Connection error')
@@ -1667,13 +1684,44 @@ export default function DashboardPage() {
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete form page')
+        console.error('Failed to delete form page:', errData.detail)
       }
     } catch (err) {
-      setError('Connection error')
+      console.error('Connection error')
     }
   }
 
+
+  // Delete a path
+  const deletePath = async (pathId: number) => {
+    if (!token) return
+
+    const confirmed = confirm('Are you sure you want to delete this path?')
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(
+        `/api/form-mapper/paths/${pathId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+
+      if (response.ok) {
+        setMessage('Path deleted successfully!')
+        // Refresh paths
+        if (editingFormPage) {
+          fetchCompletedPaths(editingFormPage.id)
+        }
+      } else {
+        const errData = await response.json()
+        setError(errData.detail || 'Failed to delete path')
+      }
+    } catch (err) {
+      console.error('Connection error')
+    }
+  }
   // No project selected
   if (!activeProjectId) {
     return (
@@ -1752,7 +1800,7 @@ export default function DashboardPage() {
         onStartMapping={isLoginLogoutEdit ? () => {} : startMappingFromEditPanel}
         onCancelMapping={cancelMapping}
         onOpenEditPanel={openEditPanel}
-        onDeletePath={(pathId: number) => { /* TODO: implement */ }}
+        onDeletePath={deletePath}
         onSavePathStep={handleSavePathStep}
         onExportPath={downloadPathJson}
         onRefreshPaths={() => !isLoginLogoutEdit && fetchCompletedPaths(editingFormPage.id)}
@@ -2614,9 +2662,9 @@ export default function DashboardPage() {
                                   fontSize: '15px',
                                   fontWeight: 600
                                 }}>
-                                  {completedPaths.filter(p => p.id === form.id).length > 0 
-                                    ? `${completedPaths.filter(p => p.id === form.id).length} paths`
-                                    : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
+                                  {(form as any).paths_count > 0
+                                      ? `${(form as any).paths_count} path${(form as any).paths_count > 1 ? 's' : ''}`
+                                      : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
                                 </span>
                               </td>
                               <td style={{ 
@@ -2659,7 +2707,7 @@ export default function DashboardPage() {
                                     ✏️
                                   </button>
                                   <button 
-                                    onClick={() => confirmDeleteFormPage(form)}
+                                    onClick={() => openDeleteModal(form)}
                                     className="action-btn"
                                     style={{
                                       background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
@@ -2736,7 +2784,8 @@ export default function DashboardPage() {
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
                               <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
-                                <button 
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'login')}
                                   className="action-btn"
                                   style={{
@@ -2748,10 +2797,12 @@ export default function DashboardPage() {
                                     fontSize: '20px',
                                     transition: 'all 0.2s ease'
                                   }}
-                                  title="Edit login steps"
+                                  title="View login steps"
                                 >
-                                  ✏️
+                                  👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
+                                </div>
                               </td>
                             </tr>
                             
@@ -2808,7 +2859,8 @@ export default function DashboardPage() {
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
                               <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, textAlign: 'center' }}>
-                                <button 
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
                                   className="action-btn"
                                   style={{
@@ -2820,10 +2872,12 @@ export default function DashboardPage() {
                                     fontSize: '20px',
                                     transition: 'all 0.2s ease'
                                   }}
-                                  title="Edit logout steps"
+                                  title="View logout steps"
                                 >
-                                  ✏️
+                                   👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
+                                </div>
                               </td>
                             </tr>
                           </>
@@ -2855,18 +2909,18 @@ export default function DashboardPage() {
               Delete Form Page?
             </h2>
             
-            <p style={{ fontSize: '16px', margin: '20px 0', color: getTheme().colors.textPrimary }}>
-              Are you sure you want to delete <strong style={{ color: getTheme().colors.textPrimary }}>"{formPageToDelete.form_name}"</strong>?
+            <p style={{ fontSize: '20px', margin: '20px 0', color: '#1e293b' }}>
+              Are you sure you want to delete <strong style={{ color: '#dc2626' }}>"{formPageToDelete.form_name}"</strong>?
             </p>
-            
+
             <div style={deleteWarningBoxStyle}>
               <div style={{ display: 'flex', gap: '14px' }}>
-                <span style={{ fontSize: '24px' }}>🚨</span>
+                <span style={{ fontSize: '28px' }}>🚨</span>
                 <div>
-                  <strong style={{ fontSize: '15px', color: '#ef4444' }}>Warning - This will permanently delete:</strong>
-                  <ul style={{ margin: '8px 0 0', fontSize: '14px', color: '#94a3b8', paddingLeft: '20px' }}>
-                    <li style={{ marginBottom: '4px' }}>All discovered <strong style={{ color: '#fff' }}>paths</strong> for this form</li>
-                    <li style={{ marginBottom: '4px' }}>All <strong style={{ color: '#fff' }}>navigation steps</strong> leading to this form</li>
+                  <strong style={{ fontSize: '18px', color: '#dc2626' }}>Warning - This will permanently delete:</strong>
+                  <ul style={{ margin: '12px 0 0', fontSize: '17px', color: '#334155', paddingLeft: '20px', lineHeight: '1.8' }}>
+                    <li style={{ marginBottom: '8px' }}>All discovered <strong style={{ color: '#dc2626' }}>paths</strong> for this form</li>
+                    <li style={{ marginBottom: '8px' }}>All <strong style={{ color: '#dc2626' }}>navigation steps</strong> leading to this form</li>
                     <li>The form page entry itself</li>
                   </ul>
                 </div>
@@ -3231,10 +3285,10 @@ const primaryButtonStyle: React.CSSProperties = {
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  color: '#e2e8f0',
+  background: '#f1f5f9',
+  color: '#475569',
   padding: '16px 32px',
-  border: '1px solid rgba(255,255,255,0.12)',
+  border: '2px solid #cbd5e1',
   borderRadius: '14px',
   fontSize: '17px',
   fontWeight: 600,

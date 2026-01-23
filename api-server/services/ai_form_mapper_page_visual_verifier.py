@@ -133,7 +133,7 @@ Scan the screenshot for validation errors (red boxes, red borders around fields,
 
 **Your Task:**
 1. First, determine if the page is READY (fully loaded) or NOT READY (still loading/spinning)
-2. If ready, identify the PAGE TYPE: "view_page" (detail/record view), "list_page" (table/grid), or "other"
+2. If ready, identify the PAGE TYPE: "view_page" (detail/record view), "edit_page" (after save the page appears in edit mode), "list_page" (table/grid), or "other"
 3. For each field in the list below, verify if the expected value appears on the page
 
 **Page Not Ready Indicators:**
@@ -141,7 +141,6 @@ Scan the screenshot for validation errors (red boxes, red borders around fields,
 - "Please wait" or "Loading..." messages
 - Grayed out or skeleton content
 - Progress bars
-- You cant see any of the fields that you are supposed tp verify
 
 **Full Executed Steps (in order - includes clicks, tabs, field fills, etc.):**
 {json.dumps(steps_for_ai, indent=2)}
@@ -204,12 +203,12 @@ If a field appears in the wrong section/tab or in wrong order relative to other 
 }}
 
 **Important:**
-- Set page_ready=false ONLY if page is clearly still loading
+- Set page_ready=false ONLY if page is still loading
 - Set already_sent=true for fields that were in the "Already Verified Fields" list
 
 **PAGE TYPE SPECIFIC RULES:**
 
-For "view_page" (detail/record view):
+For "view_page" (detail/record view) or "edit_page" (after save the page is in edit mode):
 - Verify ALL fields from the executed steps
 - If a field's value is not visible, set status="failed" with reason="not found on page"
 
