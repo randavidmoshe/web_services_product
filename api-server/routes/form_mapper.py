@@ -126,6 +126,23 @@ class CompletedPathsListResponse(BaseModel):
     total_paths: int
     paths: List[CompletedPathResponse]
 
+class ContinueMappingRequest(BaseModel):
+    """Request to continue mapping from existing paths"""
+    user_id: int
+    company_id: Optional[int] = None
+    network_id: Optional[int] = None
+    agent_id: Optional[str] = None
+    test_cases: List[dict]
+    config: Optional[dict] = None
+
+
+class ContinueMappingResponse(BaseModel):
+    """Response after starting continue mapping"""
+    session_id: Optional[str] = None
+    status: str
+    message: str
+    all_paths_complete: bool = False
+
 
 class StepUpdateRequest(BaseModel):
     """Request to update a step"""
@@ -257,6 +274,139 @@ async def start_form_mapping(
         if 'db_session' in locals() and db_session.id:
             from tasks.form_mapper_tasks import sync_mapper_session_status
             sync_mapper_session_status.delay(str(db_session.id), "failed", f"Start error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/routes/{form_page_route_id}/continue-mapping", response_model=ContinueMappingResponse, status_code=202)
+async def continue_form_mapping(
+        form_page_route_id: int,
+        request: ContinueMappingRequest,
+        db: Session = Depends(get_db)
+):
+    """
+    Continue mapping a form page from existing paths.
+
+    Loads existing paths from DB, asks AI if more paths needed.
+    If yes - starts full mapping flow with junction instructions.
+    If no - returns immediately with all_paths_complete=True.
+    """
+    user_id = request.user_id
+    network_id = request.network_id
+    company_id = request.company_id
+
+    # Validate form_page_route exists
+    form_page_route = db.query(FormPageRoute).filter(
+        FormPageRoute.id == form_page_route_id
+    ).first()
+
+    if not form_page_route:
+        raise HTTPException(status_code=404, detail="Form page route not found")
+
+    if not network_id:
+        network_id = form_page_route.network_id
+
+    # Check if there are existing paths
+    existing_paths = db.query(FormMapResult).filter(
+        FormMapResult.form_page_route_id == form_page_route_id
+    ).order_by(FormMapResult.path_number).all()
+
+    if not existing_paths:
+        raise HTTPException(status_code=400, detail="No existing paths found. Use /start for initial mapping.")
+
+    # Validate test_cases
+    if not request.test_cases:
+        raise HTTPException(status_code=400, detail="At least one test case is required")
+
+    agent_id = request.agent_id
+    if not agent_id:
+        agent_id = f"agent-{user_id}"
+
+    # Build completed_paths for AI evaluation (same format as _load_junction_paths_from_db)
+    config = request.config or {}
+    max_options_for_junction = config.get("max_options_for_junction", 8)
+
+    completed_paths_for_ai = []
+    for result in existing_paths:
+        steps = result.steps or []
+        path_junctions = []
+        for step in steps:
+            if step.get("is_junction"):
+                junction_info = step.get("junction_info", {})
+                all_options = junction_info.get("all_options", [])
+                if len(all_options) > max_options_for_junction:
+                    continue
+                path_junctions.append({
+                    "name": junction_info.get("junction_name", "unknown"),
+                    "chosen_option": junction_info.get("chosen_option") or step.get("value"),
+                    "all_options": all_options
+                })
+        completed_paths_for_ai.append({
+            "path_number": result.path_number,
+            "junctions": path_junctions
+        })
+
+    logger.info(f"[API] Continue mapping: {len(completed_paths_for_ai)} existing paths for route {form_page_route_id}")
+
+    try:
+        # Create DB session record
+        db_session = FormMapperSession(
+            form_page_route_id=form_page_route_id,
+            user_id=user_id,
+            network_id=network_id,
+            company_id=company_id,
+            agent_id=agent_id,
+            status="initializing",
+            config=request.config or {}
+        )
+        db.add(db_session)
+        db.commit()
+        db.refresh(db_session)
+
+        # Create Redis session
+        orchestrator = FormMapperOrchestrator(db)
+        orchestrator.create_session(
+            session_id=str(db_session.id),
+            form_page_route_id=form_page_route_id,
+            user_id=user_id,
+            network_id=network_id,
+            company_id=company_id,
+            config=request.config,
+            test_cases=request.test_cases,
+            skip_cleanup=True
+        )
+
+        # Transition to evaluating state
+        from services.form_mapper_orchestrator import MapperState
+        orchestrator.transition_to(str(db_session.id), MapperState.CONTINUE_MAPPING_EVALUATING)
+
+        # Get config for AI evaluation
+        max_paths = config.get("max_junction_paths", 7)
+        discover_all = config.get("ai_discover_all_path_combinations", False)
+
+        # Trigger Celery task to evaluate existing paths
+        from tasks.form_mapper_tasks import evaluate_existing_paths
+        evaluate_existing_paths.delay(
+            session_id=str(db_session.id),
+            completed_paths=completed_paths_for_ai,
+            discover_all_combinations=discover_all,
+            max_paths=max_paths
+        )
+
+        logger.info(
+            f"[API] Continue mapping session {db_session.id} created, evaluating {len(completed_paths_for_ai)} paths")
+
+        return ContinueMappingResponse(
+            session_id=str(db_session.id),
+            status="evaluating",
+            message=f"Evaluating {len(completed_paths_for_ai)} existing paths to determine if more mapping needed.",
+            all_paths_complete=False
+        )
+
+    except Exception as e:
+        logger.error(f"[API] Error starting continue mapping: {e}", exc_info=True)
+        if 'db_session' in locals() and db_session.id:
+            from tasks.form_mapper_tasks import sync_mapper_session_status
+            sync_mapper_session_status.delay(str(db_session.id), "failed", f"Continue mapping error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

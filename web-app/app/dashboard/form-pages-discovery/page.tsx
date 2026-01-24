@@ -868,7 +868,109 @@ export default function DashboardPage() {
       setError(`Failed to start mapping`)
     }
   }
-  
+
+  const continueMappingFromEditPanel = async () => {
+    if (!editingFormPage || !token || !userId) return
+
+    // Must have existing paths to continue
+    if (completedPaths.length === 0) {
+      setError('No existing paths found. Use "Map Form Page" for initial mapping.')
+      return
+    }
+
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Use default template
+    const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
+    if (!defaultTemplate) {
+      console.error('No test template available')
+      setError('Continue mapping failed - no test template')
+      return
+    }
+
+    const formPageId = editingFormPage.id
+
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPageId))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'evaluating' }
+    }))
+
+    try {
+      const response = await fetch(`/api/form-mapper/routes/${formPageId}/continue-mapping`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          company_id: companyId ? parseInt(companyId) : undefined,
+          network_id: editingFormPage.network_id,
+          test_cases: defaultTemplate.test_cases
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to continue mapping')
+      }
+
+      const data = await response.json()
+
+      // Check if all paths already complete
+      if (data.all_paths_complete) {
+        setMappingFormIds(prev => {
+          const next = new Set(prev)
+          next.delete(formPageId)
+          return next
+        })
+        setMappingStatus(prev => ({
+          ...prev,
+          [formPageId]: { status: 'completed' }
+        }))
+        setMessage('All paths already mapped - no additional paths needed!')
+        return
+      }
+
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: data.session_id }
+      }))
+
+      startMappingStatusPolling(formPageId, parseInt(data.session_id))
+      setMessage(`Continue mapping: ${editingFormPage.form_name} - evaluating for additional paths...`)
+
+    } catch (err: any) {
+      console.error('Failed to continue mapping:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPageId)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to continue mapping`)
+    }
+  }
+
   const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
     // Clear any existing polling for this form
     if (mappingPollingRef.current[formPageId]) {
@@ -899,7 +1001,7 @@ export default function DashboardPage() {
           }
 
           // Stop polling if completed or failed
-          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled' || data.status === 'no_more_paths') {
             stopMappingStatusPolling(formPageId)
             setMappingFormIds(prev => {
               const next = new Set(prev)
@@ -908,12 +1010,14 @@ export default function DashboardPage() {
             })
 
             if (data.status === 'completed') {
-              setMessage(`Mapping completed for form page ${formPageId}`)
+              setMessage(`Mapping completed: ${editingFormPage?.form_name || formPageId}`)
               // Always refresh paths when mapping completes
               fetchCompletedPaths(formPageId)
             } else if (data.status === 'failed') {
               console.error('Mapping failed:', data.error)
               setError('Mapping failed')
+            } else if (data.status === 'no_more_paths') {
+              setMessage('All form paths have been explored - no additional paths needed!')
             }
           }
         }
@@ -1799,6 +1903,7 @@ export default function DashboardPage() {
         onSave={isLoginLogoutEdit ? saveLoginLogoutSteps : saveFormPage}
         onStartMapping={isLoginLogoutEdit ? () => {} : startMappingFromEditPanel}
         onCancelMapping={cancelMapping}
+        onContinueMapping={isLoginLogoutEdit ? () => {} : continueMappingFromEditPanel}
         onOpenEditPanel={openEditPanel}
         onDeletePath={deletePath}
         onSavePathStep={handleSavePathStep}
@@ -2702,9 +2807,9 @@ export default function DashboardPage() {
                                       fontSize: '20px',
                                       transition: 'all 0.2s ease'
                                     }}
-                                    title="Edit form page"
+                                    title="View form page"
                                   >
-                                    ✏️
+                                    👁️
                                   </button>
                                   <button 
                                     onClick={() => openDeleteModal(form)}

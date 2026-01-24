@@ -26,8 +26,8 @@ class FormMapperSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Link to discovered form page
-    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True)
-    test_page_route_id = Column(Integer, ForeignKey("test_page_routes.id", ondelete="CASCADE"), nullable=True)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=False)
+    
     # Ownership
     network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
     company_id = Column(Integer, nullable=True)
@@ -70,7 +70,6 @@ class FormMapperSession(Base):
     form_page_route = relationship("FormPageRoute", back_populates="mapper_sessions")
     results = relationship("FormMapResult", back_populates="session", cascade="all, delete-orphan")
     logs = relationship("FormMapperSessionLog", back_populates="session", cascade="all, delete-orphan")
-    test_page_route = relationship("TestPageRoute", back_populates="mapper_sessions")
     
     # Status constants
     STATUS_PENDING = "pending"
@@ -91,7 +90,6 @@ class FormMapperSession(Base):
         return {
             "id": self.id,
             "form_page_route_id": self.form_page_route_id,
-            "test_page_route_id": self.test_page_route_id,
             "network_id": self.network_id,
             "company_id": self.company_id,
             "user_id": self.user_id,
@@ -126,8 +124,7 @@ class FormMapResult(Base):
     
     # Links
     form_mapper_session_id = Column(Integer, ForeignKey("form_mapper_sessions.id", ondelete="CASCADE"), nullable=False)
-    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True)
-    test_page_route_id = Column(Integer, ForeignKey("test_page_routes.id", ondelete="CASCADE"), nullable=True)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=False)
     
     # Ownership (denormalized)
     network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
@@ -159,7 +156,6 @@ class FormMapResult(Base):
     # Relationships
     session = relationship("FormMapperSession", back_populates="results")
     form_page_route = relationship("FormPageRoute", back_populates="map_results")
-    test_page_route = relationship("TestPageRoute", back_populates="map_results")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -167,7 +163,6 @@ class FormMapResult(Base):
             "id": self.id,
             "form_mapper_session_id": self.form_mapper_session_id,
             "form_page_route_id": self.form_page_route_id,
-            "test_page_route_id": self.test_page_route_id,
             "network_id": self.network_id,
             "company_id": self.company_id,
             "path_number": self.path_number,

@@ -244,8 +244,8 @@ class AIUIVisualVerifierWrapper:
     Delegates to the original AIUIVisualVerifier class.
     """
     
-    def __init__(self, api_key: str):
-        self.helper = AIUIVisualVerifier(api_key)
+    def __init__(self, api_key: str, session_logger=None):
+        self.helper = AIUIVisualVerifier(api_key, session_logger=session_logger)
     
     def verify_visual_ui(
         self,
@@ -320,6 +320,6 @@ def create_ai_helpers(api_key: str, session_logger=None) -> Dict[str, Any]:
         "form_mapper": AIFormMapperHelper(api_key, session_logger=session_logger),
         "alert_recovery": AIAlertRecoveryHelper(api_key, session_logger=session_logger),
         "end_prompter": AIFormPageEndPrompterWrapper(api_key),
-        "ui_verifier": AIUIVisualVerifierWrapper(api_key),
+        "ui_verifier": AIUIVisualVerifierWrapper(api_key, session_logger=session_logger),
         "field_assist": AIFieldAssistWrapper(api_key)
     }

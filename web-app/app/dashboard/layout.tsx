@@ -9,6 +9,7 @@ interface Project {
   network_count: number
   form_page_count: number
   created_by_user_id: number
+  project_type: 'enterprise' | 'dynamic_content'
 }
 
 interface Network {
@@ -52,6 +53,7 @@ export default function DashboardLayout({
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
+  const [newProjectType, setNewProjectType] = useState<'enterprise' | 'dynamic_content'>('enterprise')
   const [addingProject, setAddingProject] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
@@ -331,6 +333,13 @@ export default function DashboardLayout({
     setShowProjectDropdown(false)
     // Trigger page refresh to load new project data
     window.dispatchEvent(new CustomEvent('activeProjectChanged', { detail: project }))
+
+    // Auto-redirect based on project type
+    if (project.project_type === 'dynamic_content' && pathname?.includes('form-pages-discovery')) {
+      router.push('/dashboard/test-pages')
+    } else if (project.project_type === 'enterprise' && pathname?.includes('test-pages')) {
+      router.push('/dashboard/form-pages-discovery')
+    }
   }
 
   const handleAddProject = async () => {
@@ -356,7 +365,8 @@ export default function DashboardLayout({
             description: newProjectDescription.trim() || null,
             company_id: parseInt(companyId!),
             product_id: 1,
-            user_id: parseInt(userId!)
+            user_id: parseInt(userId!),
+            project_type: newProjectType
           })
         }
       )
@@ -367,6 +377,7 @@ export default function DashboardLayout({
         setShowAddProjectModal(false)
         setNewProjectName('')
         setNewProjectDescription('')
+        setNewProjectType('enterprise')
         loadProjects(companyId!, token!)
         // Auto-select the new project
         selectProject(newProject)
@@ -921,7 +932,10 @@ export default function DashboardLayout({
             {/* Project-specific tabs */}
             {[
               { id: 'project-dashboard', path: '/dashboard/project-dashboard', icon: '📊', label: 'Dashboard' },
-              { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+              ...(activeProject?.project_type === 'dynamic_content'
+                ? [{ id: 'test-pages', path: '/dashboard/test-pages', icon: '🧪', label: 'Test Pages' }]
+                : [{ id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' }]
+              ),
               { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
               { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },
               { id: 'test-sites', path: '/dashboard/test-sites', icon: '🌐', label: 'Test Sites' },
@@ -1155,11 +1169,65 @@ export default function DashboardLayout({
                   style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
                 />
               </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <label style={labelStyle}>Project Type *</label>
+                <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'enterprise' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'enterprise' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="enterprise"
+                      checked={newProjectType === 'enterprise'}
+                      onChange={() => setNewProjectType('enterprise')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🏢 Enterprise Forms</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Auto-discover forms, multi-path mapping</div>
+                    </div>
+                  </label>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'dynamic_content' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'dynamic_content' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="dynamic_content"
+                      checked={newProjectType === 'dynamic_content'}
+                      onChange={() => setNewProjectType('dynamic_content')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🧪 Dynamic Content</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Manual test pages, natural language tests</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
             
             <div style={modalFooterStyle}>
               <button
-                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription('') }}
+                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription(''); setNewProjectType('enterprise') }}
                 style={secondaryButtonStyle}
               >
                 Cancel

@@ -113,6 +113,7 @@ export interface FormPageEditPanelProps {
   onSave: () => void
   onStartMapping: (formPageId: number) => void
   onCancelMapping: (formPageId: number) => void
+  onContinueMapping: (formPageId: number) => void
   onOpenEditPanel: (formPage: FormPage) => void
   onDeletePath: (pathId: number) => void
   onSavePathStep: (pathId: number, stepIndex: number, stepData?: any) => void
@@ -226,6 +227,7 @@ export default function FormPageEditPanel({
   onSave,
   onStartMapping,
   onCancelMapping,
+  onContinueMapping,
   onOpenEditPanel,
   onDeletePath,
   onSavePathStep,
@@ -1347,6 +1349,30 @@ export default function FormPageEditPanel({
                           <span style={{ fontSize: '18px' }}>{completedPaths.length > 0 ? '🔄' : '🗺️'}</span>
                           <span>{completedPaths.length > 0 ? 'Heal/Remap Form Page' : 'Map Form Page'}</span>
                         </button>
+                        {completedPaths.length > 0 && (
+                          <button
+                            onClick={() => { onContinueMapping(editingFormPage.id); setShowMappingDropdown(false); }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#93c5fd' : 'rgba(59, 130, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#1e40af' : '#93c5fd',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              marginBottom: '8px'
+                            }}
+                          >
+                            <span style={{ fontSize: '18px' }}>➕</span>
+                            <span>Explore More Paths ({completedPaths.length} exist)</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => { handleRediscoverFormPage(); setShowMappingDropdown(false); }}
                           style={{

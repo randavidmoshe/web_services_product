@@ -19,6 +19,7 @@ from routes import form_pages
 from routes import form_mapper
 from routes import company_config  # <-- ADD THIS
 from routes import test_templates
+from routes import test_pages
 from passlib.context import CryptContext
 from routes import user_requirements
 from routes.activity_logs import router as activity_logs_router
@@ -145,6 +146,7 @@ app.include_router(users.router)  # Users management router
 app.include_router(test_templates.router)
 app.include_router(user_requirements.router)
 app.include_router(activity_logs_router)
+app.include_router(test_pages.router)
 
 @app.get("/")
 async def root():

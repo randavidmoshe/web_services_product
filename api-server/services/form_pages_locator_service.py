@@ -738,6 +738,7 @@ class FormPagesLocatorService:
             return None
         
         project = self.db.query(Project).filter(Project.id == network.project_id).first()
+        project_type = project.project_type if project else 'enterprise'
         
         return {
             "network_id": network.id,
@@ -748,7 +749,8 @@ class FormPagesLocatorService:
             "project_id": network.project_id,
             "project_name": project.name if project else None,
             "company_id": network.company_id,
-            "product_id": network.product_id
+            "product_id": network.product_id,
+            "project_type": project_type
         }
     
     def prepare_crawl_task(
@@ -818,6 +820,7 @@ class FormPagesLocatorService:
             "product_id": config["product_id"],
             "project_id": config["project_id"],
             "network_id": network_id,
+            "skip_form_crawl": config.get("project_type") == "dynamic_content",
             "user_id": user_id,
             "max_depth": max_depth,
             "max_form_pages": max_form_pages,

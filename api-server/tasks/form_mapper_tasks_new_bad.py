@@ -275,6 +275,14 @@ def analyze_form_page(
         #helpers = create_ai_helpers(api_key, session_logger=log)
         
         #ai_helper = helpers["form_mapper"]
+
+        # Select AI helper based on mapping type
+        #if ctx.get("mapping_type") == "dynamic_content":
+        #    from services.ai_dynamic_content_prompter import DynamicContentAIHelper
+        #    ai_helper = DynamicContentAIHelper(api_key, session_logger=log)
+        #else:
+        #    ai_helper = helpers["form_mapper"]
+
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         msg = f"!!!! 🤖 Entering AI for Generating steps ..."
         print(msg)
@@ -296,21 +304,37 @@ def analyze_form_page(
         msg = f"!!!! Generating steps: test_cases: {test_cases}"
         print(msg)
         log.debug(msg, category="debug_trace")
-        ai_result = generate_steps_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
-            api_key=api_key,
-            session_logger=log,
-            dom_html=dom_html,
-            test_cases=test_cases,
-            screenshot_base64=screenshot_base64,
-            critical_fields_checklist=critical_fields_checklist or {},
-            field_requirements=field_requirements or "",
-            junction_instructions=_build_junction_instructions_text(
-                junction_instructions) if junction_instructions else None,
-            user_provided_inputs=user_provided_inputs or {},
-            is_first_iteration=True,
-            test_case_description=ctx.get("test_case_description", "")
-        )
+        #ai_result = ai_helper.generate_test_steps(
+        #    dom_html=dom_html,
+        #    test_cases=test_cases,
+        #    screenshot_base64=screenshot_base64,
+        #    critical_fields_checklist=critical_fields_checklist or {},
+        #   field_requirements=field_requirements or "",
+        #    junction_instructions=_build_junction_instructions_text(
+        #        junction_instructions) if junction_instructions else None,
+        #    user_provided_inputs=user_provided_inputs or {},
+        #    is_first_iteration=True
+        #)
+
+        # Call appropriate AI based on mapping type
+        if ctx.get("mapping_type") == "dynamic_content":
+            ai_result = ai_helper.generate_test_steps(
+                dom_html=dom_html,
+                screenshot_base64=screenshot_base64,
+                test_case_description=ctx.get("test_case_description", "")
+            )
+        else:
+            ai_result = ai_helper.generate_test_steps(
+                dom_html=dom_html,
+                test_cases=test_cases,
+                screenshot_base64=screenshot_base64,
+                critical_fields_checklist=critical_fields_checklist or {},
+                field_requirements=field_requirements or "",
+                junction_instructions=_build_junction_instructions_text(
+                    junction_instructions) if junction_instructions else None,
+                user_provided_inputs=user_provided_inputs or {},
+                is_first_iteration=True
+            )
 
         #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:"
@@ -423,12 +447,11 @@ def analyze_failure_and_recover(
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
             return result
-
-        from services.ai_helper_factory import recover_from_failure_for_mapping
-        #from services.form_mapper_ai_helpers import create_ai_helpers
-        #helpers = create_ai_helpers(api_key, session_logger=log)
-
-        #ai_helper = helpers["form_mapper"]
+        
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key, session_logger=log)
+        
+        ai_helper = helpers["form_mapper"]
         
         recovery_context = {
             "failed_step": failed_step,
@@ -475,10 +498,7 @@ def analyze_failure_and_recover(
         if recovery_failure_history:
             error_message = recovery_failure_history[-1].get('error', '')
 
-        recovery_result = recover_from_failure_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
-            api_key=api_key,
-            session_logger=log,
+        recovery_result = ai_helper.analyze_failure_and_recover(
             failed_step=failed_step,
             executed_steps=executed_steps,
             fresh_dom=fresh_dom,
@@ -487,8 +507,7 @@ def analyze_failure_and_recover(
             test_context=test_context,
             attempt_number=attempt_number,
             recovery_failure_history=recovery_failure_history,
-            error_message=error_message,
-            test_case_description=ctx.get("test_case_description", "")
+            error_message=error_message
         )
 
         # Check if validation errors were detected
@@ -836,19 +855,29 @@ def verify_ui_visual(
             _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
             return result
         
-        #from services.form_mapper_ai_helpers import create_ai_helpers
-        from services.ai_helper_factory import verify_visual_for_mapping
-        #helpers = create_ai_helpers(api_key, session_logger=log)
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key, session_logger=log)
         
         #ai_verifier = helpers["ui_verifier"]
-        ui_issue = verify_visual_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
-            api_key=api_key,
-            session_logger=log,
-            screenshot_base64=screenshot_base64,
-            previously_reported_issues=previously_reported_issues,
-            test_case_description=ctx.get("test_case_description", "")
-        )
+        #ui_issue = ai_verifier.verify_visual_ui(
+        #    screenshot_base64=screenshot_base64,
+        #    previously_reported_issues=previously_reported_issues
+        #)
+
+        # Select verifier based on mapping type
+        if ctx.get("mapping_type") == "dynamic_content":
+            from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
+            ai_verifier = DynamicContentVerifyHelper(api_key, session_logger=log)
+            ui_issue = ai_verifier.verify_visual(
+                screenshot_base64=screenshot_base64,
+                test_case_description=ctx.get("test_case_description", "")
+            )
+        else:
+            ai_verifier = helpers["ui_verifier"]
+            ui_issue = ai_verifier.verify_visual_ui(
+                screenshot_base64=screenshot_base64,
+                previously_reported_issues=previously_reported_issues
+            )
         
         input_tokens = len(screenshot_base64) // 100 + 500
         output_tokens = len(ui_issue) // 4 if ui_issue else 0
@@ -929,11 +958,11 @@ def regenerate_steps(
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "regenerate_steps", result)
             return result
-        from services.ai_helper_factory import regenerate_steps_for_mapping
-        #from services.form_mapper_ai_helpers import create_ai_helpers
-        #helpers = create_ai_helpers(api_key, session_logger=log)
         
-        #ai_helper = helpers["form_mapper"]
+        from services.form_mapper_ai_helpers import create_ai_helpers
+        helpers = create_ai_helpers(api_key, session_logger=log)
+        
+        ai_helper = helpers["form_mapper"]
         #print(f"!!!! 🤖 Regen remain steps(regular)...")
         msg = f"!!!! 🤖 Regen remain steps(regular)..."
         print(msg)
@@ -974,21 +1003,17 @@ def regenerate_steps(
         print(msg)
         log.debug(msg, category="debug_trace")
 
-        ai_result = regenerate_steps_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
-            api_key=api_key,
-            session_logger=log,
+        ai_result = ai_helper.regenerate_steps(
             dom_html=dom_html,
             executed_steps=executed_steps,
-            screenshot_base64=screenshot_base64,
             test_cases=test_cases,
             test_context=test_context,
+            screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
             junction_instructions=_build_junction_instructions_text(junction_instructions),
             user_provided_inputs=user_provided_inputs or {},
-            retry_message=regenerate_retry_message,
-            test_case_description=ctx.get("test_case_description", "")
+            retry_message=regenerate_retry_message
         )
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
@@ -1654,26 +1679,13 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
 
         # Check how many paths already exist for this form_page_route
         form_page_route_id = ctx.get("form_route_id")
-        mapping_type = ctx.get("mapping_type", "form")
-        test_page_route_id = ctx.get("test_page_route_id")
-
-        #existing_paths = db.query(FormMapResult).filter(
-        #    FormMapResult.form_page_route_id == form_page_route_id
-        #).count()
-
-        if mapping_type == "dynamic_content" and test_page_route_id:
-            existing_paths = db.query(FormMapResult).filter(
-                FormMapResult.test_page_route_id == test_page_route_id
-            ).count()
-        else:
-            existing_paths = db.query(FormMapResult).filter(
-                FormMapResult.form_page_route_id == form_page_route_id
-            ).count()
+        existing_paths = db.query(FormMapResult).filter(
+            FormMapResult.form_page_route_id == form_page_route_id
+        ).count()
 
         form_map_result = FormMapResult(
             form_mapper_session_id=int(session_id),
-            form_page_route_id=form_page_route_id if mapping_type != "dynamic_content" else None,
-            test_page_route_id=test_page_route_id if mapping_type == "dynamic_content" else None,
+            form_page_route_id=form_page_route_id,
             network_id=ctx.get("network_id"),
             company_id=ctx.get("company_id"),
             path_number=existing_paths + 1,

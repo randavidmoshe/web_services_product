@@ -103,6 +103,7 @@ class Project(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     form_mapper_config = Column(JSON, default=dict)  # Per-project config overrides
+    project_type = Column(String(50), default='enterprise')  # 'enterprise' or 'dynamic_content'
 
 class Network(Base):
     __tablename__ = "networks"
@@ -344,3 +345,4 @@ class FormUploadedFile(Base):
 
 # Import related models to resolve relationships
 from models.form_mapper_models import FormMapperSession, FormMapResult
+from models.test_page_models import TestPageRoute

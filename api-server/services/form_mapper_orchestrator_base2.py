@@ -261,7 +261,7 @@ class FormMapperOrchestrator:
     
     def create_session(self, session_id=None, user_id=None, company_id=None, network_id=None,
                       form_route_id=None, form_page_route_id=None, test_cases=None, 
-                      product_id=1, config=None, base_url=None, project_id=None, skip_cleanup=False, test_page_route_id=None, mapping_type=None, test_case_description=None):
+                      product_id=1, config=None, base_url=None, project_id=None, skip_cleanup=False):
 
         import uuid
         if form_route_id is None and form_page_route_id is not None:
@@ -312,9 +312,6 @@ class FormMapperOrchestrator:
             "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0, "company_name": company_name or "",
             "product_id": product_id or 1, "network_id": network_id or 0,
             "form_route_id": form_route_id or 0, "form_page_url": form_page_url, "form_name": form_name or "Unknown Form", "project_id": project_id or 0,
-            "test_page_route_id": test_page_route_id or 0,
-            "mapping_type": mapping_type or "form",
-            "test_case_description": test_case_description or "",
             "state": MapperState.INITIALIZING.value, "previous_state": "",
             "current_step_index": 0, "all_steps": "[]", "executed_steps": "[]",
             "current_dom_hash": "", "current_path": 1,
@@ -498,23 +495,6 @@ class FormMapperOrchestrator:
     def start_navigation_phase(self, session_id: str, is_first_phase: bool = False, log_message: str = None) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
-
-        # Dynamic content: navigate to test page URL
-        if session.get("mapping_type") == "dynamic_content":
-            test_page_route_id = session.get("test_page_route_id")
-            if test_page_route_id and self.db:
-                try:
-                    from models.test_page_models import TestPageRoute
-                    test_page = self.db.query(TestPageRoute).filter(TestPageRoute.id == test_page_route_id).first()
-                    if test_page and test_page.url:
-                        self.transition_to(session_id, MapperState.NAVIGATING)
-                        task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": test_page.url})
-                        return {"success": True, "phase": "navigate_to_test_page", "agent_task": task}
-                except Exception as e:
-                    logger.warning(f"[Orchestrator] Failed to load test page URL: {e}")
-            # No test page URL, skip to mapping
-            return self.start_mapping_phase(session_id, is_first_phase=is_first_phase, log_message=log_message)
-
         form_route_id = session.get("form_route_id")
         if not form_route_id: return self.start_mapping_phase(session_id, is_first_phase=is_first_phase, log_message=log_message)
         nav_stages = self._load_navigation_stages(form_route_id)

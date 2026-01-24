@@ -188,6 +188,9 @@ class AIHelper:
             Dict with 'steps' (list), 'ui_issue' (string), and 'no_more_paths' (bool)
         """
 
+        if self.session_logger:
+            self.session_logger.info("🤖 !*!*!* Entering FORM MAPPER prompter: generate_test_steps", category="ai_routing")
+
         # Build UI verification section - simplified intro without UI verification task
         ui_task_section = "You are a test automation expert. Your task is to generate Selenium WebDriver test steps for the form page.\n\n"
         
@@ -458,7 +461,6 @@ When you have a step for these junctions, use the specified option. If a junctio
           * Opening/closing modals or dialogs
           * Adding/removing items in a list or table
           * Expanding/collapsing accordion sections
-          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
         - Set to `false` (or omit) for all other actions
         
         ** CRITICAL AND MANDATORY - force_regenerate field (for Save/Submit only):**
@@ -1185,7 +1187,6 @@ When you have a step for these junctions, use the specified option. If a junctio
           * Opening/closing modals or dialogs
           * Adding/removing items in a list or table
           * Expanding/collapsing accordion sections
-          * Selecting from dropdowns that populate other dropdowns (e.g., country→state→city)
         - Set to `false` (or omit) for all other actions
         
         - This tells the system to regenerate steps after this action completes
@@ -1358,6 +1359,10 @@ When you have a step for these junctions, use the specified option. If a junctio
         Returns:
             Dict with 'steps' (list), 'ui_issue' (string), and 'no_more_paths' (bool)
         """
+
+        if self.session_logger:
+            self.session_logger.info("🤖 !*!*!* Entering FORM MAPPER prompter: regenerate_steps", category="ai_routing")
+
         try:
             print(f"[AIHelper] Regenerating steps after DOM change...")
             print(f"[AIHelper] Already executed: {len(executed_steps)} steps")
@@ -1678,7 +1683,6 @@ If ANY check fails → FIX the xpath before returning.
   * Filling a field (fill action)
   * Opening/closing modals or dialogs
   * Adding/removing items in a list or table
-  * Clicking on new tabs
   * Saving an item in a list that was added
   * Expanding/collapsing accordion sections
 - Set to `false` (or omit) for all other actions
@@ -2618,6 +2622,10 @@ Return ONLY the JSON object.
         import re
         
         try:
+            if self.session_logger:
+                self.session_logger.info("🤖 !*!*!*! Entering FORM MAPPER prompter: analyze_failure_and_recover",
+                                         category="ai_routing")
+
             print(f"[AIHelper] Analyzing failure with vision...")
             
             # Read and encode screenshot

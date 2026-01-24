@@ -832,27 +832,32 @@ class FormDiscovererAgent:
                 login_successful = True
 
             base_url = driver.current_url
+            skip_form_crawl = params.get('skip_form_crawl', False)
 
             # Reset cancel flag before starting crawl
             self.cancel_requested = False
 
-            crawler = FormPagesCrawler(
-                driver=driver,
-                start_url=base_url,
-                base_url=base_url,
-                project_name=project_name,
-                max_depth=max_depth,
-                target_form_pages=[],
-                discovery_only=True,
-                slow_mode=slow_mode,
-                server=api_client,
-                username=login_username,
-                login_url=login_url,
-                agent=self.selenium_agent,  # Pass selenium_agent for log_message support
-                form_agent=self  # Pass FormAgent for cancel_requested check
-            )
+            if not skip_form_crawl:
+                crawler = FormPagesCrawler(
+                    driver=driver,
+                    start_url=base_url,
+                    base_url=base_url,
+                    project_name=project_name,
+                    max_depth=max_depth,
+                    target_form_pages=[],
+                    discovery_only=True,
+                    slow_mode=slow_mode,
+                    server=api_client,
+                    username=login_username,
+                    login_url=login_url,
+                    agent=self.selenium_agent,  # Pass selenium_agent for log_message support
+                    form_agent=self  # Pass FormAgent for cancel_requested check
+                )
 
-            crawler.crawl()
+                crawler.crawl()
+            else:
+                self.logger.info("⏭️ Skipping form crawl (login/logout only mode)")
+                self.activity_logger.info("⏭️ Skipping form crawl - dynamic content project")
 
             # Generate logout steps after discovery completes
             self._generate_logout_steps(driver, api_client)

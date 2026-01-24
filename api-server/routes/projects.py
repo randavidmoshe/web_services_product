@@ -18,6 +18,7 @@ class ProjectCreate(BaseModel):
     company_id: int
     product_id: int
     user_id: int
+    project_type: Optional[str] = 'enterprise'
 
 
 class ProjectUpdate(BaseModel):
@@ -66,7 +67,8 @@ async def list_projects(company_id: int, db: Session = Depends(get_db)):
             "created_at": project.created_at,
             "updated_at": project.updated_at,
             "network_count": network_count,
-            "form_page_count": form_page_count
+            "form_page_count": form_page_count,
+            "project_type": project.project_type
         })
     
     return result
@@ -80,7 +82,8 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
         description=project_data.description,
         company_id=project_data.company_id,
         product_id=project_data.product_id,
-        created_by_user_id=project_data.user_id
+        created_by_user_id=project_data.user_id,
+        project_type=project_data.project_type
     )
     db.add(project)
     db.commit()

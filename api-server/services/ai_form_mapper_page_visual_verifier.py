@@ -96,6 +96,10 @@ class PageVisualVerifier:
         Returns:
             Dict with page_ready, page_type, results, reason
         """
+
+        if self.session_logger:
+            self.session_logger.info("🤖 !*!*! Entering FORM PAGE MAPPER VISUAL VERIFIER: verify_page", category="ai_routing")
+
         # Extract fields to verify from executed steps (non-verify actions with values)
         steps_for_ai = []
         for step in executed_steps:

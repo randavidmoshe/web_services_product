@@ -15,11 +15,12 @@ result_logger_gui = logging.getLogger('init_result_logger_gui.form_page_test')
 class AIUIVisualVerifier:
     """Helper class for AI-powered UI visual verification using Claude API"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, session_logger=None):
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
+        self.session_logger = session_logger
     
     def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 4000, max_retries: int = 3) -> Optional[str]:
         """
@@ -91,6 +92,9 @@ class AIUIVisualVerifier:
         if not screenshot_base64:
             print("[AIUIVerifier] No screenshot provided")
             return ""
+
+        if self.session_logger:
+            self.session_logger.info("🤖 !*!*!*! Entering FORM UI VISUAL VERIFIER: verify_visual_ui", category="ai_routing")
         
         # Build previously reported issues section
         previously_reported_section = ""
