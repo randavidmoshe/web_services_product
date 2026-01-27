@@ -423,6 +423,7 @@ async def get_active_mapping_sessions(
         {
             "session_id": session.id,
             "form_page_route_id": session.form_page_route_id,
+            "test_page_route_id": session.test_page_route_id,
             "status": session.status
         }
         for session in active_sessions
@@ -443,7 +444,7 @@ async def get_session_status(
     """
     # Get session
     session = db.query(FormMapperSession).filter(
-        FormMapperSession.id == session_id
+        FormMapperSession.id == int(session_id)
     ).first()
     
     if not session:
@@ -464,7 +465,7 @@ async def get_session_status(
     result_id = None
     if session.status == SessionStatus.COMPLETED:
         result = db.query(FormMapResult).filter(
-            FormMapResult.form_mapper_session_id == session_id
+            FormMapResult.form_mapper_session_id == int(session_id)
         ).first()
         if result:
             result_id = result.id
@@ -733,7 +734,8 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         save_mapping_result,
         verify_junction_visual,
         verify_page_visual,
-        trigger_visual_page_screenshot
+        trigger_visual_page_screenshot,
+        verify_dynamic_step_visual
     )
     
     task_map = {
@@ -748,7 +750,8 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "save_mapping_result": save_mapping_result,
         "verify_junction_visual": verify_junction_visual,
         "verify_page_visual": verify_page_visual,
-        "trigger_visual_page_screenshot": trigger_visual_page_screenshot
+        "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
+        "verify_dynamic_step_visual": verify_dynamic_step_visual
     }
     
     task = task_map.get(task_name)

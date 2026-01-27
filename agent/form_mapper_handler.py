@@ -634,7 +634,7 @@ class FormMapperTaskHandler:
 
             # Skip if already closed (handles late/duplicate close tasks)
             if int(session_id) in self.closed_sessions:
-                print(f"[DEBUG] Session {session_id} already closed, skipping")
+                print(f"!!!!!!! [DEBUG CANCEL TASK] got cancel request, Session {session_id} in closed sessions, skipping(wont close browser)")
                 return {"success": True, "skipped": True, "reason": "already_closed"}
 
 
@@ -648,11 +648,16 @@ class FormMapperTaskHandler:
             # Remove from active sessions
             if session_id in self.active_sessions:
                 del self.active_sessions[session_id]
+                print(f"!!!!!!!!! [DEBUG CANCEL TASK] got cancel request, deleting this session id: {session_id} from active sessions")
+            else:
+                print(f"!!!!!!! [DEBUG CANCEL TASK] got cancel request, session id: {session_id} isn't in active sessions")
             self.closed_sessions.add(int(session_id))
             
             # Only close if no other active sessions
             if not self.active_sessions:
                 self.selenium.close_browser()
+            else:
+                print(f"!!!!!!! [DEBUG CANCEL TASK] got cancel request: not closing browser, we have these active sessions: {self.active_sessions}")
 
             # new fix
             # Clear any stale sessions and close browser

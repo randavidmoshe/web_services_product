@@ -99,23 +99,49 @@ class DynamicContentAIHelper:
 ## CURRENT PAGE DOM
 {dom_html}
 
-## SELECTOR GUIDELINES
+## Selector Rules:
 
-**Use CSS selectors (preferred):**
-- input[name='search']
-- button[data-testid='submit']
-- #search-box
-- .search-button
+**General selectors - prefer in this order:**
+1. ID: `#fieldId` or `input#fieldId`
+2. Name: `input[name='fieldName']`
+3. Data attributes: `[data-testid='field']`
+4. Unique class: `.unique-class-name`
+5. XPath with attributes: `//button[@onclick='save()']`
+6. XPath by label: `//label[contains(text(), 'Name')]/..//input`
 
-**Use XPath when needed:**
-- //button[contains(text(), 'Search')]
-- //input[@placeholder='Search...']
+**CRITICAL - SELECTOR MUST BE UNIQUE:**
+- If ID/name/data-attr are missing or not clearly unique, use XPath scoped to parent container
+- When in doubt, prefer more specific selector over simpler one
+- **For multiple similar elements (e.g., multiple dropdowns with same class):**
+  - ✅ GOOD: `(//div[@class='dropdown']//span)[1]` (correct index syntax - parentheses FIRST, then index)
+  - ❌ WRONG: `//div[@class='dropdown'][1]//span` (index applies to child position, not result set)
 
-**Priority:**
-1. data-testid, data-qa attributes
-2. id, name attributes
-3. Unique classes
-4. Text content (XPath)
+**Modal buttons - use XPath for precision:**
+- `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
+- `//div[contains(@class, 'modal')]//button[@type='submit']`
+
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
+
+**Rules:**
+- Never use CSS `:contains()` or `:has()` - not supported in Selenium
+
+**full_xpath field (MANDATORY FOR ALL ACTION STEPS):**
+- Fallback selector if primary selector fails
+- Must start from `/html/body/...`
+- **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+  - ✅ `/html/body/div[@id='app']/div/form/input[1]`
+  - ❌ `/html/body/div[3]/div/form/input[1]` (counting is error-prone)
+- Only use indices `[n]` when no ID exists on that element
+
+**CRITICAL - CLICK LOCATORS MUST INCLUDE ELEMENT TEXT/NAME:**
+When generating selectors for click actions, ALWAYS include the element's visible text:
+- ✅ `//button[contains(text(), 'Submit Order')]`
+- ✅ `//a[text()='View Details']`
+- ✅ `//span[contains(text(), 'Play')]/ancestor::button`
+- ❌ `button.btn-primary` (too generic - will match wrong button during test runs)
+- ❌ `.submit-btn` (no text - can't identify specific element)
+
+This ensures the same logical element is found during test execution, even if page content changes.
 
 ## AVAILABLE ACTIONS
 
@@ -126,9 +152,7 @@ class DynamicContentAIHelper:
 - **hover**: Hover over element
 - **scroll**: Scroll page or element
 - **wait**: Wait for condition (use sparingly)
-- **verify**: Verify element exists/contains text
-- **verify_text**: Verify specific text on page
-- **verify_url**: Verify current URL contains/matches
+- **verify**: Visual AI verification - describe what should be visible (no selector needed)
 
 ## RESPONSE FORMAT
 
@@ -147,16 +171,14 @@ Return ONLY valid JSON:
     {{
       "step_number": 2,
       "action": "click",
-      "selector": "button[type='submit']",
+      "selector": "//button[contains(text(), 'Search')]",
       "description": "Click search button",
-      "full_xpath": "//button[@type='submit']"
+      "full_xpath": "//button[contains(text(), 'Search')]"
     }},
     {{
       "step_number": 3,
       "action": "verify",
-      "selector": ".search-results",
-      "expected": "Python",
-      "description": "Verify search results contain Python"
+      "description": "Search results page shows list of Python-related items"
     }}
   ]
 }}
@@ -165,11 +187,41 @@ Return ONLY valid JSON:
 ## RULES
 
 1. Generate steps that accomplish the test case description
-2. Include verify steps to confirm expected outcomes
+2. Include verify steps when test case description asks for verification
 3. Use robust selectors that won't break easily
 4. Keep steps atomic - one action per step
 5. Add wait steps only when necessary (after navigation, dynamic content)
 6. Include full_xpath as fallback for CSS selectors
+
+## SEARCH FIRST STRATEGY
+When page has a search box, ALWAYS use it to find items:
+- ✅ Search for "Movie Name" → click result
+- ❌ Scroll through list hoping to find item
+This makes steps more reliable and faster.
+
+## VALUE PLACEHOLDERS FOR CREATE OPERATIONS
+When creating new items (playlists, libraries, accounts, etc.), use placeholders:
+- `{{RANDOM_NAME}}` — system replaces with random name during test run
+- `{{RANDOM_EMAIL}}` — system generates random email
+- `{{TIMESTAMP}}` — system inserts current timestamp
+
+Example flow:
+1. fill - name field - value: "{{RANDOM_NAME}}"
+2. click - "//button[contains(text(), 'Create')]"
+3. fill - search box - value: "{{RANDOM_NAME}}"  (find what we just created)
+4. click - "//div[contains(text(), '{{RANDOM_NAME}}')]"
+
+## FOLLOW USER'S TEST CASE STRICTLY
+Generate ONLY what the test case description asks for.
+Do NOT invent additional actions or verifications.
+User may also provide a **reference image** — use it to understand the page.
+
+## VERIFY STEPS — VISUAL AI VERIFICATION
+Only generate verify steps when test case description asks to verify something.
+Use visual descriptions of what should be visible.
+**No selector needed for verify** — just describe what user asked to see.
+
+
 """
 
         # Build multimodal content
@@ -253,7 +305,129 @@ Generate the REMAINING steps needed to complete the test case.
 Do NOT repeat already executed steps.
 Continue step numbering from {len(executed_steps) + 1}.
 
-Return ONLY valid JSON with "steps" array.
+## Selector Rules:
+
+**General selectors - prefer in this order:**
+1. ID: `#fieldId` or `input#fieldId`
+2. Name: `input[name='fieldName']`
+3. Data attributes: `[data-testid='field']`
+4. Unique class: `.unique-class-name`
+5. XPath with attributes: `//button[@onclick='save()']`
+6. XPath by label: `//label[contains(text(), 'Name')]/..//input`
+
+**CRITICAL - SELECTOR MUST BE UNIQUE:**
+- If ID/name/data-attr are missing or not clearly unique, use XPath scoped to parent container
+- When in doubt, prefer more specific selector over simpler one
+- **For multiple similar elements (e.g., multiple dropdowns with same class):**
+  - ✅ GOOD: `(//div[@class='dropdown']//span)[1]` (correct index syntax - parentheses FIRST, then index)
+  - ❌ WRONG: `//div[@class='dropdown'][1]//span` (index applies to child position, not result set)
+
+**Modal buttons - use XPath for precision:**
+- `//div[contains(@class, 'modal')]//button[contains(text(), 'Save')]`
+- `//div[contains(@class, 'modal')]//button[@type='submit']`
+
+**Class matching:** Use `contains(@class, 'x')` not `@class='x'`
+
+**Rules:**
+- Never use CSS `:contains()` or `:has()` - not supported in Selenium
+
+**full_xpath field (MANDATORY FOR ALL ACTION STEPS):**
+- Fallback selector if primary selector fails
+- Must start from `/html/body/...`
+- **USE IDs WHEN AVAILABLE:** If any element in the path has an ID, use it instead of counting:
+  - ✅ `/html/body/div[@id='app']/div/form/input[1]`
+  - ❌ `/html/body/div[3]/div/form/input[1]` (counting is error-prone)
+- Only use indices `[n]` when no ID exists on that element
+
+**CRITICAL - CLICK LOCATORS MUST INCLUDE ELEMENT TEXT/NAME:**
+When generating selectors for click actions, ALWAYS include the element's visible text:
+- ✅ `//button[contains(text(), 'Submit Order')]`
+- ✅ `//a[text()='View Details']`
+- ✅ `//span[contains(text(), 'Play')]/ancestor::button`
+- ❌ `button.btn-primary` (too generic - will match wrong button during test runs)
+- ❌ `.submit-btn` (no text - can't identify specific element)
+
+This ensures the same logical element is found during test execution, even if page content changes.
+
+## AVAILABLE ACTIONS
+
+- **click**: Click an element
+- **fill**: Type text into input field
+- **select**: Select dropdown option
+- **check/uncheck**: Checkbox actions
+- **hover**: Hover over element
+- **scroll**: Scroll page or element
+- **wait**: Wait for condition (use sparingly)
+- **verify**: Visual AI verification - describe what should be visible (no selector needed)
+
+## RESPONSE FORMAT
+
+Return ONLY valid JSON:
+```json
+{{
+  "steps": [
+    {{
+      "step_number": {len(executed_steps) + 1},
+      "action": "fill",
+      "selector": "input[name='search']",
+      "value": "Python",
+      "description": "Enter search term",
+      "full_xpath": "//input[@name='search']"
+    }},
+    {{
+      "step_number": {len(executed_steps) + 2},
+      "action": "click",
+      "selector": "//button[contains(text(), 'Search')]",
+      "description": "Click search button",
+      "full_xpath": "//button[contains(text(), 'Search')]"
+    }},
+    {{
+      "step_number": {len(executed_steps) + 3},
+      "action": "verify",
+      "description": "Search results page shows list of Python-related items"
+    }}
+  ]
+}}
+```
+
+## RULES
+
+1. Generate steps that accomplish the test case description
+2. Include verify steps when test case description asks for verification
+3. Use robust selectors that won't break easily
+4. Keep steps atomic - one action per step
+5. Add wait steps only when necessary (after navigation, dynamic content)
+6. Include full_xpath as fallback for CSS selectors
+
+## SEARCH FIRST STRATEGY
+When page has a search box, ALWAYS use it to find items:
+- ✅ Search for "Movie Name" → click result
+- ❌ Scroll through list hoping to find item
+This makes steps more reliable and faster.
+
+## VALUE PLACEHOLDERS FOR CREATE OPERATIONS
+When creating new items (playlists, libraries, accounts, etc.), use placeholders:
+- `{{RANDOM_NAME}}` — system replaces with random name during test run
+- `{{RANDOM_EMAIL}}` — system generates random email
+- `{{TIMESTAMP}}` — system inserts current timestamp
+
+Example flow:
+1. fill - name field - value: "{{RANDOM_NAME}}"
+2. click - "//button[contains(text(), 'Create')]"
+3. fill - search box - value: "{{RANDOM_NAME}}"  (find what we just created)
+4. click - "//div[contains(text(), '{{RANDOM_NAME}}')]"
+
+## FOLLOW USER'S TEST CASE STRICTLY
+Generate ONLY what the test case description asks for.
+Do NOT invent additional actions or verifications.
+User may also provide a **reference image** — use it to understand the page.
+
+## VERIFY STEPS — VISUAL AI VERIFICATION
+Only generate verify steps when test case description asks to verify something.
+Use visual descriptions of what should be visible.
+**No selector needed for verify** — just describe what user asked to see.
+
+
 """
 
         content = []

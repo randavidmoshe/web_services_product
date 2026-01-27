@@ -169,6 +169,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict, countdown: int = Non
         "save_mapping_result": save_mapping_result,
         "verify_junction_visual": verify_junction_visual,
         "verify_page_visual": verify_page_visual,
+        "verify_dynamic_step_visual": verify_dynamic_step_visual,
         "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
     }
     
@@ -1392,6 +1393,95 @@ def verify_page_visual(
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=5)
+def verify_dynamic_step_visual(
+        self,
+        session_id: str,
+        screenshot_base64: str,
+        step_description: str,
+        test_case_description: str = ""
+) -> Dict:
+    """Celery task: Visual verification of a verify step for dynamic content."""
+    logger.info(f"[FormMapperTask] Dynamic content verify step for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"), company_name=ctx.get("company_name"))
+        log.info("Celery task: verify_dynamic_step_visual started", category="celery_task")
+
+        msg = f"!!!! 👁️ Dynamic Verify Step for session {session_id}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+            return result
+
+        from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
+        verifier = DynamicContentVerifyHelper(api_key, session_logger=log)
+
+        # Call AI to verify step
+        ai_result = verifier.verify_step_visual(
+            screenshot_base64=screenshot_base64,
+            step_description=step_description,
+            test_case_description=test_case_description
+        )
+
+        msg = f"!!!! 👁️ Dynamic Verify Step result: success={ai_result.get('success')}, page_issue={ai_result.get('page_issue', False)}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        logger.info(f"[FormMapperTask] Dynamic verify step result: success={ai_result.get('success')}")
+
+        # Record AI usage
+        from services.ai_budget_service import AIOperationType
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx.get("user_id", 0),
+            AIOperationType.FORM_MAPPER_REGENERATE,
+            800,  # Approximate input tokens
+            200,  # Approximate output tokens
+            session_id
+        )
+
+        result = {
+            "success": ai_result.get("success", True),
+            "page_issue": ai_result.get("page_issue", False),
+            "reason": ai_result.get("reason", "")
+        }
+        _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+        return result
+
+    except Exception as e:
+        msg = f"!!!! ❌ Dynamic verify step error: {e}"
+        print(msg)
+        logger.error(f"[FormMapperTask] Dynamic verify step error: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
+
+        # On error, continue without verification (don't block mapping)
+        result = {
+            "success": True,
+            "page_issue": False,
+            "reason": f"Verification error: {str(e)} - continuing without verification"
+        }
+        _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+        return result
+    finally:
+        db.close()
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=5)
 def trigger_visual_page_screenshot(self, session_id: str) -> Dict:
     """
     Celery task: Delayed trigger for visual page screenshot capture.
@@ -1821,6 +1911,21 @@ def sync_mapper_session_status(session_id: str, status: str, error: str = None):
             db.commit()
             logger.info(f"[MapperTasks] DB session {session_id} status -> {status}")
 
+            # Also update TestPageRoute status for dynamic content
+            if db_session.test_page_route_id:
+                from models.test_page_models import TestPageRoute
+                test_page = db.query(TestPageRoute).filter(
+                    TestPageRoute.id == db_session.test_page_route_id
+                ).first()
+                if test_page:
+                    if status == "completed":
+                        test_page.status = "mapped"
+                    elif status == "failed":
+                        test_page.status = "failed"
+                    db.commit()
+                    logger.info(
+                        f"[MapperTasks] TestPageRoute {db_session.test_page_route_id} status -> {test_page.status}")
+
             # Push close task to agent when session fails
             if status == "failed":
                 try:
@@ -2004,6 +2109,46 @@ def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: 
         return {"cancelled": count, "deleted_paths": deleted_paths}
     except Exception as e:
         db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@shared_task(name="tasks.cancel_previous_sessions_for_test_page")
+def cancel_previous_sessions_for_test_page(test_page_route_id: int, new_session_id: int):
+    """Cancel previous sessions and cleanup results for test page (dynamic content)"""
+    db = _get_db_session()
+    try:
+        from models.form_mapper_models import FormMapperSession, FormMapResult
+        from datetime import datetime
+
+        # Cancel active sessions for this test page
+        active_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.test_page_route_id == test_page_route_id,
+            FormMapperSession.id != new_session_id,
+            FormMapperSession.status.in_(["initializing", "pending", "running"])
+        ).all()
+
+        count = len(active_sessions)
+        for session in active_sessions:
+            session.status = "cancelled_ack"
+            session.last_error = f"Cancelled - new session {new_session_id} started"
+            session.completed_at = datetime.utcnow()
+
+        # Delete previous mapping results for fresh start
+        deleted_paths = db.query(FormMapResult).filter(
+            FormMapResult.test_page_route_id == test_page_route_id
+        ).delete()
+
+        db.commit()
+
+        logger.info(
+            f"[FormMapperTask] Test page {test_page_route_id}: cancelled {count} sessions, deleted {deleted_paths} paths")
+
+        return {"cancelled": count, "deleted_paths": deleted_paths}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[FormMapperTask] Failed to cleanup test page {test_page_route_id}: {e}")
         return {"error": str(e)}
     finally:
         db.close()

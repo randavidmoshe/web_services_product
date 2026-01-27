@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import TestPageEditPanel from './TestPageEditPanel'
 
 interface Network {
   id: number
@@ -25,13 +26,24 @@ interface TestPage {
   paths_count?: number
 }
 
+interface JunctionChoice {
+  junction_id?: string
+  junction_name: string
+  option: string
+  selector?: string
+}
+
 interface CompletedPath {
   id: number
   path_number: number
-  steps_count: number
+  path_junctions: JunctionChoice[]
   steps: any[]
+  steps_count: number
+  is_verified: boolean
   created_at: string
+  updated_at: string
 }
+
 
 interface DiscoveryQueueItem {
   networkId: number
@@ -126,6 +138,14 @@ export default function TestPagesPage() {
   const [paths, setPaths] = useState<CompletedPath[]>([])
   const [loadingPaths, setLoadingPaths] = useState(false)
   const [expandedPathId, setExpandedPathId] = useState<number | null>(null)
+  const [editingPathStep, setEditingPathStep] = useState<{ pathId: number; stepIndex: number } | null>(null)
+  const [editedPathStepData, setEditedPathStepData] = useState<any>(null)
+  const [editTestName, setEditTestName] = useState('')
+  const [editUrl, setEditUrl] = useState('')
+  const [editTestCaseDescription, setEditTestCaseDescription] = useState('')
+  const [mappingStatus, setMappingStatus] = useState<Record<number, { status: string; sessionId?: number; error?: string }>>({})
+  const [showStepsModal, setShowStepsModal] = useState(false)
+  const [viewingSteps, setViewingSteps] = useState<{type: 'login' | 'logout', networkName: string, steps: any[]}>({ type: 'login', networkName: '', steps: [] })
 
   // Mapping state
   const [mappingTestPageIds, setMappingTestPageIds] = useState<Set<number>>(new Set())
@@ -212,6 +232,7 @@ export default function TestPagesPage() {
     if (storedProjectId && storedCompanyId) {
       loadNetworks(storedProjectId, storedToken)
       loadTestPages(storedProjectId, storedToken)
+      checkActiveMappingSessions(storedToken, storedProjectId)
     }
   }, [])
 
@@ -227,6 +248,7 @@ export default function TestPagesPage() {
         }
         loadNetworks(currentProjectId, currentToken)
         loadTestPages(currentProjectId, currentToken)
+        checkActiveMappingSessions(currentToken, currentProjectId)
       }
     }
     
@@ -277,6 +299,40 @@ export default function TestPagesPage() {
       console.error(err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Check for active mapping sessions and restore UI state (prevent stuck mapping)
+  const checkActiveMappingSessions = async (authToken: string, projectId: string) => {
+    try {
+      const response = await fetch('/api/form-mapper/active-sessions', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      })
+
+      if (response.ok) {
+        const activeSessions = await response.json()
+
+        const newMappingIds = new Set<number>()
+        const newMappingStatus: Record<number, { status: string; sessionId?: number }> = {}
+
+        for (const session of activeSessions) {
+          const activeStatuses = ['running', 'initializing', 'pending', 'logging_in', 'navigating', 'extracting_initial_dom', 'getting_initial_screenshot', 'ai_analyzing', 'executing_step', 'waiting_for_dom', 'waiting_for_screenshot']
+          if (activeStatuses.includes(session.status)) {
+            newMappingIds.add(session.test_page_route_id)
+            newMappingStatus[session.test_page_route_id] = {
+              status: 'mapping',
+              sessionId: session.session_id
+            }
+            // Resume polling for this session
+            startMappingPolling(session.test_page_route_id, session.session_id, projectId)
+          }
+        }
+
+        setMappingTestPageIds(newMappingIds)
+        setMappingStatus(newMappingStatus)
+      }
+    } catch (err) {
+      console.error('Failed to check active mapping sessions:', err)
     }
   }
 
@@ -671,8 +727,10 @@ export default function TestPagesPage() {
   const openDetailPanel = async (testPage: TestPage) => {
     setSelectedTestPage(testPage)
     setShowDetailPanel(true)
+    setEditTestName(testPage.test_name)
+    setEditUrl(testPage.url)
+    setEditTestCaseDescription(testPage.test_case_description)
     setExpandedPathId(null)
-    
     setLoadingPaths(true)
     try {
       const response = await fetch(`/api/test-pages/${testPage.id}/paths`, {
@@ -689,7 +747,217 @@ export default function TestPagesPage() {
     }
   }
 
+  const handleSaveTestPage = async () => {
+    if (!selectedTestPage) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/test-pages/${selectedTestPage.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          test_name: editTestName,
+          url: editUrl,
+          test_case_description: editTestCaseDescription
+        })
+      })
+      if (response.ok) {
+        setMessage('Test page updated')
+        loadTestPages(activeProjectId!, token!)
+        setSelectedTestPage({ ...selectedTestPage, test_name: editTestName, url: editUrl, test_case_description: editTestCaseDescription })
+      } else {
+        setError('Failed to update test page')
+      }
+    } catch (err) {
+      setError('Failed to update test page')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancelMapping = async (testPageId: number) => {
+    // Get the session ID for this test page
+    const status = mappingStatus[testPageId]
+    if (!status?.sessionId) {
+      setError('No active mapping session found')
+      return
+    }
+
+    // Set status to stopping
+    setMappingStatus(prev => ({
+      ...prev,
+      [testPageId]: { ...prev[testPageId], status: 'stopping' }
+    }))
+
+    try {
+      // Call API to cancel the mapping session
+      const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        // Stop polling
+        if (mappingPollingRef.current[testPageId]) {
+          clearInterval(mappingPollingRef.current[testPageId])
+          delete mappingPollingRef.current[testPageId]
+        }
+
+        // Update UI state
+        setMappingTestPageIds(prev => {
+          const next = new Set(prev)
+          next.delete(testPageId)
+          return next
+        })
+        setMappingStatus(prev => {
+          const next = { ...prev }
+          delete next[testPageId]
+          return next
+        })
+
+        // Refresh test pages to get updated status
+        loadTestPages(activeProjectId!, token!)
+        setMessage('Mapping cancelled')
+      } else {
+        setError('Failed to cancel mapping')
+        // Reset stopping status
+        setMappingStatus(prev => ({
+          ...prev,
+          [testPageId]: { ...prev[testPageId], status: 'mapping' }
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to cancel mapping:', err)
+      setError('Failed to cancel mapping')
+      setMappingStatus(prev => ({
+        ...prev,
+        [testPageId]: { ...prev[testPageId], status: 'mapping' }
+      }))
+    }
+  }
+
+  const handleDeletePath = async (pathId: number) => {
+    if (!confirm('Delete this path?')) return
+    try {
+      const response = await fetch(`/api/form-mapper/paths/${pathId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        setPaths(prev => prev.filter(p => p.id !== pathId))
+        setMessage('Path deleted')
+      } else {
+        setError('Failed to delete path')
+      }
+    } catch (err) {
+      setError('Failed to delete path')
+    }
+  }
+
+  const handleSavePathStep = async (pathId: number, stepIndex: number, stepData?: any) => {
+    if (!stepData) return
+    try {
+      const response = await fetch(`/api/form-mapper/paths/${pathId}/steps/${stepIndex}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(stepData)
+      })
+      if (response.ok) {
+        setMessage('Step updated')
+        // Refresh paths
+        if (selectedTestPage) {
+          const pathsResponse = await fetch(`/api/test-pages/${selectedTestPage.id}/paths`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          if (pathsResponse.ok) {
+            const data = await pathsResponse.json()
+            setPaths(data.paths || [])
+          }
+        }
+      } else {
+        setError('Failed to update step')
+      }
+    } catch (err) {
+      setError('Failed to update step')
+    }
+  }
+
+  const handleExportPath = (path: CompletedPath) => {
+    const exportData = JSON.stringify(path, null, 2)
+    const blob = new Blob([exportData], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `path-${path.path_number}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleRefreshPaths = async () => {
+    if (!selectedTestPage) return
+    setLoadingPaths(true)
+    try {
+      const response = await fetch(`/api/test-pages/${selectedTestPage.id}/paths`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPaths(data.paths || [])
+      }
+    } catch (err) {
+      console.error('Failed to load paths:', err)
+    } finally {
+      setLoadingPaths(false)
+    }
+  }
+
+  const handleDeleteTestPageFromPanel = async (testPageId: number) => {
+    try {
+      const response = await fetch(`/api/test-pages/${testPageId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        setMessage('Test page deleted')
+        setShowDetailPanel(false)
+        setSelectedTestPage(null)
+        loadTestPages(activeProjectId!, token!)
+      } else {
+        setError('Failed to delete test page')
+      }
+    } catch (err) {
+      setError('Failed to delete test page')
+    }
+  }
+
   const startMapping = async (testPage: TestPage) => {
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Warn if paths exist - they will be deleted on remap
+    if (paths.length > 0) {
+      const confirmed = confirm(`⚠️ This test already has mapping results. Re-mapping will DELETE the existing mapping. Continue?`)
+      if (!confirmed) return
+    }
+
     setMappingTestPageIds(prev => new Set(prev).add(testPage.id))
     setError(null)
     
@@ -715,7 +983,13 @@ export default function TestPagesPage() {
           tp.id === testPage.id ? { ...tp, status: 'mapping' as const } : tp
         ))
         
-        startMappingPolling(testPage.id, data.session_id)
+        // Store sessionId so cancel can find it
+        setMappingStatus(prev => ({
+          ...prev,
+          [testPage.id]: { status: 'mapping', sessionId: data.session_id }
+        }))
+
+        startMappingPolling(testPage.id, data.session_id, activeProjectId!)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to start mapping')
@@ -735,18 +1009,18 @@ export default function TestPagesPage() {
     }
   }
 
-  const startMappingPolling = (testPageId: number, sessionId: number) => {
+  const startMappingPolling = (testPageId: number, sessionId: number, projectId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/form-mapper/status/${sessionId}`, {
+        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         
         if (response.ok) {
           const data = await response.json()
-          const status = data.session?.status
+          const status = data.status
           
-          if (status === 'completed' || status === 'failed') {
+          if (status === 'completed' || status === 'failed' || status === 'cancelled') {
             clearInterval(interval)
             delete mappingPollingRef.current[testPageId]
             
@@ -755,8 +1029,20 @@ export default function TestPagesPage() {
               next.delete(testPageId)
               return next
             })
+
+            // Clean up mappingStatus
+            setMappingStatus(prev => {
+              const next = { ...prev }
+              delete next[testPageId]
+              return next
+            })
             
-            loadTestPages(activeProjectId!, token!)
+            loadTestPages(projectId, token!)
+
+            // Refresh paths if the completed test page is currently selected
+            if (selectedTestPage && selectedTestPage.id === testPageId) {
+              handleRefreshPaths()
+            }
             
             if (status === 'completed') {
               setMessage('Mapping completed!')
@@ -848,14 +1134,13 @@ export default function TestPagesPage() {
 
   // Clear messages after 5 seconds
   useEffect(() => {
-    if (message || error) {
+    if (message) {
       const timer = setTimeout(() => {
         setMessage(null)
-        setError(null)
       }, 5000)
       return () => clearTimeout(timer)
     }
-  }, [message, error])
+  }, [message])
 
   if (!activeProjectId) {
     return (
@@ -893,7 +1178,7 @@ export default function TestPagesPage() {
         </div>
       )}
       
-      {error && (
+      {error && !showDetailPanel && (
         <div style={{
           background: 'rgba(239, 68, 68, 0.1)',
           border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -910,7 +1195,46 @@ export default function TestPagesPage() {
         </div>
       )}
 
-      {/* Discovery Section - Collapsible */}
+      {showDetailPanel && selectedTestPage ? (
+        <TestPageEditPanel
+          editingTestPage={selectedTestPage}
+          completedPaths={paths}
+          loadingPaths={loadingPaths}
+          token={token || ''}
+          editTestName={editTestName}
+          setEditTestName={setEditTestName}
+          editUrl={editUrl}
+          setEditUrl={setEditUrl}
+          editTestCaseDescription={editTestCaseDescription}
+          setEditTestCaseDescription={setEditTestCaseDescription}
+          savingTestPage={saving}
+          mappingTestPageIds={mappingTestPageIds}
+          mappingStatus={mappingStatus}
+          expandedPathId={expandedPathId}
+          setExpandedPathId={setExpandedPathId}
+          editingPathStep={editingPathStep}
+          setEditingPathStep={setEditingPathStep}
+          editedPathStepData={editedPathStepData}
+          setEditedPathStepData={setEditedPathStepData}
+          error={error}
+          setError={setError}
+          message={message}
+          setMessage={setMessage}
+          onClose={() => { setShowDetailPanel(false); setSelectedTestPage(null) }}
+          onSave={handleSaveTestPage}
+          onStartMapping={(id) => startMapping(testPages.find(tp => tp.id === id) || selectedTestPage)}
+          onCancelMapping={handleCancelMapping}
+          onDeletePath={handleDeletePath}
+          onSavePathStep={handleSavePathStep}
+          onExportPath={handleExportPath}
+          onRefreshPaths={handleRefreshPaths}
+          onDeleteTestPage={handleDeleteTestPageFromPanel}
+          getTheme={getTheme}
+          isLightTheme={isLightTheme}
+        />
+      ) : (
+        <>
+          {/* Discovery Section - Collapsible */}
       <div style={{
         background: theme.colors.cardBg,
         border: `1px solid ${theme.colors.cardBorder}`,
@@ -1344,238 +1668,7 @@ export default function TestPagesPage() {
         </div>
       )}
 
-      {/* Detail Panel or Main View */}
-      {showDetailPanel && selectedTestPage ? (
-        // Detail Panel View
-        <div>
-          {/* Header */}
-          <div style={{
-            background: theme.colors.cardBg,
-            borderRadius: '16px',
-            padding: '24px 32px',
-            marginBottom: '24px',
-            border: `1px solid ${theme.colors.cardBorder}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontSize: '32px' }}>📋</span>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '24px', color: theme.colors.textPrimary, fontWeight: 600 }}>
-                  Test Page: <span style={{ color: theme.colors.accentPrimary }}>{selectedTestPage.test_name}</span>
-                </h1>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {(selectedTestPage.status === 'not_mapped' || selectedTestPage.status === 'failed') && !mappingTestPageIds.has(selectedTestPage.id) && (
-                <button
-                  onClick={() => startMapping(selectedTestPage)}
-                  style={{
-                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    padding: '12px 24px',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  ▶️ Start Mapping
-                </button>
-              )}
-              <button
-                onClick={() => { setShowDetailPanel(false); setSelectedTestPage(null) }}
-                style={{
-                  background: 'rgba(0,0,0,0.05)',
-                  color: theme.colors.textPrimary,
-                  border: `1px solid ${theme.colors.cardBorder}`,
-                  borderRadius: '10px',
-                  padding: '12px 24px',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Back
-              </button>
-            </div>
-          </div>
 
-          {/* Detail Content */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            {/* Left Column - Info */}
-            <div>
-              {/* URL Section */}
-              <div style={{
-                background: 'rgba(16, 185, 129, 0.08)',
-                borderRadius: '12px',
-                padding: '20px 24px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#10b981', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>URL</div>
-                <a href={selectedTestPage.url} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accentPrimary, textDecoration: 'none', fontSize: '15px' }}>
-                  {selectedTestPage.url}
-                </a>
-              </div>
-              
-              {/* Network Section */}
-              <div style={{
-                background: 'rgba(14, 165, 233, 0.08)',
-                borderRadius: '12px',
-                padding: '20px 24px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#0ea5e9', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Test Site (Network)</div>
-                <div style={{ fontSize: '15px', color: theme.colors.textPrimary }}>
-                  {selectedTestPage.network_name || networks.find(n => n.id === selectedTestPage.network_id)?.name || 'Unknown'}
-                </div>
-              </div>
-
-              {/* Test Case Description */}
-              <div style={{
-                background: theme.colors.cardBg,
-                borderRadius: '12px',
-                padding: '20px 24px',
-                border: `1px solid ${theme.colors.cardBorder}`
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: theme.colors.textSecondary, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Test Case Description</div>
-                <pre style={{ 
-                  margin: 0, 
-                  fontSize: '14px', 
-                  color: theme.colors.textPrimary, 
-                  whiteSpace: 'pre-wrap',
-                  fontFamily: 'inherit',
-                  lineHeight: 1.6
-                }}>
-                  {selectedTestPage.test_case_description}
-                </pre>
-              </div>
-            </div>
-
-            {/* Right Column - Completed Paths */}
-            <div style={{
-              background: theme.colors.cardBg,
-              borderRadius: '16px',
-              padding: '24px',
-              border: `1px solid ${theme.colors.cardBorder}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                <span style={{ fontSize: '24px' }}>📊</span>
-                <h3 style={{ margin: 0, fontSize: '18px', color: theme.colors.textPrimary, fontWeight: 600 }}>
-                  Completed Mapping Paths
-                </h3>
-                <span style={{
-                  background: theme.colors.accentPrimary,
-                  color: 'white',
-                  padding: '4px 12px',
-                  borderRadius: '12px',
-                  fontSize: '14px',
-                  fontWeight: 600
-                }}>
-                  {paths.length}
-                </span>
-              </div>
-
-              {loadingPaths ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.textSecondary }}>
-                  Loading paths...
-                </div>
-              ) : paths.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-                  <p style={{ margin: 0, color: theme.colors.textSecondary, fontSize: '16px' }}>No completed paths yet.</p>
-                  <p style={{ margin: '8px 0 0', color: theme.colors.textSecondary, fontSize: '14px' }}>Click "Start Mapping" to discover paths through this test.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {paths.map(path => (
-                    <div key={path.id}>
-                      <div
-                        onClick={() => setExpandedPathId(expandedPathId === path.id ? null : path.id)}
-                        style={{
-                          background: expandedPathId === path.id ? 'rgba(14, 165, 233, 0.1)' : 'rgba(0,0,0,0.03)',
-                          border: `1px solid ${expandedPathId === path.id ? 'rgba(14, 165, 233, 0.3)' : theme.colors.cardBorder}`,
-                          borderRadius: '12px',
-                          padding: '16px 20px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: 600, color: theme.colors.textPrimary, fontSize: '16px' }}>
-                              Path #{path.path_number}
-                            </div>
-                            <div style={{ fontSize: '13px', color: theme.colors.textSecondary, marginTop: '4px' }}>
-                              {path.steps_count} steps • {new Date(path.created_at).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '18px', color: theme.colors.textSecondary }}>
-                            {expandedPathId === path.id ? '▼' : '▶'}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Expanded Steps */}
-                      {expandedPathId === path.id && path.steps && (
-                        <div style={{
-                          marginTop: '8px',
-                          marginLeft: '20px',
-                          padding: '16px',
-                          background: 'rgba(0,0,0,0.02)',
-                          borderRadius: '8px',
-                          border: `1px solid ${theme.colors.cardBorder}`
-                        }}>
-                          {path.steps.map((step: any, idx: number) => (
-                            <div key={idx} style={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '12px',
-                              padding: '10px 0',
-                              borderBottom: idx < path.steps.length - 1 ? `1px solid ${theme.colors.cardBorder}` : 'none'
-                            }}>
-                              <span style={{
-                                background: theme.colors.accentPrimary,
-                                color: 'white',
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                flexShrink: 0
-                              }}>
-                                {idx + 1}
-                              </span>
-                              <div>
-                                <div style={{ fontWeight: 500, color: theme.colors.textPrimary, fontSize: '14px' }}>
-                                  {step.description || step.action}
-                                </div>
-                                <div style={{ fontSize: '12px', color: theme.colors.textSecondary, marginTop: '2px' }}>
-                                  {step.action}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        // Main List View
-        <>
           {/* Header */}
           <div style={{
             background: theme.colors.cardBg,
@@ -1878,6 +1971,10 @@ export default function TestPagesPage() {
                   <div key={networkId}>
                     {/* Login Row */}
                     <div
+                      onDoubleClick={() => {
+                        setViewingSteps({ type: 'login', networkName: data.network_name, steps: data.login_stages || [] })
+                        setShowStepsModal(true)
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1925,6 +2022,10 @@ export default function TestPagesPage() {
 
                     {/* Logout Row */}
                     <div
+                      onDoubleClick={() => {
+                        setViewingSteps({ type: 'logout', networkName: data.network_name, steps: data.logout_stages || [] })
+                        setShowStepsModal(true)
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1974,8 +2075,7 @@ export default function TestPagesPage() {
               </div>
             </div>
           )}
-        </>
-      )}
+
 
       {/* Add/Edit Modal */}
       {showAddModal && (
@@ -2173,6 +2273,109 @@ export default function TestPagesPage() {
         </div>
       )}
 
+      {/* Steps View Modal */}
+      {showStepsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '600px',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{
+              padding: '24px 28px',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: viewingSteps.type === 'login' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+            }}>
+              <h2 style={{ margin: 0, fontSize: '22px', color: theme.colors.textPrimary }}>
+                {viewingSteps.type === 'login' ? '🔐 Login Steps' : '🚪 Logout Steps'} - {viewingSteps.networkName}
+              </h2>
+              <button
+                onClick={() => setShowStepsModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#9ca3af'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '28px' }}>
+              {viewingSteps.steps.length === 0 ? (
+                <p style={{ textAlign: 'center', color: theme.colors.textSecondary }}>No steps recorded</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {viewingSteps.steps.map((step: any, idx: number) => (
+                    <div key={idx} style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(0,0,0,0.08)'
+                    }}>
+                      <span style={{
+                        background: viewingSteps.type === 'login' ? '#10b981' : '#ef4444',
+                        color: 'white',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        flexShrink: 0
+                      }}>
+                        {idx + 1}
+                      </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: theme.colors.textPrimary, fontSize: '15px' }}>
+                          {step.action}
+                        </div>
+                        {step.selector && (
+                          <div style={{ fontSize: '13px', color: theme.colors.textSecondary, marginTop: '4px', fontFamily: 'monospace' }}>
+                            {step.selector}
+                          </div>
+                        )}
+                        {step.description && (
+                          <div style={{ fontSize: '13px', color: theme.colors.textSecondary, marginTop: '4px' }}>
+                            {step.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirm Modal */}
       {showDeleteConfirm && testPageToDelete && (
         <div style={{
@@ -2257,6 +2460,8 @@ export default function TestPagesPage() {
           50% { opacity: 0.5; }
         }
       `}</style>
+        </>
+      )}
     </div>
   )
 }

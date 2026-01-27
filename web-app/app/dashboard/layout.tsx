@@ -934,7 +934,10 @@ export default function DashboardLayout({
               { id: 'project-dashboard', path: '/dashboard/project-dashboard', icon: '📊', label: 'Dashboard' },
               ...(activeProject?.project_type === 'dynamic_content'
                 ? [{ id: 'test-pages', path: '/dashboard/test-pages', icon: '🧪', label: 'Test Pages' }]
-                : [{ id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' }]
+                : [
+    { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+    { id: 'custom-tests', path: '/dashboard/custom-tests', icon: '🧪', label: 'Custom Tests' }
+  ]
               ),
               { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
               { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },

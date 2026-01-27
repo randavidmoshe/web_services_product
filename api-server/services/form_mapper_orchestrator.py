@@ -65,6 +65,8 @@ class MapperState(str, Enum):
     VISUAL_PAGE_VERIFYING = "visual_page_verifying"
     VISUAL_PAGE_GETTING_SCREENSHOT = "visual_page_getting_screenshot"
     CONTINUE_MAPPING_EVALUATING = "continue_mapping_evaluating"
+    DYNAMIC_VERIFY_GETTING_SCREENSHOT = "dynamic_verify_getting_screenshot"
+    DYNAMIC_VERIFY_VISUAL = "dynamic_verify_visual"
 
 class SessionStatus:
     INITIALIZING = "initializing"
@@ -508,8 +510,20 @@ class FormMapperOrchestrator:
                     test_page = self.db.query(TestPageRoute).filter(TestPageRoute.id == test_page_route_id).first()
                     if test_page and test_page.url:
                         self.transition_to(session_id, MapperState.NAVIGATING)
-                        task = self._push_agent_task(session_id, "form_mapper_navigate_to_url", {"url": test_page.url})
-                        return {"success": True, "phase": "navigate_to_test_page", "agent_task": task}
+                        from tasks.forms_runner_tasks import start_runner_phase
+                        start_runner_phase.delay(
+                            session_id=str(session_id),
+                            phase="navigate",
+                            stages=[{"action": "navigate", "url": test_page.url}],
+                            company_id=session.get("company_id", 0),
+                            user_id=session.get("user_id", 0),
+                            product_id=session.get("product_id", 1),
+                            network_id=session.get("network_id", 0),
+                            form_route_id=0,
+                            log_message="🧭 Navigating to test page"
+                        )
+                        #return {"success": True, "phase": "navigate_to_test_page", "agent_task": task}
+                        return {"success": True, "phase": "navigate", "async": True}
                 except Exception as e:
                     logger.warning(f"[Orchestrator] Failed to load test page URL: {e}")
             # No test page URL, skip to mapping
@@ -778,6 +792,18 @@ class FormMapperOrchestrator:
             return self._handle_path_complete(session_id)
 
         step = all_steps[current_index]
+
+        # Dynamic content verify steps - use visual AI instead of agent
+        if session.get("mapping_type") == "dynamic_content" and step.get("action") == "verify":
+            logger.info(f"[Orchestrator] Dynamic content verify step - routing to visual AI")
+            log = self._get_logger(session_id)
+            log.debug("Dynamic content verify step - getting screenshot for visual verification", category="milestone")
+            self.transition_to(session_id, MapperState.DYNAMIC_VERIFY_GETTING_SCREENSHOT)
+            task = self._push_agent_task(session_id, "form_mapper_get_screenshot", {
+                "encode_base64": True, "save_to_folder": False,
+                "scenario_description": "dynamic_verify_step"
+            })
+            return {"success": True, "state": "dynamic_verify_getting_screenshot", "agent_task": task}
 
         # If junction step, capture "before" screenshot first (unless already captured from before failure/recovery)
         if step.get("is_junction") and not session.get("junction_before_screenshot"):
@@ -2520,6 +2546,92 @@ class FormMapperOrchestrator:
             }
         }
 
+    def handle_dynamic_verify_screenshot_result(self, session_id: str, result: Dict) -> Dict:
+        """Handle screenshot capture for dynamic content verify step, then trigger AI verification"""
+        session = self.get_session(session_id)
+        if not session: return {"success": False, "error": "Session not found"}
+
+        screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
+
+        if not screenshot_base64:
+            logger.warning(f"[Orchestrator] Screenshot failed for dynamic verify, skipping step")
+            log = self._get_logger(session_id)
+            log.warning("Screenshot failed for dynamic verify - skipping step", category="milestone")
+            # Skip this step and continue
+            current_index = session.get("current_step_index", 0)
+            self.update_session(session_id, {"current_step_index": current_index + 1})
+            return self._execute_next_step(session_id)
+
+        # Get step description
+        all_steps = session.get("all_steps", [])
+        current_index = session.get("current_step_index", 0)
+        step = all_steps[current_index] if current_index < len(all_steps) else {}
+        step_description = step.get("description", "")
+
+        logger.info(f"[Orchestrator] Dynamic verify screenshot captured, triggering AI verification")
+        log = self._get_logger(session_id)
+        log.debug("Dynamic verify screenshot captured - triggering AI verification", category="milestone")
+
+        # Trigger Celery task for AI verification
+        self.transition_to(session_id, MapperState.DYNAMIC_VERIFY_VISUAL)
+        return {
+            "success": True,
+            "trigger_celery": True,
+            "celery_task": "verify_dynamic_step_visual",
+            "celery_args": {
+                "session_id": session_id,
+                "screenshot_base64": screenshot_base64,
+                "step_description": step_description,
+                "test_case_description": session.get("test_case_description", "")
+            }
+        }
+
+    def handle_dynamic_verify_step_result(self, session_id: str, result: Dict) -> Dict:
+        """Handle result from dynamic content verify step AI verification"""
+        session = self.get_session(session_id)
+        if not session: return {"success": False, "error": "Session not found"}
+
+        log = self._get_logger(session_id)
+        all_steps = session.get("all_steps", [])
+        current_index = session.get("current_step_index", 0)
+        step = all_steps[current_index] if current_index < len(all_steps) else {}
+
+        # Page issue = FAIL SESSION
+        if result.get("page_issue"):
+            logger.error(f"[Orchestrator] Page issue detected during verify: {result.get('reason')}")
+            log.error(f"Page issue during dynamic verify: {result.get('reason')}", category="error")
+            return self._fail_session(session_id, f"Page issue: {result.get('reason', 'Unknown')}")
+
+        # Verification failed = log warning, add to executed, continue
+        if not result.get("success"):
+            logger.warning(f"[Orchestrator] Dynamic verify step failed: {result.get('reason')}")
+            log.warning(f"Dynamic verify step failed: {result.get('reason')}", category="step_execution")
+            # Log as bug
+            self._push_agent_task(session_id, "form_mapper_log_bug", {
+                "bug_description": f"Verify step failed: {step.get('description', '')[:50]} - {result.get('reason', '')[:50]}",
+                "log_level": "warning",
+                "screenshot": True,
+                "bug_type": "verify_mismatch"
+            })
+
+        # Add step to executed (whether passed or failed)
+        executed_steps = session.get("executed_steps", [])
+        step_with_result = step.copy()
+        step_with_result["verify_result"] = {
+            "success": result.get("success", True),
+            "reason": result.get("reason", "")
+        }
+        executed_steps.append(step_with_result)
+
+        # Move to next step
+        self.update_session(session_id, {
+            "executed_steps": executed_steps,
+            "current_step_index": current_index + 1,
+            "consecutive_failures": 0
+        })
+
+        return self._execute_next_step(session_id)
+
     def handle_ai_path_evaluation_result(self, session_id: str, result: Dict) -> Dict:
         """Handle result from AI path evaluation Celery task"""
         session = self.get_session(session_id)
@@ -2839,6 +2951,8 @@ class FormMapperOrchestrator:
             return self.handle_validation_error_dom_result(session_id, result)
         elif state == MapperState.VISUAL_PAGE_GETTING_SCREENSHOT.value:
             return self.handle_visual_page_screenshot_result(session_id, result)
+        elif state == MapperState.DYNAMIC_VERIFY_GETTING_SCREENSHOT.value:
+            return self.handle_dynamic_verify_screenshot_result(session_id, result)
         else:
             logger.warning(f"[Orchestrator] Unhandled state {state} for task {task_type}")
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
@@ -2871,6 +2985,8 @@ class FormMapperOrchestrator:
             return self.handle_junction_visual_result(session_id, result)
         elif task_name == "verify_page_visual":
             return self.handle_visual_page_verify_result(session_id, result)
+        elif task_name == "verify_dynamic_step_visual":
+            return self.handle_dynamic_verify_step_result(session_id, result)
         elif task_name == "trigger_visual_page_screenshot":
             return self.handle_visual_page_screenshot_trigger(session_id, result)
         elif task_name == "evaluate_paths_with_ai":

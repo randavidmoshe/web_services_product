@@ -353,3 +353,49 @@ def get_screenshot_download_url(s3_key: str, filename: str, expiration: int = 36
         ExpiresIn=expiration
     )
     return url
+
+# ============================================================================
+# Generic S3 Utilities
+# ============================================================================
+
+def get_s3_file_as_base64(s3_key: str) -> str:
+    """Download file from S3 and return as base64 string."""
+    if not s3_client:
+        raise Exception("S3 client not configured")
+
+    import base64
+
+    try:
+        response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key)
+        file_bytes = response['Body'].read()
+        return base64.b64encode(file_bytes).decode('utf-8')
+    except Exception as e:
+        print(f"Error fetching {s3_key} from S3: {e}")
+        return None
+
+
+def get_s3_files_as_base64_parallel(s3_keys: list) -> list:
+    """Download multiple files from S3 in parallel and return as base64 strings."""
+    if not s3_client:
+        raise Exception("S3 client not configured")
+
+    import base64
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def fetch_one(s3_key):
+        try:
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key)
+            file_bytes = response['Body'].read()
+            return {"s3_key": s3_key, "base64": base64.b64encode(file_bytes).decode('utf-8')}
+        except Exception as e:
+            print(f"Error fetching {s3_key}: {e}")
+            return {"s3_key": s3_key, "base64": None}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_one, key): key for key in s3_keys}
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    key_to_result = {r["s3_key"]: r["base64"] for r in results}
+    return [key_to_result.get(key) for key in s3_keys]

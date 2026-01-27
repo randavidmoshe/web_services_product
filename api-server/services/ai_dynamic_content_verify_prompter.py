@@ -7,7 +7,7 @@ import time
 import logging
 import anthropic
 import random
-from typing import Optional
+from typing import Optional, Dict
 from anthropic._exceptions import OverloadedError, APIError
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,8 @@ class DynamicContentVerifyHelper:
         self.model = "claude-haiku-4-5-20251001"
         self.session_logger = session_logger
 
-    def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 1000, max_retries: int = 3) -> Optional[str]:
+    def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 1000, max_retries: int = 3) -> Optional[
+        str]:
         """Call Claude API with retry logic"""
         delay = 2
 
@@ -70,83 +71,165 @@ class DynamicContentVerifyHelper:
 
         return None
 
-    def verify_visual(
+    def verify_step_visual(
             self,
             screenshot_base64: str,
+            step_description: str,
             test_case_description: str = ""
-    ) -> str:
+    ) -> Dict:
         """
-        Visual verification of page state for dynamic content.
-        Returns UI issue string if found, empty string if OK.
+        Verify that a step description matches what's visible on screen.
+        First checks for page issues, then verifies the content.
 
         Args:
             screenshot_base64: Screenshot of current page
-            test_case_description: Context about what we're testing
+            step_description: The verify step's description (what to check)
+            test_case_description: Overall test context
 
         Returns:
-            Empty string if page looks OK, otherwise description of issue
+            dict with 'success', 'reason', and optionally 'page_issue'
         """
 
         if self.session_logger:
-            self.session_logger.info("🤖 !*!*!* Entering DYNAMIC CONTENT VERIFY prompter: verify_visual", category="ai_routing")
+            self.session_logger.info("🤖 !*!*!* Entering DYNAMIC CONTENT VERIFY prompter: verify_step_visual",
+                                     category="ai_routing")
 
-        prompt = f"""You are a QA expert analyzing a screenshot of a web page.
+        prompt = f"""You are a QA expert verifying a test step against a screenshot.
 
-## CONTEXT
-Test case: {test_case_description}
+## TEST CONTEXT
+{test_case_description}
 
-## YOUR TASK
-Check if the page shows any UI issues that would prevent testing:
+## STEP 1: CHECK FOR PAGE ISSUES
 
-1. **Error states**: 404, 500 errors, "Page not found", crash messages
-2. **Login issues**: "Session expired", "Please log in", authentication errors
-3. **Loading stuck**: Infinite spinners, "Loading..." that seems stuck
-4. **Broken layout**: Major visual bugs, overlapping elements, blank page
-5. **Access denied**: Permission errors, "Forbidden", "Unauthorized"
+First, scan the screenshot for blocking issues:
+- Error pages: 404, 500, "Page not found", crash messages
+- Login issues: "Session expired", "Please log in", authentication errors  
+- Loading stuck: Infinite spinners, "Loading..." that seems stuck
+- Broken layout: Blank page, major visual bugs
+- Access denied: "Forbidden", "Unauthorized"
 
-## RESPONSE
+**If any blocking issue is found, return ONLY:**
+```json
+{{
+  "page_issue": true,
+  "issue_description": "brief description of the issue"
+}}
+```
 
-If the page looks READY FOR TESTING (no blocking issues):
-Return exactly: OK
+## STEP 2: VERIFY THE STEP (only if no page issues)
 
-If there's a BLOCKING ISSUE:
-Return a brief description of the issue (max 100 chars)
-Example: "Page shows 404 Not Found error"
-Example: "Login session expired - redirected to login page"
-Example: "Page is blank - content failed to load"
+If the page looks OK, verify if the following DESCRIPTION matches what's visible on the screenshot:
 
-Return ONLY "OK" or the issue description, nothing else.
+**Description to verify:**
+"{step_description}"
+
+**Verification Guidelines:**
+- This is a VISUAL/SEMANTIC check - verify the overall state, not exact text matches
+- Check that the KEY ELEMENTS mentioned are visible (headers, buttons, sections, tabs, forms, content areas, etc.)
+- Be FLEXIBLE about: minor wording differences, styling variations, extra UI elements not mentioned
+- FAIL if: key elements are missing, wrong page/section is shown, major discrepancies from description
+
+**Examples:**
+- Description says "Form page with header 'Contact Us'" → PASS if you see a form with "Contact Us" header
+- Description says "Tab 'Settings' is active" → PASS if Settings tab appears selected/highlighted
+- Description says "Error message is displayed" → FAIL if no error message visible
+- Description says "List showing 5 items" → PASS if list shows 5 or more items, FAIL if fewer
+
+**Response if verification PASSED:**
+```json
+{{
+  "success": true,
+  "reason": "brief explanation of what key elements were verified"
+}}
+```
+
+**Response if verification FAILED:**
+```json
+{{
+  "success": false,
+  "reason": "what key element is missing or different"
+}}
+```
+
+Return ONLY valid JSON, nothing else.
 """
 
         content = [
-            {
-                "type": "text",
-                "text": "Screenshot of the current page:"
-            },
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": screenshot_base64
-                }
-            },
-            {
-                "type": "text",
-                "text": prompt
-            }
+            {"type": "text", "text": "Screenshot of the current page:"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_base64}},
+            {"type": "text", "text": prompt}
         ]
 
-        response = self._call_api_with_retry_multimodal(content, max_tokens=200)
+        # Log AI call
+        if self.session_logger:
+            self.session_logger.ai_call("verify_step_visual", prompt_size=len(screenshot_base64))
+
+        response = self._call_api_with_retry_multimodal(content, max_tokens=300)
+
+        # Log raw AI response
+        if response:
+            msg = f"!!!! 👁️ Dynamic Content Verify Step RAW AI Response: {response[:500]}..."
+            print(msg)
+            if self.session_logger:
+                self.session_logger.debug(msg, category="debug_trace")
 
         if not response:
-            # If AI fails, assume page is OK (don't block)
-            return ""
+            msg = "!!!! ⚠️ AI verification unavailable - assuming pass"
+            print(msg)
+            if self.session_logger:
+                self.session_logger.warning(msg, category="ai_response")
+            return {"success": True, "reason": "AI verification unavailable - assuming pass"}
 
-        response = response.strip()
+        try:
+            # Parse JSON response
+            cleaned = response.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
 
-        if response.upper() == "OK":
-            return ""
+            result = json.loads(cleaned)
 
-        # Return the issue description
-        return response[:200]
+            # Log success
+            if self.session_logger:
+                self.session_logger.ai_response("verify_step_visual", success=True)
+
+            # Check for page issue first
+            if result.get("page_issue"):
+                msg = f"!!!! ❌ Page issue detected: {result.get('issue_description', 'Unknown')}"
+                print(msg)
+                if self.session_logger:
+                    self.session_logger.warning(msg, category="ai_response")
+                return {
+                    "success": False,
+                    "page_issue": True,
+                    "reason": result.get("issue_description", "Page issue detected")
+                }
+
+            # Log verification result
+            status = "PASSED" if result.get("success", True) else "FAILED"
+            msg = f"!!!! 👁️ Dynamic Content Verify Step: {status} - {result.get('reason', '')[:100]}"
+            print(msg)
+            if self.session_logger:
+                self.session_logger.debug(msg, category="debug_trace")
+
+            return {
+                "success": result.get("success", True),
+                "reason": result.get("reason", "")
+            }
+        except json.JSONDecodeError as e:
+            msg = f"!!!! ⚠️ Failed to parse AI response: {e}"
+            print(msg)
+            if self.session_logger:
+                self.session_logger.warning(msg, category="ai_response")
+
+            # If can't parse, check for obvious indicators
+            response_lower = response.lower()
+            if "page_issue" in response_lower or "404" in response_lower or "error" in response_lower:
+                return {"success": False, "page_issue": True, "reason": response[:100]}
+            if "true" in response_lower and "success" in response_lower:
+                return {"success": True, "reason": response[:100]}
+            return {"success": False, "reason": f"Could not parse AI response: {response[:100]}"}

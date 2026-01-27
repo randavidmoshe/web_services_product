@@ -69,22 +69,33 @@ def verify_visual_for_mapping(
     To add a new mapping type, add an elif block here.
     """
 
-    if mapping_type == "dynamic_content":
-        from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
-        ai_verifier = DynamicContentVerifyHelper(api_key, session_logger=session_logger)
-        return ai_verifier.verify_visual(
-            screenshot_base64=screenshot_base64,
-            test_case_description=test_case_description or ""
-        )
-    else:
-        # Default: form mapping
-        from services.form_mapper_ai_helpers import create_ai_helpers
-        helpers = create_ai_helpers(api_key, session_logger=session_logger)
-        ai_verifier = helpers["ui_verifier"]
-        return ai_verifier.verify_visual_ui(
-            screenshot_base64=screenshot_base64,
-            previously_reported_issues=previously_reported_issues
-        )
+    #if mapping_type == "dynamic_content":
+    #    from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
+    #    ai_verifier = DynamicContentVerifyHelper(api_key, session_logger=session_logger)
+    #    return ai_verifier.verify_visual(
+    #        screenshot_base64=screenshot_base64,
+    #        test_case_description=test_case_description or ""
+    #    )
+    #else:
+    #    # Default: form mapping
+    #    from services.form_mapper_ai_helpers import create_ai_helpers
+    #    helpers = create_ai_helpers(api_key, session_logger=session_logger)
+    #    ai_verifier = helpers["ui_verifier"]
+    #    return ai_verifier.verify_visual_ui(
+    #        screenshot_base64=screenshot_base64,
+    #        previously_reported_issues=previously_reported_issues
+    #    )
+
+    # Default: form mapping
+    from services.form_mapper_ai_helpers import create_ai_helpers
+    helpers = create_ai_helpers(api_key, session_logger=session_logger)
+    ai_verifier = helpers["ui_verifier"]
+    return ai_verifier.verify_visual_ui(
+        screenshot_base64=screenshot_base64,
+        previously_reported_issues=previously_reported_issues
+    )
+
+
 
 def regenerate_steps_for_mapping(
         mapping_type: str,
