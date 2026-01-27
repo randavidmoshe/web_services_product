@@ -1398,7 +1398,8 @@ def verify_dynamic_step_visual(
         session_id: str,
         screenshot_base64: str,
         step_description: str,
-        test_case_description: str = ""
+        test_case_description: str = "",
+        test_page_route_id: int = 0
 ) -> Dict:
     """Celery task: Visual verification of a verify step for dynamic content."""
     logger.info(f"[FormMapperTask] Dynamic content verify step for session {session_id}")
@@ -1430,13 +1431,54 @@ def verify_dynamic_step_visual(
             return result
 
         from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
+
+        # Fetch reference images and verification instructions
+        reference_images = None
+        verification_instructions = None
+
+        if test_page_route_id:
+            from models.test_page_models import TestPageRoute, TestPageReferenceImage
+            from services.s3_storage import get_s3_files_as_base64_parallel
+
+            # Get test page for verification instructions
+            test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_route_id).first()
+            if test_page:
+                verification_instructions = test_page.verification_file_content
+
+                # Get reference images
+                ref_images_db = db.query(TestPageReferenceImage).filter(
+                    TestPageReferenceImage.test_page_route_id == test_page_route_id,
+                    TestPageReferenceImage.status == "ready"
+                ).all()
+
+                if ref_images_db:
+                    # Fetch all images from S3 in parallel
+                    s3_keys = [img.s3_key for img in ref_images_db]
+                    base64_images = get_s3_files_as_base64_parallel(s3_keys)
+
+                    reference_images = []
+                    for i, img in enumerate(ref_images_db):
+                        if base64_images[i]:
+                            reference_images.append({
+                                "name": img.name,
+                                "base64": base64_images[i]
+                            })
+
+                    log.info(f"Loaded {len(reference_images)} reference images for verification", category="ai_routing")
+
+                if verification_instructions:
+                    log.info(f"Loaded verification instructions ({len(verification_instructions)} chars)",
+                             category="ai_routing")
+
         verifier = DynamicContentVerifyHelper(api_key, session_logger=log)
 
         # Call AI to verify step
         ai_result = verifier.verify_step_visual(
             screenshot_base64=screenshot_base64,
             step_description=step_description,
-            test_case_description=test_case_description
+            test_case_description=test_case_description,
+            reference_images=reference_images,
+            verification_instructions=verification_instructions
         )
 
         msg = f"!!!! 👁️ Dynamic Verify Step result: success={ai_result.get('success')}, page_issue={ai_result.get('page_issue', False)}"

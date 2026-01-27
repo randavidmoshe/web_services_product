@@ -2582,7 +2582,8 @@ class FormMapperOrchestrator:
                 "session_id": session_id,
                 "screenshot_base64": screenshot_base64,
                 "step_description": step_description,
-                "test_case_description": session.get("test_case_description", "")
+                "test_case_description": session.get("test_case_description", ""),
+                "test_page_route_id": session.get("test_page_route_id", 0)
             }
         }
 

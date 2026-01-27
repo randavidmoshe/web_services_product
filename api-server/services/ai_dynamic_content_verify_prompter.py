@@ -1,13 +1,14 @@
 # services/ai_dynamic_content_verify_prompter.py
 # AI-Powered Visual Verification for Dynamic Content Testing
 # Image-only verification (no DOM needed)
+# Supports reference images and verification instructions from user
 
 import json
 import time
 import logging
 import anthropic
 import random
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from anthropic._exceptions import OverloadedError, APIError
 
 logger = logging.getLogger(__name__)
@@ -71,11 +72,35 @@ class DynamicContentVerifyHelper:
 
         return None
 
+    def _log_bug(self, bug: Dict, step_description: str):
+        """Log a bug found during verification"""
+        if not self.session_logger:
+            return
+
+        bug_type = bug.get("type", "unknown")
+        severity = bug.get("severity", "medium")
+        description = bug.get("description", "")
+        element = bug.get("element", "")
+
+        msg = f"!!! 🐛 BUG [{severity.upper()}] Type: {bug_type}"
+        if element:
+            msg += f" | Element: {element}"
+        msg += f" | {description}"
+
+        # All bugs are errors or warnings, no info
+        if severity == "critical":
+            self.session_logger.error(msg, category="bug")
+        else:
+            self.session_logger.warning(msg, category="bug")
+
     def verify_step_visual(
             self,
             screenshot_base64: str,
             step_description: str,
-            test_case_description: str = ""
+            test_case_description: str = "",
+            reference_images: list = None,
+            verification_instructions: str = None
+
     ) -> Dict:
         """
         Verify that a step description matches what's visible on screen.
@@ -85,6 +110,8 @@ class DynamicContentVerifyHelper:
             screenshot_base64: Screenshot of current page
             step_description: The verify step's description (what to check)
             test_case_description: Overall test context
+            reference_images: List of dicts with 'name' and 'base64' keys
+            verification_instructions: Text extracted from user's verification file
 
         Returns:
             dict with 'success', 'reason', and optionally 'page_issue'
@@ -94,11 +121,41 @@ class DynamicContentVerifyHelper:
             self.session_logger.info("🤖 !*!*!* Entering DYNAMIC CONTENT VERIFY prompter: verify_step_visual",
                                      category="ai_routing")
 
+        # Build reference images section
+        ref_images_section = ""
+        if reference_images:
+            ref_images_section = f"""
+## REFERENCE IMAGES
+You have been provided {len(reference_images)} reference image(s) showing expected visual states.
+Compare the current screenshot against these references:
+"""
+            for i, ref in enumerate(reference_images):
+                ref_images_section += f"- Reference {i + 1}: {ref.get('name', 'Unnamed')}\n"
+            ref_images_section += """
+Look for:
+- Visual similarity to reference images
+- Key UI elements that should match
+- Layout and positioning consistency
+- Color schemes and branding elements
+"""
+
+        # Build verification instructions section
+        verification_section = ""
+        if verification_instructions:
+            verification_section = f"""
+## CUSTOM VERIFICATION RULES
+The user has provided the following verification instructions. Apply these rules:
+
+{verification_instructions}
+
+"""
+
         prompt = f"""You are a QA expert verifying a test step against a screenshot.
 
 ## TEST CONTEXT
 {test_case_description}
-
+{ref_images_section}
+{verification_section}
 ## STEP 1: CHECK FOR PAGE ISSUES
 
 First, scan the screenshot for blocking issues:
@@ -128,6 +185,8 @@ If the page looks OK, verify if the following DESCRIPTION matches what's visible
 - Check that the KEY ELEMENTS mentioned are visible (headers, buttons, sections, tabs, forms, content areas, etc.)
 - Be FLEXIBLE about: minor wording differences, styling variations, extra UI elements not mentioned
 - FAIL if: key elements are missing, wrong page/section is shown, major discrepancies from description
+{"- Compare against reference images if provided" if reference_images else ""}
+{"- Apply custom verification rules if provided" if verification_instructions else ""}
 
 **Examples:**
 - Description says "Form page with header 'Contact Us'" → PASS if you see a form with "Contact Us" header
@@ -135,36 +194,51 @@ If the page looks OK, verify if the following DESCRIPTION matches what's visible
 - Description says "Error message is displayed" → FAIL if no error message visible
 - Description says "List showing 5 items" → PASS if list shows 5 or more items, FAIL if fewer
 
-**Response if verification PASSED:**
+**Response Format - Return list of ALL failures found:**
 ```json
 {{
-  "success": true,
-  "reason": "brief explanation of what key elements were verified"
+  "success": true or false,
+  "failures": [
+    {{
+      "type": "missing_element|wrong_content|layout_issue|reference_mismatch|rule_violation",
+      "severity": "critical|high|medium|low",
+      "element": "element name or selector if applicable",
+      "description": "what is wrong",
+      "expected": "what was expected (optional)",
+      "actual": "what was found (optional)"
+    }}
+  ]
 }}
 ```
 
-**Response if verification FAILED:**
-```json
-{{
-  "success": false,
-  "reason": "what key element is missing or different"
-}}
-```
+- If ALL checks pass: `{{"success": true, "failures": []}}`
+- If ANY check fails: `{{"success": false, "failures": [...]}}` with one item per bug found
 
 Return ONLY valid JSON, nothing else.
 """
 
+        # Build content array with screenshot and optional reference images
         content = [
             {"type": "text", "text": "Screenshot of the current page:"},
-            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_base64}},
-            {"type": "text", "text": prompt}
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_base64}}
         ]
+
+        # Add reference images if provided
+        if reference_images:
+            content.append({"type": "text", "text": "Reference images provided by user:"})
+            for ref in reference_images:
+                if ref.get('base64'):
+                    content.append({"type": "text", "text": f"Reference: {ref.get('name', 'Unnamed')}"})
+                    content.append({"type": "image",
+                                    "source": {"type": "base64", "media_type": "image/png", "data": ref['base64']}})
+
+        content.append({"type": "text", "text": prompt})
 
         # Log AI call
         if self.session_logger:
             self.session_logger.ai_call("verify_step_visual", prompt_size=len(screenshot_base64))
 
-        response = self._call_api_with_retry_multimodal(content, max_tokens=300)
+        response = self._call_api_with_retry_multimodal(content, max_tokens=800)
 
         # Log raw AI response
         if response:
@@ -209,16 +283,29 @@ Return ONLY valid JSON, nothing else.
                     "reason": result.get("issue_description", "Page issue detected")
                 }
 
-            # Log verification result
-            status = "PASSED" if result.get("success", True) else "FAILED"
-            msg = f"!!!! 👁️ Dynamic Content Verify Step: {status} - {result.get('reason', '')[:100]}"
-            print(msg)
-            if self.session_logger:
-                self.session_logger.debug(msg, category="debug_trace")
+            # Get failures list
+            failures = result.get("failures", [])
+            success = result.get("success", len(failures) == 0)
+
+            # Log each bug
+            for failure in failures:
+                self._log_bug(failure, step_description)
+
+            # Log summary
+            if failures:
+                msg = f"!!! ❌ Dynamic Content Verify: FAILED - {len(failures)} bug(s) found"
+                print(msg)
+                if self.session_logger:
+                    self.session_logger.warning(msg, category="verification_result")
+            else:
+                msg = f"!!! ✅ Dynamic Content Verify: PASSED - No bugs found"
+                print(msg)
+                if self.session_logger:
+                    self.session_logger.info(msg, category="verification_result")
 
             return {
-                "success": result.get("success", True),
-                "reason": result.get("reason", "")
+                "success": success,
+                "failures": failures
             }
         except json.JSONDecodeError as e:
             msg = f"!!!! ⚠️ Failed to parse AI response: {e}"

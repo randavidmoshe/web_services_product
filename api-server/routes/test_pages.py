@@ -492,7 +492,7 @@ async def request_reference_image_upload(
     db.commit()
     db.refresh(ref_image)
 
-    s3_key = f"reference_images/{test_page.company_id}/{test_page.project_id}/test_page_{test_page_id}/{ref_image.id}_{filename}"
+    s3_key = f"test_page_reference_images/{test_page.company_id}/{test_page.project_id}/test_page_{test_page_id}/{ref_image.id}_{filename}"
     ref_image.s3_key = s3_key
     db.commit()
 
@@ -586,7 +586,7 @@ async def list_reference_images(
                 content_type=img.content_type,
                 width_px=img.width_px,
                 height_px=img.height_px,
-                presigned_url=None,
+                presigned_url=get_screenshot_presigned_url(img.s3_key) if img.s3_key and img.s3_key != "pending" else None,
                 created_at=img.created_at.isoformat() if img.created_at else None
             )
             for img in images
@@ -711,7 +711,7 @@ async def request_verification_file_upload(
     if test_page.verification_file and test_page.verification_file.get('s3_key'):
         celery.send_task('tasks.delete_s3_file', kwargs={'s3_key': test_page.verification_file['s3_key']})
 
-    s3_key = f"verification_files/{test_page.company_id}/{test_page.project_id}/test_page_{test_page_id}/{request.filename}"
+    s3_key = f"test_page_verification_files/{test_page.company_id}/{test_page.project_id}/test_page_{test_page_id}/{request.filename}"
 
     test_page.verification_file = {
         "filename": request.filename,
@@ -825,3 +825,23 @@ async def delete_verification_file(
     db.commit()
 
     return {"success": True, "message": "Verification file deleted"}
+
+
+@router.patch("/{test_page_id}/verification-file/content")
+async def update_verification_file_content(
+        test_page_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """Update verification file extracted content"""
+    test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
+    if not test_page:
+        raise HTTPException(status_code=404, detail="Test page not found")
+
+    if not test_page.verification_file:
+        raise HTTPException(status_code=404, detail="No verification file uploaded")
+
+    test_page.verification_file_content = request.get("content", "")
+    db.commit()
+
+    return {"success": True, "message": "Verification content updated"}

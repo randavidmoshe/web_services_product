@@ -30,7 +30,7 @@ celery = Celery(
     "form_discoverer",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks', 'tasks.form_pages_tasks', 'tasks.user_requirements_tasks', 'tasks.pom_generator_tasks', 'tasks.spec_compliance_tasks', 'tasks.s3_tasks']
+    include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks', 'tasks.form_pages_tasks', 'tasks.user_requirements_tasks', 'tasks.pom_generator_tasks', 'tasks.spec_compliance_tasks', 'tasks.s3_tasks', 'tasks.test_page_verification_assets_tasks']
 )
 
 # Celery configuration

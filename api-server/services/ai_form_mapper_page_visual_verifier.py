@@ -79,6 +79,31 @@ class PageVisualVerifier:
 
         return None
 
+    def _log_bug(self, bug: Dict, field_name: str):
+        """Log a bug found during verification"""
+        if not self.session_logger:
+            return
+
+        severity = bug.get("severity", "high")
+        bug_type = bug.get("type", "unknown")
+        field = bug.get("field", field_name)
+        expected = bug.get("expected", "")
+        actual = bug.get("actual", "")
+        description = bug.get("description", "")
+
+        msg = f"!!! 🐛 BUG [{severity.upper()}] Type: {bug_type} | Field: {field}"
+        if description:
+            msg += f" | {description}"
+        if expected:
+            msg += f" | Expected: {expected}"
+        if actual:
+            msg += f" | Actual: {actual}"
+
+        if severity == "critical":
+            self.session_logger.error(msg, category="bug")
+        else:
+            self.session_logger.warning(msg, category="bug")
+
     def verify_page(
             self,
             screenshot_base64: str,
@@ -188,23 +213,28 @@ You have the full list of executed steps in order. Use this context to verify:
 
 If a field appears in the wrong section/tab or in wrong order relative to other fields → FAIL with reason describing the position issue (e.g., "Last Name appears above First Name" or "Email appears under Address tab instead of Contact tab")
 
-**Response Format - return ONLY valid JSON:**
+***Response Format - return ONLY valid JSON:**
 {{
   "page_ready": true/false,
-  "page_type": "view_page" | "list_page" | "other",
+  "page_type": "view_page" | "list_page" | "edit_page" | "other",
   "results": [
     {{
       "field": "field description",
       "expected": "expected value",
       "status": "passed" | "failed",
-      "actual": "actual value found (if different)",
-      "reason": "why it failed (if failed)",
-      "page_type": "view_page" | "list_page",
+      "actual": "what was actually found on page",
+      "severity": "critical" | "high" | "medium",
+      "type": "missing_value" | "wrong_value" | "formatting_bug" | "truncated" | "wrong_position",
+      "description": "brief description of the specific issue",
       "already_sent": true/false
     }}
-  ],
-  "reason": "Brief explanation of verification"
+  ]
 }}
+
+**Severity Guidelines:**
+- critical: Value completely missing or shows error
+- high: Wrong value or major formatting bug
+- medium: Minor formatting issue or position issue
 
 **Important:**
 - Set page_ready=false ONLY if page is still loading
@@ -277,10 +307,32 @@ For "list_page" (table/grid):
             cleaned = cleaned.strip()
 
             result = json.loads(cleaned)
+
+            # Log each failed field
+            results = result.get("results", [])
+            failed_count = 0
+            for field_result in results:
+                if field_result.get("status") == "failed" and not field_result.get("already_sent"):
+                    self._log_bug(field_result, field_result.get("field", "unknown"))
+                    failed_count += 1
+
+            # Log summary
+            if failed_count > 0:
+                msg = f"!!! ❌ Form Page Verify: {failed_count} field(s) failed"
+                print(msg)
+                if self.session_logger:
+                    self.session_logger.warning(msg, category="verification_result")
+            else:
+                passed_count = len([r for r in results if r.get("status") == "passed"])
+                msg = f"!!! ✅ Form Page Verify: {passed_count} field(s) passed"
+                print(msg)
+                if self.session_logger:
+                    self.session_logger.info(msg, category="verification_result")
+
             return {
                 "page_ready": result.get("page_ready", True),
                 "page_type": result.get("page_type", "unknown"),
-                "results": result.get("results", []),
+                "results": results,
                 "reason": result.get("reason", "")
             }
         except json.JSONDecodeError as e:
