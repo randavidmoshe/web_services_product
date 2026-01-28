@@ -165,17 +165,7 @@ export default function TestPageEditPanel({
   const mappingDropdownRef = useRef<HTMLDivElement>(null)
   const moreDropdownRef = useRef<HTMLDivElement>(null)
   
-  // Spec Compliance state
-  const [showSpecCompliancePanel, setShowSpecCompliancePanel] = useState(false)
-  const [specContent, setSpecContent] = useState<string>('')
-  const [specFilename, setSpecFilename] = useState<string>('')
-  const [specLoading, setSpecLoading] = useState(false)
-  const [specEditing, setSpecEditing] = useState(false)
-  const [specEditContent, setSpecEditContent] = useState<string>('')
-  const [specComplianceStatus, setSpecComplianceStatus] = useState<string>('idle')
-  const [specComplianceReport, setSpecComplianceReport] = useState<string>('')
-  const [specComplianceError, setSpecComplianceError] = useState<string | null>(null)
-  const specFileInputRef = useRef<HTMLInputElement>(null)
+
 
   // Visual Assets state - Reference Images
   const [showReferenceImagesPanel, setShowReferenceImagesPanel] = useState(false)
@@ -248,89 +238,7 @@ export default function TestPageEditPanel({
     setIsEditing(false)
   }
   
-  // Spec handlers
-  const handleSpecFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setSpecLoading(true)
-    setSpecFilename(file.name)
-    try {
-      const text = await file.text()
-      setSpecContent(text)
-    } catch (err) {
-      setError('Failed to read spec file')
-    } finally {
-      setSpecLoading(false)
-    }
-  }
-  
-  const handleSpecSave = () => {
-    setSpecContent(specEditContent)
-    setSpecEditing(false)
-  }
-  
-  const handleSpecDelete = () => {
-    setSpecContent('')
-    setSpecFilename('')
-  }
-  
-  const handleGenerateSpecCompliance = async () => {
-    if (!specContent || completedPaths.length === 0) return
-    setSpecComplianceStatus('generating')
-    setSpecComplianceError(null)
-    try {
-      const response = await fetch('/api/ai/spec-compliance', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spec_content: specContent,
-          paths: completedPaths,
-          test_page_name: editingTestPage.test_name
-        })
-      })
-      if (response.ok) {
-        const data = await response.json()
-        if (data.task_id) {
-          pollSpecComplianceStatus(data.task_id)
-        } else if (data.report) {
-          setSpecComplianceReport(data.report)
-          setSpecComplianceStatus('completed')
-        }
-      } else {
-        setSpecComplianceError('Failed to generate compliance report')
-        setSpecComplianceStatus('error')
-      }
-    } catch (err) {
-      setSpecComplianceError('Failed to generate compliance report')
-      setSpecComplianceStatus('error')
-    }
-  }
-  
-  const pollSpecComplianceStatus = async (taskId: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/ai/task-status/${taskId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        if (response.ok) {
-          const data = await response.json()
-          if (data.status === 'completed') {
-            clearInterval(interval)
-            setSpecComplianceReport(data.result?.report || '')
-            setSpecComplianceStatus('completed')
-          } else if (data.status === 'failed') {
-            clearInterval(interval)
-            setSpecComplianceError(data.error || 'Task failed')
-            setSpecComplianceStatus('error')
-          }
-        }
-      } catch (err) {
-        clearInterval(interval)
-        setSpecComplianceError('Failed to check task status')
-        setSpecComplianceStatus('error')
-      }
-    }, 2000)
-  }
+
 
   // ============ REFERENCE IMAGES HANDLERS ============
   const fetchReferenceImages = async () => {
@@ -818,28 +726,7 @@ export default function TestPageEditPanel({
                 zIndex: 100,
                 padding: '8px'
               }}>
-                <button
-                  onClick={() => { setShowSpecCompliancePanel(true); setShowMoreDropdown(false); }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    width: '100%',
-                    padding: '14px 18px',
-                    background: 'rgba(139, 92, 246, 0.1)',
-                    border: '1px solid rgba(139, 92, 246, 0.25)',
-                    borderRadius: '8px',
-                    color: '#7c3aed',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    marginBottom: '8px'
-                  }}
-                >
-                  <span>📋</span>
-                  <span>Check Spec Compliance</span>
-                </button>
+
                 <button
                   onClick={() => { setShowReferenceImagesPanel(true); setShowMoreDropdown(false); }}
                   style={{
@@ -1876,172 +1763,7 @@ export default function TestPageEditPanel({
         </div>
       )}
 
-      {/* Spec Compliance Panel */}
-      {showSpecCompliancePanel && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '24px'
-        }} onClick={() => setShowSpecCompliancePanel(false)}>
-          <div style={{
-            background: '#fff',
-            borderRadius: '16px',
-            padding: '32px',
-            width: '100%',
-            maxWidth: '700px',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-            border: `1px solid ${cardBorder}`
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ margin: 0, fontSize: '22px', color: '#7c3aed' }}>📋 Spec Compliance Check</h3>
-              <button
-                onClick={() => setShowSpecCompliancePanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: textSecondary }}
-              >
-                ×
-              </button>
-            </div>
 
-            <input
-              ref={specFileInputRef}
-              type="file"
-              accept=".txt,.md,.pdf,.docx"
-              onChange={handleSpecFileUpload}
-              style={{ display: 'none' }}
-            />
-
-            {!specContent ? (
-              <div style={{
-                border: '2px dashed rgba(139, 92, 246, 0.3)',
-                borderRadius: '12px',
-                padding: '48px 24px',
-                textAlign: 'center',
-                background: 'rgba(139, 92, 246, 0.05)'
-              }}>
-                <div style={{ fontSize: '56px', marginBottom: '16px' }}>📄</div>
-                <p style={{ color: textPrimary, marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>
-                  No spec document uploaded
-                </p>
-                <p style={{ color: textSecondary, marginBottom: '20px', fontSize: '15px' }}>
-                  Upload a document to check compliance
-                </p>
-                <button
-                  onClick={() => specFileInputRef.current?.click()}
-                  disabled={specLoading}
-                  style={{
-                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                    color: '#fff',
-                    border: 'none',
-                    padding: '14px 28px',
-                    borderRadius: '10px',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: specLoading ? 'not-allowed' : 'pointer',
-                    opacity: specLoading ? 0.7 : 1
-                  }}
-                >
-                  {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
-                </button>
-                <p style={{ color: textSecondary, fontSize: '13px', marginTop: '12px', marginBottom: 0 }}>
-                  Supports: .txt, .md, .pdf, .docx
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '16px',
-                  padding: '14px 18px',
-                  background: 'rgba(139, 92, 246, 0.08)',
-                  borderRadius: '10px',
-                  border: '1px solid rgba(139, 92, 246, 0.2)'
-                }}>
-                  <span style={{ color: textPrimary, fontSize: '15px', fontWeight: 500 }}>
-                    📎 {specFilename}
-                  </span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => specFileInputRef.current?.click()} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>Replace</button>
-                    <button onClick={() => { setSpecEditing(true); setSpecEditContent(specContent); }} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>Edit</button>
-                    <button onClick={handleSpecDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>🗑️</button>
-                  </div>
-                </div>
-
-                {specEditing ? (
-                  <div>
-                    <textarea
-                      value={specEditContent}
-                      onChange={(e) => setSpecEditContent(e.target.value)}
-                      style={{ width: '100%', minHeight: '200px', padding: '14px', borderRadius: '10px', border: `1px solid ${cardBorder}`, fontSize: '15px', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }}
-                    />
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                      <button onClick={handleSpecSave} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: 'pointer' }}>💾 Save</button>
-                      <button onClick={() => setSpecEditing(false)} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', cursor: 'pointer' }}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '10px', padding: '18px', maxHeight: '200px', overflowY: 'auto', border: `1px solid ${cardBorder}` }}>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{specContent}</pre>
-                  </div>
-                )}
-
-                {completedPaths.length > 0 && !specEditing && (
-                  <button
-                    onClick={handleGenerateSpecCompliance}
-                    disabled={specComplianceStatus === 'generating'}
-                    style={{
-                      marginTop: '20px',
-                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                      color: '#fff',
-                      border: 'none',
-                      padding: '16px 28px',
-                      borderRadius: '10px',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: specComplianceStatus === 'generating' ? 'not-allowed' : 'pointer',
-                      width: '100%',
-                      opacity: specComplianceStatus === 'generating' ? 0.7 : 1
-                    }}
-                  >
-                    {specComplianceStatus === 'generating' ? '⏳ Generating Report...' : '📊 Generate Compliance Report'}
-                  </button>
-                )}
-                
-                {completedPaths.length === 0 && !specEditing && (
-                  <p style={{ color: textSecondary, fontSize: '15px', marginTop: '16px', textAlign: 'center' }}>
-                    ℹ️ Map this test page first to check spec compliance
-                  </p>
-                )}
-
-                {specComplianceReport && (
-                  <div style={{ marginTop: '20px', padding: '18px', background: 'rgba(16, 185, 129, 0.08)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 600, color: '#059669', marginBottom: '14px' }}>📊 Compliance Report</div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '14px', color: textPrimary, fontFamily: 'inherit', lineHeight: 1.6 }}>{specComplianceReport}</pre>
-                  </div>
-                )}
-
-                {specComplianceError && (
-                  <div style={{ marginTop: '16px', padding: '14px 18px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', color: '#dc2626', fontSize: '15px' }}>
-                    ⚠️ {specComplianceError}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

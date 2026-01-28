@@ -128,6 +128,9 @@ class FormMapResult(Base):
     form_mapper_session_id = Column(Integer, ForeignKey("form_mapper_sessions.id", ondelete="CASCADE"), nullable=False)
     form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True)
     test_page_route_id = Column(Integer, ForeignKey("test_page_routes.id", ondelete="CASCADE"), nullable=True)
+
+    # Test scenario (if mapped with scenario)
+    test_scenario_id = Column(Integer, ForeignKey("form_page_test_scenarios.id", ondelete="SET NULL"), nullable=True)
     
     # Ownership (denormalized)
     network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
@@ -160,6 +163,7 @@ class FormMapResult(Base):
     session = relationship("FormMapperSession", back_populates="results")
     form_page_route = relationship("FormPageRoute", back_populates="map_results")
     test_page_route = relationship("TestPageRoute", back_populates="map_results")
+    test_scenario = relationship("FormPageTestScenario", back_populates="map_results")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -168,6 +172,7 @@ class FormMapResult(Base):
             "form_mapper_session_id": self.form_mapper_session_id,
             "form_page_route_id": self.form_page_route_id,
             "test_page_route_id": self.test_page_route_id,
+            "test_scenario_id": self.test_scenario_id,
             "network_id": self.network_id,
             "company_id": self.company_id,
             "path_number": self.path_number,
@@ -237,6 +242,38 @@ class FormMapperSessionLog(Base):
             "event_type": self.event_type,
             "event_data": self.event_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+
+class FormPageTestScenario(Base):
+    """
+    Test scenarios for form mapping.
+    Each scenario contains field values to use during mapping.
+    """
+    __tablename__ = "form_page_test_scenarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    form_page_route = relationship("FormPageRoute", back_populates="test_scenarios")
+    map_results = relationship("FormMapResult", back_populates="test_scenario")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "form_page_route_id": self.form_page_route_id,
+            "name": self.name,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

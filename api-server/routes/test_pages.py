@@ -708,10 +708,13 @@ async def request_verification_file_upload(
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
 
-    if test_page.verification_file and test_page.verification_file.get('s3_key'):
-        celery.send_task('tasks.delete_s3_file', kwargs={'s3_key': test_page.verification_file['s3_key']})
-
     s3_key = f"test_page_verification_files/{test_page.company_id}/{test_page.project_id}/test_page_{test_page_id}/{request.filename}"
+
+    # Only delete old file if it has a DIFFERENT s3_key (different filename)
+    if test_page.verification_file and test_page.verification_file.get('s3_key'):
+        old_s3_key = test_page.verification_file['s3_key']
+        if old_s3_key != s3_key:
+            celery.send_task('tasks.delete_s3_file', kwargs={'s3_key': old_s3_key})
 
     test_page.verification_file = {
         "filename": request.filename,

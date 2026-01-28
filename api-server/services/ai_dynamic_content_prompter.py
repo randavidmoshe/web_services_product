@@ -93,6 +93,24 @@ class DynamicContentAIHelper:
 
         prompt = f"""You are a test automation expert. Generate Selenium WebDriver test steps based on the user's test case description.
 
+## FIRST: CHECK FOR PAGE ISSUES
+
+Scan DOM and screenshot for blocking issues:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "This site can't be reached", "refused to connect", "took too long to respond"
+- "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
+
+**If page error detected, return ONLY:**
+```json
+{{{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}}}
+```
+(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+
+**If NO page errors:** Continue below.
+
 ## TEST CASE DESCRIPTION
 {test_case_description}
 
@@ -166,14 +184,16 @@ Return ONLY valid JSON:
       "selector": "input[name='search']",
       "value": "Python",
       "description": "Enter search term",
-      "full_xpath": "//input[@name='search']"
+      "field_name": "Search",
+      "full_xpath": "/html/body/div[@id='app']//input[@name='search']"
     }},
     {{
       "step_number": 2,
       "action": "click",
       "selector": "//button[contains(text(), 'Search')]",
       "description": "Click search button",
-      "full_xpath": "//button[contains(text(), 'Search')]"
+      "field_name": "Search Button",
+      "full_xpath": "/html/body/div[@id='app']//button[contains(text(), 'Search')]"
     }},
     {{
       "step_number": 3,
@@ -183,6 +203,11 @@ Return ONLY valid JSON:
   ]
 }}
 ```
+
+**field_name (REQUIRED for click and fill actions):**
+- Use the EXACT label text visible on the page
+- For buttons/clickables, use the button text
+- For inputs, use the associated label text
 
 ## RULES
 
@@ -220,6 +245,9 @@ User may also provide a **reference image** — use it to understand the page.
 Only generate verify steps when test case description asks to verify something.
 Use visual descriptions of what should be visible.
 **No selector needed for verify** — just describe what user asked to see.
+**CONSOLIDATE verifications**: If verifying multiple things on the SAME page, put them ALL in ONE verify step.
+- ❌ BAD: Step 2: verify "Form visible", Step 3: verify "Name field", Step 4: verify "Email field"
+- ✅ GOOD: Step 2: verify "Form visible with Name and Email fields"
 
 
 """
@@ -260,6 +288,16 @@ Use visual descriptions of what should be visible.
                 cleaned = cleaned.split("```")[1].split("```")[0]
 
             result = json.loads(cleaned.strip())
+
+            # Check if AI detected page errors
+            if result.get("page_error_detected"):
+                print(f"[DynamicContentAI] ⚠️ Page error detected: {result.get('error_type')}")
+                return {
+                    "steps": [],
+                    "page_error_detected": True,
+                    "error_type": result.get("error_type", "unknown")
+                }
+
             steps = result.get("steps", [])
 
             print(f"[DynamicContentAI] Generated {len(steps)} steps")
@@ -290,6 +328,22 @@ Use visual descriptions of what should be visible.
         ])
 
         prompt = f"""You are a test automation expert. Continue generating test steps for a partially completed test.
+
+## FIRST: CHECK FOR PAGE ISSUES
+
+Scan DOM and screenshot for blocking issues:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "This site can't be reached", "refused to connect", "took too long to respond"
+
+**If page error detected, return ONLY:**
+```json
+{{{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}}}
+```
+
+**If NO page errors:** Continue below.
 
 ## TEST CASE DESCRIPTION
 {test_case_description}
@@ -426,6 +480,10 @@ User may also provide a **reference image** — use it to understand the page.
 Only generate verify steps when test case description asks to verify something.
 Use visual descriptions of what should be visible.
 **No selector needed for verify** — just describe what user asked to see.
+**CONSOLIDATE verifications**: If verifying multiple things on the SAME page, put them ALL in ONE verify step.
+**In the description put all the items that the test case asked to verify
+- ❌ BAD: Step 2: verify "Form visible", Step 3: verify "Name field", Step 4: verify "Email field"
+- ✅ GOOD: Step 2: verify "Form visible with Name and Email fields"
 
 
 """
@@ -454,6 +512,16 @@ Use visual descriptions of what should be visible.
                 cleaned = cleaned.split("```")[1].split("```")[0]
 
             result = json.loads(cleaned.strip())
+
+            # Check if AI detected page errors
+            if result.get("page_error_detected"):
+                print(f"[DynamicContentAI] ⚠️ Page error detected: {result.get('error_type')}")
+                return {
+                    "steps": [],
+                    "page_error_detected": True,
+                    "error_type": result.get("error_type", "unknown")
+                }
+
             return {"steps": result.get("steps", [])}
 
         except json.JSONDecodeError as e:
@@ -480,32 +548,136 @@ Use visual descriptions of what should be visible.
 
         prompt = f"""You are a test automation expert. A test step failed and needs recovery.
 
-## FAILED STEP
-Action: {failed_step.get('action')}
-Selector: {failed_step.get('selector')}
-Description: {failed_step.get('description')}
-Error: {error_message}
+## STEP 1: CHECK FOR PAGE ISSUES
+
+Scan DOM and screenshot for blocking issues:
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "This site can't be reached", "refused to connect", "took too long to respond"
+- "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
+
+**If page error detected, return ONLY:**
+```json
+{{{{
+  "page_error_detected": true,
+  "error_type": "page_not_found"
+}}}}
+```
+(error_type: "page_not_found", "session_expired", "server_error", or "empty_page")
+
+**If NO page errors:** Continue below.
+
+## STEP 2: CHECK FOR LOADING SPINNER
+
+Look at screenshot for any rotating/spinning loading indicator that blocks interaction.
+
+**If loading spinner is visible, return:**
+```json
+{{
+  "recovery_steps": [
+    {{"step_number": 1, "action": "wait_spinner_hidden", "selector": ".spinner-selector-from-dom", "value": "15", "description": "Wait for loading spinner to disappear", "full_xpath": ""}}
+  ],
+  "analysis": "Loading spinner detected"
+}}
+```
+Find spinner in DOM by looking at screenshot. Common patterns: spinner, loader, loading, progress, busy, pending, processing, circular, overlay, backdrop, or SVG/icon animations.
+
+**If no spinner visible:** Continue below.
+
+---
+
+## STEP 3: FIX THE FAILED STEP
+
+🖼️ **Screenshot and DOM provided.** DOM is primary source, screenshot for visual verification.
+
+**Task:** Fix the failed step. Return ONLY fix steps (1-3 max).
+
+## Failed Step (Attempt {attempt_number}):
+- Action: {failed_step.get('action')}
+- Selector: {failed_step.get('selector')}
+- Description: {failed_step.get('description')}
+- Error: {error_message}
 
 ## TEST CASE DESCRIPTION
 {test_case_description}
 
-## CURRENT PAGE DOM
+## Current DOM:
+```html
 {fresh_dom}
+```
 
-## YOUR TASK
-1. Analyze why the step failed
-2. Generate 1-3 recovery steps to fix the issue
-3. If the element doesn't exist, find the correct selector
+---
 
+## Common Fixes by Error Type:
+
+**Element not found:**
+- Selector may be wrong - check DOM for correct id/class/name
+- Element inside iframe → switch_to_frame first
+- Element in shadow DOM → switch_to_shadow_root first
+
+**Element not interactable / not clickable:**
+- Hidden in collapsed section → click parent to expand first
+- Hidden in hover menu → hover on trigger element first  
+- Hidden in closed dropdown → click dropdown trigger first
+- Covered by overlay/tooltip → dismiss it first (click elsewhere or ESC)
+- Element disabled → enable via checkbox/toggle first
+- Outside viewport → scroll to element first
+
+**Selector not unique:**
+- ✅ GOOD - Scope to parent: `//div[@id='container']//button[text()='Save']`
+- ✅ GOOD - Use index (CORRECT syntax): `(//button[@class='submit'])[1]` (parentheses FIRST, then index)
+- ❌ WRONG index syntax: `//button[@class='submit'][1]` (index applies to child position, not result set)
+
+**Stale element:**
+- Page refreshed - add wait, retry same selector
+
+**Wrong context:**
+- Inside iframe → switch_to_frame first
+- Need main page → switch_to_default first
+
+## Selector Priority:
+1. ID: `#fieldId`
+2. Name: `[name='fieldName']`
+3. Data attributes: `[data-testid='field']`
+4. Scoped XPath: `//parent[@id='x']//child`
+
+Use `contains(@class, 'x')` not `@class='x'` for partial class match.
+
+## full_xpath - MANDATORY FOR ALL NON-VERIFY ACTIONS
+For `verify` action recovery: use empty string `"full_xpath": ""`
+For all other actions: full_xpath is CRITICAL as fallback since original selector FAILED.
+
+**Rules:**
+- Must start from `/html/body/...`
+- **USE IDs WHEN AVAILABLE:** `/html/body/div[@id='app']/...` NOT `/html/body/div[1]/...`
+- Only use indices `[n]` when no ID exists on that element
+- Use `contains(@class, 'x')` for class matching
+
+**SELF-VERIFICATION (MANDATORY):**
+After constructing each full_xpath, trace it step-by-step through the DOM to verify:
+1. Does the path start correctly from body?
+2. Did you use IDs where available?
+3. Did you count child indices correctly?
+4. Does the final element match your target?
+
+**❌ BAD full_xpath:**
+`/html/body/div[1]/div/div[2]/div/div[1]/div/div[3]/div`
+- All indices, ignores `id="app"` that exists in DOM!
+
+**✅ GOOD full_xpath:**
+`/html/body/div[@id='app']//div[contains(@class,'form')]//input[@name='email']`
+
+## Response Format:
 Return ONLY valid JSON:
 ```json
 {{
   "recovery_steps": [
     {{
       "step_number": 1,
-      "action": "...",
-      "selector": "...",
-      "description": "..."
+      "action": "click",
+      "selector": "#trigger",
+      "description": "Click trigger to open menu",
+      "field_name": "Menu Trigger",
+      "full_xpath": "/html/body/div[@id='app']/nav/button"
     }}
   ],
   "analysis": "Brief explanation of failure and fix"
@@ -537,6 +709,12 @@ Return ONLY valid JSON:
                 cleaned = cleaned.split("```")[1].split("```")[0]
 
             result = json.loads(cleaned.strip())
+
+            # Check if AI detected page errors
+            if result.get("page_error_detected"):
+                print(f"[DynamicContentAI] ⚠️ Page error detected during recovery: {result.get('error_type')}")
+                return []  # Return empty to signal failure
+
             recovery_steps = result.get("recovery_steps", [])
             print(f"[DynamicContentAI] Generated {len(recovery_steps)} recovery steps")
             return recovery_steps

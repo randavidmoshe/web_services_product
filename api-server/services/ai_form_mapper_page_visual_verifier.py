@@ -108,7 +108,8 @@ class PageVisualVerifier:
             self,
             screenshot_base64: str,
             executed_steps: List[Dict],
-            already_verified_fields: List[Dict]
+            already_verified_fields: List[Dict],
+            verification_instructions: Optional[str] = None
     ) -> Dict:
         """
         Verify form field values on result page.
@@ -117,6 +118,7 @@ class PageVisualVerifier:
             screenshot_base64: Base64 encoded screenshot of result page
             executed_steps: List of all executed steps with actions and values
             already_verified_fields: List of fields already verified in previous calls (don't re-verify)
+            verification_instructions: Optional user-provided rules for field verification (e.g., "First Name should be preceded by Mr/Mrs")
 
         Returns:
             Dict with page_ready, page_type, results, reason
@@ -144,6 +146,14 @@ class PageVisualVerifier:
 
         # Build list of already verified field names
         already_verified_names = [f.get("field", "") for f in already_verified_fields]
+
+        # Build verification instructions section if provided
+        verification_instructions_section = ""
+        if verification_instructions:
+            verification_instructions_section = f"""
+**Additional Verification Rules (provided by user):**
+{verification_instructions}
+"""
 
         prompt = f"""You are analyzing a screenshot of a web page to verify that form field values were saved correctly.
 
@@ -179,6 +189,7 @@ Scan the screenshot for validation errors (red boxes, red borders around fields,
 
 **Verification Rules:**
 - For each field, check if the value appears on the page
+{verification_instructions_section}
 - The value might appear in a table cell, a read-only field, a label, or text
 - Think like a human QA tester, not a string comparison tool
 

@@ -181,6 +181,10 @@ class FormPageRoute(Base):
     spec_document = Column(JSON, nullable=True)  # {filename, content_type, uploaded_at}
     spec_document_content = Column(Text, nullable=True)  # Actual text content
 
+    # Verification Instructions (for AI visual verification during mapping)
+    verification_file = Column(JSON, nullable=True)  # {filename, s3_key, content_type, status}
+    verification_file_content = Column(Text, nullable=True)  # Extracted text from file
+
     # Verification
     verification_attempts = Column(Integer, default=0)
     last_verified_at = Column(DateTime)
@@ -195,6 +199,7 @@ class FormPageRoute(Base):
     # Form Mapper relationships  # <-- ADD THESE
     mapper_sessions = relationship("FormMapperSession", back_populates="form_page_route", cascade="all, delete-orphan")
     map_results = relationship("FormMapResult", back_populates="form_page_route", cascade="all, delete-orphan")
+    test_scenarios = relationship("FormPageTestScenario", back_populates="form_page_route", cascade="all, delete-orphan")
 
 
 class ProjectFormHierarchy(Base):

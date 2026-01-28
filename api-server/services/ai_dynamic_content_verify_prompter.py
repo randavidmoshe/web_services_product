@@ -21,7 +21,8 @@ class DynamicContentVerifyHelper:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5-20251001"
+        #self.model = "claude-haiku-4-5-20251001"
+        self.model = "claude-sonnet-4-5-20250929"
         self.session_logger = session_logger
 
     def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 1000, max_retries: int = 3) -> Optional[
@@ -217,20 +218,28 @@ If the page looks OK, verify if the following DESCRIPTION matches what's visible
 Return ONLY valid JSON, nothing else.
 """
 
+        # DEBUG - log image sizes to verify order
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1[DEBUG] Current screenshot size: {len(screenshot_base64)} chars")
+        if reference_images:
+            for i, ref in enumerate(reference_images):
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!![DEBUG] Reference image {i + 1} ({ref.get('name')}): {len(ref.get('base64', ''))} chars")
+
         # Build content array with screenshot and optional reference images
         content = [
-            {"type": "text", "text": "Screenshot of the current page:"},
-            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_base64}}
+            {"type": "text", "text": "═══ IMAGE 1: CURRENT SCREENSHOT (what we are testing NOW) ═══"},
+            {"type": "image",
+             "source": {"type": "base64", "media_type": "image/png", "data": screenshot_base64}}
         ]
 
         # Add reference images if provided
         if reference_images:
-            content.append({"type": "text", "text": "Reference images provided by user:"})
+            content.append({"type": "text", "text": "═══ IMAGE 2+: REFERENCE IMAGES (expected state) ═══"})
             for ref in reference_images:
                 if ref.get('base64'):
-                    content.append({"type": "text", "text": f"Reference: {ref.get('name', 'Unnamed')}"})
+                    content.append({"type": "text", "text": f"[REFERENCE: {ref.get('name', 'Unnamed')}]"})
                     content.append({"type": "image",
-                                    "source": {"type": "base64", "media_type": "image/png", "data": ref['base64']}})
+                                    "source": {"type": "base64", "media_type": "image/png",
+                                               "data": ref['base64']}})
 
         content.append({"type": "text", "text": prompt})
 

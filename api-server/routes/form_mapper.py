@@ -19,9 +19,12 @@ from sqlalchemy.orm import Session
 from models.database import get_db, FormPageRoute
 from models.form_mapper_models import FormMapperSession, FormMapResult, FormMapperSessionLog
 from services.form_mapper_orchestrator import FormMapperOrchestrator, SessionStatus
-
 from celery.result import AsyncResult
 from celery_app import celery
+import os
+from sqlalchemy.orm.attributes import flag_modified
+from celery_app import celery
+
 
 
 logger = logging.getLogger(__name__)
@@ -1422,3 +1425,275 @@ async def get_spec_compliance_task_status(task_id: str):
         response["error"] = str(result.info) if result.info else 'Unknown error'
 
     return response
+
+# ============================================================================
+# Form Mapper Verification Instructions Endpoints (DB-only)
+# ============================================================================
+
+@router.post("/routes/{form_page_route_id}/verification-instructions")
+async def upload_verification_instructions(
+        form_page_route_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Upload or replace verification instructions for a form page.
+    Request body: {filename, content_type, content}
+    For PDF/DOCX, content should be base64 encoded - will be extracted server-side.
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    filename = request.get("filename", "verification_instructions.txt")
+    content_type = request.get("content_type", "text/plain")
+    content = request.get("content", "")
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    # Extract text if PDF/DOCX (base64 encoded)
+    extracted_content = content
+    if content_type in ['application/pdf', 'application/msword',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+        try:
+            import base64
+            from services.test_page_visual_assets import extract_text_from_file
+            file_bytes = base64.b64decode(content)
+            extracted_content = extract_text_from_file(file_bytes, content_type, filename)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to extract text: {str(e)}")
+
+    form_page.verification_file = {
+        "filename": filename,
+        "content_type": content_type,
+        "uploaded_at": datetime.utcnow().isoformat()
+    }
+    form_page.verification_file_content = extracted_content
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Verification instructions uploaded successfully",
+        "verification_file": form_page.verification_file
+    }
+
+
+@router.get("/routes/{form_page_route_id}/verification-instructions")
+async def get_verification_instructions(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """Get verification instructions for a form page"""
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    if not form_page.verification_file:
+        return {"verification_file": None, "content": None}
+
+    return {
+        "verification_file": form_page.verification_file,
+        "content": form_page.verification_file_content
+    }
+
+
+@router.put("/routes/{form_page_route_id}/verification-instructions")
+async def update_verification_instructions(
+        form_page_route_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """
+    Update verification instructions content (edit).
+    Request body: {content}
+    """
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    if not form_page.verification_file:
+        raise HTTPException(status_code=400, detail="No verification instructions exist. Upload first.")
+
+    content = request.get("content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    form_page.verification_file_content = content
+    form_page.verification_file["uploaded_at"] = datetime.utcnow().isoformat()
+    flag_modified(form_page, "verification_file")
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Verification instructions updated successfully",
+        "verification_file": form_page.verification_file
+    }
+
+
+@router.delete("/routes/{form_page_route_id}/verification-instructions")
+async def delete_verification_instructions(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """Delete verification instructions for a form page"""
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    form_page.verification_file = None
+    form_page.verification_file_content = None
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Verification instructions deleted successfully"
+    }
+
+
+# ============================================================================
+# Test Scenarios Endpoints
+# ============================================================================
+
+@router.get("/routes/{form_page_route_id}/test-scenarios")
+async def get_test_scenarios(
+        form_page_route_id: int,
+        db: Session = Depends(get_db)
+):
+    """Get all test scenarios for a form page"""
+    from models.form_mapper_models import FormPageTestScenario
+
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    scenarios = db.query(FormPageTestScenario).filter(
+        FormPageTestScenario.form_page_route_id == form_page_route_id
+    ).order_by(FormPageTestScenario.created_at.desc()).all()
+
+    return {
+        "scenarios": [s.to_dict() for s in scenarios]
+    }
+
+
+@router.post("/routes/{form_page_route_id}/test-scenarios")
+async def create_test_scenario(
+        form_page_route_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """Create a new test scenario"""
+    from models.form_mapper_models import FormPageTestScenario
+
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+
+    name = request.get("name", "").strip()
+    content = request.get("content", "").strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    scenario = FormPageTestScenario(
+        form_page_route_id=form_page_route_id,
+        name=name,
+        content=content
+    )
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+
+    return {
+        "success": True,
+        "scenario": scenario.to_dict()
+    }
+
+
+@router.get("/routes/{form_page_route_id}/test-scenarios/{scenario_id}")
+async def get_test_scenario(
+        form_page_route_id: int,
+        scenario_id: int,
+        db: Session = Depends(get_db)
+):
+    """Get a specific test scenario"""
+    from models.form_mapper_models import FormPageTestScenario
+
+    scenario = db.query(FormPageTestScenario).filter(
+        FormPageTestScenario.id == scenario_id,
+        FormPageTestScenario.form_page_route_id == form_page_route_id
+    ).first()
+
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Test scenario not found")
+
+    return {
+        "scenario": scenario.to_dict()
+    }
+
+
+@router.put("/routes/{form_page_route_id}/test-scenarios/{scenario_id}")
+async def update_test_scenario(
+        form_page_route_id: int,
+        scenario_id: int,
+        request: dict,
+        db: Session = Depends(get_db)
+):
+    """Update a test scenario"""
+    from models.form_mapper_models import FormPageTestScenario
+
+    scenario = db.query(FormPageTestScenario).filter(
+        FormPageTestScenario.id == scenario_id,
+        FormPageTestScenario.form_page_route_id == form_page_route_id
+    ).first()
+
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Test scenario not found")
+
+    if "name" in request:
+        name = request["name"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        scenario.name = name
+
+    if "content" in request:
+        content = request["content"].strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="Content cannot be empty")
+        scenario.content = content
+
+    db.commit()
+    db.refresh(scenario)
+
+    return {
+        "success": True,
+        "scenario": scenario.to_dict()
+    }
+
+
+@router.delete("/routes/{form_page_route_id}/test-scenarios/{scenario_id}")
+async def delete_test_scenario(
+        form_page_route_id: int,
+        scenario_id: int,
+        db: Session = Depends(get_db)
+):
+    """Delete a test scenario"""
+    from models.form_mapper_models import FormPageTestScenario
+
+    scenario = db.query(FormPageTestScenario).filter(
+        FormPageTestScenario.id == scenario_id,
+        FormPageTestScenario.form_page_route_id == form_page_route_id
+    ).first()
+
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Test scenario not found")
+
+    db.delete(scenario)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Test scenario deleted"
+    }

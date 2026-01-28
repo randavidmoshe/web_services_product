@@ -525,7 +525,7 @@ def analyze_failure_and_recover(
         log.debug(f"!!! Recovery generated {len(ai_result.get('steps', []))} steps", category="ai_response",
                   steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -998,7 +998,7 @@ def regenerate_steps(
         log.ai_response("regenerate_steps", success=True)
 
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -1333,11 +1333,23 @@ def verify_page_visual(
         from services.ai_form_mapper_page_visual_verifier import create_page_visual_verifier
         verifier = create_page_visual_verifier(api_key, session_logger=log)
 
+        # Load verification instructions from FormPageRoute
+        verification_instructions = None
+        form_page_route_id = ctx.get("form_route_id")
+        if form_page_route_id:
+            from models.database import FormPageRoute
+            form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+            if form_page and form_page.verification_file_content:
+                verification_instructions = form_page.verification_file_content
+                log.info(f"Loaded verification instructions ({len(verification_instructions)} chars)",
+                         category="ai_routing")
+
         # Call AI to verify page
         ai_result = verifier.verify_page(
             screenshot_base64=screenshot_base64,
             executed_steps=executed_steps,
-            already_verified_fields=already_verified_fields
+            already_verified_fields=already_verified_fields,
+            verification_instructions=verification_instructions
         )
 
         msg = f"!!!! 👁️ Visual Page Verification result: page_ready={ai_result.get('page_ready')}, results_count={len(ai_result.get('results', []))}"

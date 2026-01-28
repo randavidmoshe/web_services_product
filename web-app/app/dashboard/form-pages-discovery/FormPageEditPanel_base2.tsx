@@ -1551,7 +1551,7 @@ export default function FormPageEditPanel({
                         overflow: 'hidden'
                       }}>
                         {/* MAPPING */}
-                        <div style={{ padding: '12px 8px' }}>
+                        <div style={{ padding: '12px 8px 8px' }}>
                           <div style={{ fontSize: '10px', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
                             Mapping
                           </div>
@@ -1572,8 +1572,7 @@ export default function FormPageEditPanel({
                               cursor: 'pointer',
                               textAlign: 'left',
                               whiteSpace: 'nowrap',
-                              transition: 'all 0.15s ease',
-                              marginBottom: '8px'
+                              transition: 'all 0.15s ease'
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.4)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)'}
@@ -1581,6 +1580,45 @@ export default function FormPageEditPanel({
                             <span style={{ fontSize: '18px' }}>✏️</span>
                             <span>Configure Field Values</span>
                           </button>
+                        </div>
+
+                        {/* COMPLIANCE */}
+                        <div style={{ padding: '8px 8px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Compliance
+                          </div>
+                          <button
+                            onClick={() => { setShowSpecCompliancePanel(true); setShowMoreDropdown(false); }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
+                          >
+                            <span style={{ fontSize: '18px' }}>📋</span>
+                            <span>Check Spec Compliance</span>
+                          </button>
+                        </div>
+
+                        {/* VERIFICATION */}
+                        <div style={{ padding: '8px 8px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#0891b2', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Verification
+                          </div>
                           <button
                             onClick={() => { setShowVerificationInstructionsPanel(true); setShowMoreDropdown(false); }}
                             style={{
@@ -1607,108 +1645,50 @@ export default function FormPageEditPanel({
                             <span>Verification Instructions</span>
                           </button>
                         </div>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Post-Mapping Dropdown */}
-                  <div style={{ position: 'relative' }} ref={postMappingDropdownRef}>
-                    <button
-                      onClick={() => setShowPostMappingDropdown(!showPostMappingDropdown)}
-                      disabled={completedPaths.length === 0}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: completedPaths.length === 0
-                          ? (isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)')
-                          : (isLightTheme() ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.2)'),
-                        border: `1px solid ${completedPaths.length === 0
-                          ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)')
-                          : (isLightTheme() ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.4)')}`,
-                        color: completedPaths.length === 0
-                          ? getTheme().colors.textSecondary
-                          : (isLightTheme() ? '#7c3aed' : '#c4b5fd'),
-                        padding: '14px 20px',
-                        borderRadius: '12px',
-                        fontSize: '16px',
-                        fontWeight: 500,
-                        cursor: completedPaths.length === 0 ? 'not-allowed' : 'pointer',
-                        opacity: completedPaths.length === 0 ? 0.6 : 1
-                      }}
-                    >
-                      Post-Mapping ▼
-                    </button>
-
-                    {showPostMappingDropdown && completedPaths.length > 0 && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        right: 0,
-                        marginTop: '8px',
-                        background: isLightTheme() ? '#fff' : '#1f2937',
-                        borderRadius: '16px',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
-                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
-                        minWidth: '260px',
-                        zIndex: 100,
-                        overflow: 'hidden'
-                      }}>
-                        <div style={{ padding: '12px 8px' }}>
+                        {/* AUTOMATION */}
+                        <div style={{ padding: '8px 8px 12px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
+                            Automation
+                          </div>
                           <button
-                            onClick={() => { setShowSpecCompliancePanel(true); setShowPostMappingDropdown(false); }}
+                            onClick={() => { handleExportPom(); setShowMoreDropdown(false); }}
+                            disabled={completedPaths.length === 0}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
-                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              background: completedPaths.length === 0
+                                ? (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'),
+                              border: `1px solid ${completedPaths.length === 0
+                                ? (isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)')
+                                : (isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)')}`,
                               borderRadius: '10px',
-                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
-                              fontSize: '14px',
+                              color: completedPaths.length === 0
+                                ? getTheme().colors.textSecondary
+                                : (isLightTheme() ? '#92400e' : '#fcd34d'),
+                              fontSize: '15px',
                               fontWeight: 600,
-                              cursor: 'pointer',
+                              cursor: completedPaths.length === 0 ? 'not-allowed' : 'pointer',
                               textAlign: 'left',
                               whiteSpace: 'nowrap',
-                              transition: 'all 0.15s ease',
-                              marginBottom: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
-                          >
-                            <span style={{ fontSize: '18px' }}>📋</span>
-                            <span>Check Spec Compliance</span>
-                          </button>
-                          <button
-                            onClick={() => { handleExportPom(); setShowPostMappingDropdown(false); }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
-                              width: '100%',
-                              padding: '12px 16px',
-                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
-                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
-                              borderRadius: '10px',
-                              color: isLightTheme() ? '#92400e' : '#fcd34d',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              whiteSpace: 'nowrap',
+                              opacity: completedPaths.length === 0 ? 0.6 : 1,
                               transition: 'all 0.15s ease'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'}
+                            onMouseEnter={(e) => { if (completedPaths.length > 0) e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)' }}
+                            onMouseLeave={(e) => { if (completedPaths.length > 0) e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)' }}
                           >
                             <span style={{ fontSize: '18px' }}>📄</span>
                             <span>Export POM</span>
+                            {completedPaths.length === 0 && <span style={{ fontSize: '14px', marginLeft: 'auto', color: getTheme().colors.textPrimary }}>(map first)</span>}
                           </button>
                         </div>
                       </div>
                     )}
+
                   </div>
                 </>
               )
