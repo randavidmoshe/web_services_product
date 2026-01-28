@@ -1814,10 +1814,18 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
                 FormMapResult.form_page_route_id == form_page_route_id
             ).count()
 
+        # Get test_scenario_id if in scenario mode
+        test_scenario_id = ctx.get("test_scenario_id")
+        if test_scenario_id and isinstance(test_scenario_id, str):
+            test_scenario_id = int(test_scenario_id) if test_scenario_id != "0" else None
+        elif test_scenario_id == 0:
+            test_scenario_id = None
+
         form_map_result = FormMapResult(
             form_mapper_session_id=int(session_id),
             form_page_route_id=form_page_route_id if mapping_type != "dynamic_content" else None,
             test_page_route_id=test_page_route_id if mapping_type == "dynamic_content" else None,
+            test_scenario_id=test_scenario_id,
             network_id=ctx.get("network_id"),
             company_id=ctx.get("company_id"),
             path_number=existing_paths + 1,

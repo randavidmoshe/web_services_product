@@ -45,17 +45,6 @@ export interface CompletedPath {
   is_verified: boolean
   created_at: string
   updated_at: string
-  test_scenario_id?: number
-  test_scenario_name?: string
-}
-
-export interface TestScenario {
-  id: number
-  form_page_route_id: number
-  name: string
-  content: string
-  created_at: string
-  updated_at: string
 }
 
 export interface ThemeColors {
@@ -129,7 +118,6 @@ export interface FormPageEditPanelProps {
   onDeletePath: (pathId: number) => void
   onSavePathStep: (pathId: number, stepIndex: number, stepData?: any) => void
   onExportPath: (path: CompletedPath) => void
-  onStartMappingWithScenario: (formPageId: number, scenarioId: number) => void
   onRefreshPaths: () => void
   onDeleteFormPage: (formPageId: number) => void
   
@@ -244,7 +232,6 @@ export default function FormPageEditPanel({
   onDeletePath,
   onSavePathStep,
   onExportPath,
-  onStartMappingWithScenario,
   onRefreshPaths,
   onDeleteFormPage,
   getTheme,
@@ -324,20 +311,6 @@ export default function FormPageEditPanel({
   const mappingDropdownRef = useRef<HTMLDivElement>(null)
   const moreDropdownRef = useRef<HTMLDivElement>(null)
   const postMappingDropdownRef = useRef<HTMLDivElement>(null)
-
-  // Test Scenarios state
-  const [testScenarios, setTestScenarios] = useState<TestScenario[]>([])
-  const [testScenariosLoading, setTestScenariosLoading] = useState(false)
-  const [showTestScenariosPanel, setShowTestScenariosPanel] = useState(false)
-  const [editingScenario, setEditingScenario] = useState<TestScenario | null>(null)
-  const [newScenarioName, setNewScenarioName] = useState('')
-  const [newScenarioContent, setNewScenarioContent] = useState('')
-  const [showScenarioPicker, setShowScenarioPicker] = useState(false)
-  const [scenarioSaving, setScenarioSaving] = useState(false)
-
-  const scenarioFileInputRef = useRef<HTMLInputElement>(null)
-  const replaceScenarioFileInputRef = useRef<HTMLInputElement>(null)
-  const [replacingScenarioId, setReplacingScenarioId] = useState<number | null>(null)
 
   // Navigation steps editing mode state
   const [navStepsEditable, setNavStepsEditable] = useState(false)
@@ -1030,176 +1003,6 @@ export default function FormPageEditPanel({
     }
   }
 
-  // Test Scenarios functions
-  const loadTestScenarios = async () => {
-    setTestScenariosLoading(true)
-    try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const data = await response.json()
-      setTestScenarios(data.scenarios || [])
-    } catch (err) {
-      console.error('Failed to load test scenarios:', err)
-    } finally {
-      setTestScenariosLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadTestScenarios()
-  }, [editingFormPage.id])
-
-  const handleCreateScenario = async () => {
-    if (!newScenarioName.trim() || !newScenarioContent.trim()) return
-    setScenarioSaving(true)
-    try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: newScenarioName.trim(),
-          content: newScenarioContent.trim()
-        })
-      })
-      if (response.ok) {
-        setNewScenarioName('')
-        setNewScenarioContent('')
-        loadTestScenarios()
-        setMessage('Test scenario created!')
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to create scenario')
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to create scenario')
-    } finally {
-      setScenarioSaving(false)
-    }
-  }
-
-  const handleUpdateScenario = async (scenario: TestScenario) => {
-    setScenarioSaving(true)
-    try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenario.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: scenario.name,
-          content: scenario.content
-        })
-      })
-      if (response.ok) {
-        setEditingScenario(null)
-        loadTestScenarios()
-        setMessage('Test scenario updated!')
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to update scenario')
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to update scenario')
-    } finally {
-      setScenarioSaving(false)
-    }
-  }
-
-  const handleDeleteScenario = async (scenarioId: number) => {
-    if (!confirm('Delete this test scenario?')) return
-    try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenarioId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      if (response.ok) {
-        loadTestScenarios()
-        setMessage('Test scenario deleted')
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete scenario')
-    }
-  }
-
-  const handleScenarioFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setScenarioSaving(true)
-    try {
-      const content = await file.text()
-      const name = file.name.replace(/\.(txt|md|csv)$/, '')
-
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name, content })
-      })
-
-      if (response.ok) {
-        loadTestScenarios()
-        setMessage('Test scenario uploaded!')
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to upload scenario')
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload scenario')
-    } finally {
-      setScenarioSaving(false)
-      e.target.value = ''
-    }
-  }
-
-  const handleReplaceScenarioFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !replacingScenarioId) return
-
-    setScenarioSaving(true)
-    try {
-      const content = await file.text()
-      const name = file.name.replace(/\.(txt|md|csv)$/, '')
-
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${replacingScenarioId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name, content })
-      })
-
-      if (response.ok) {
-        loadTestScenarios()
-        setMessage('Test scenario replaced!')
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to replace scenario')
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to replace scenario')
-    } finally {
-      setScenarioSaving(false)
-      setReplacingScenarioId(null)
-      e.target.value = ''
-    }
-  }
-
-  const handleMapWithScenario = (scenarioId: number) => {
-    setShowScenarioPicker(false)
-    setShowMappingDropdown(false)
-    // Call onStartMapping with scenario ID
-    onStartMappingWithScenario(editingFormPage.id, scenarioId)
-  }
-
   const startSpecComplianceGeneration = async () => {
     setSpecComplianceStatus('starting')
     setSpecComplianceError(null)
@@ -1687,30 +1490,6 @@ export default function FormPageEditPanel({
                             <span>Explore More Paths ({completedPaths.length} exist)</span>
                           </button>
                         )}
-                        {testScenarios.length > 0 && (
-                          <button
-                            onClick={() => { setShowScenarioPicker(true); }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
-                              width: '100%',
-                              padding: '12px 16px',
-                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
-                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
-                              borderRadius: '10px',
-                              color: isLightTheme() ? '#92400e' : '#fcd34d',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              marginBottom: '8px'
-                            }}
-                          >
-                            <span style={{ fontSize: '18px' }}>🧪</span>
-                            <span>Map Test Scenario</span>
-                          </button>
-                        )}
                         <button
                           onClick={() => { handleRediscoverFormPage(); setShowMappingDropdown(false); }}
                           style={{
@@ -1826,42 +1605,6 @@ export default function FormPageEditPanel({
                           >
                             <span style={{ fontSize: '18px' }}>📝</span>
                             <span>Verification Instructions</span>
-                          </button>
-                          <button
-                            onClick={() => { setShowTestScenariosPanel(true); setShowMoreDropdown(false); }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
-                              width: '100%',
-                              padding: '12px 16px',
-                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
-                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
-                              borderRadius: '10px',
-                              color: isLightTheme() ? '#92400e' : '#fcd34d',
-                              fontSize: '14px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              whiteSpace: 'nowrap',
-                              transition: 'all 0.15s ease',
-                              marginTop: '8px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'}
-                          >
-                            <span style={{ fontSize: '18px' }}>🧪</span>
-                            <span>Test Scenarios</span>
-                            {testScenarios.length > 0 && (
-                              <span style={{
-                                background: isLightTheme() ? '#f59e0b' : 'rgba(245, 158, 11, 0.6)',
-                                color: '#fff',
-                                padding: '2px 8px',
-                                borderRadius: '10px',
-                                fontSize: '12px',
-                                marginLeft: 'auto'
-                              }}>{testScenarios.length}</span>
-                            )}
                           </button>
                         </div>
                       </div>
@@ -2836,20 +2579,8 @@ export default function FormPageEditPanel({
                         <div style={{ fontSize: '18px', fontWeight: 600, color: getTheme().colors.textPrimary }}>
                           Path {path.path_number}
                         </div>
-                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>
                           {path.steps_count} steps • {path.path_junctions?.length || 0} junctions
-                          {path.test_scenario_id && (
-                            <span style={{
-                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.3)',
-                              color: isLightTheme() ? '#92400e' : '#fcd34d',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 600
-                            }}>
-                              🧪 {path.test_scenario_name || 'Scenario'}
-                            </span>
-                          )}
                         </div>
                         {/* Show junctions when collapsed */}
                         {expandedPathId !== path.id && path.path_junctions && path.path_junctions.length > 0 && (
@@ -4625,284 +4356,6 @@ export default function FormPageEditPanel({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Test Scenarios Modal */}
-      {showTestScenariosPanel && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }} onClick={() => setShowTestScenariosPanel(false)}>
-          <div style={{
-            background: isLightTheme() ? '#fff' : '#1f2937',
-            borderRadius: '16px',
-            padding: '24px',
-            width: '90%',
-            maxWidth: '800px',
-            maxHeight: '90vh',
-            overflow: 'auto'
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
-                🧪 Test Scenarios
-              </h3>
-              <button
-                onClick={() => setShowTestScenariosPanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
-              >
-                ×
-              </button>
-            </div>
-
-            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '14px' }}>
-              Create test scenarios with specific field values. Each scenario will map a single path using your defined values.
-            </p>
-
-            {/* Hidden file inputs */}
-            <input
-              type="file"
-              accept=".txt,.md,.csv"
-              style={{ display: 'none' }}
-              ref={scenarioFileInputRef}
-              onChange={handleScenarioFileUpload}
-            />
-            <input
-              type="file"
-              accept=".txt,.md,.csv"
-              style={{ display: 'none' }}
-              ref={replaceScenarioFileInputRef}
-              onChange={handleReplaceScenarioFile}
-            />
-
-            {/* Upload Button */}
-            <div style={{
-              background: isLightTheme() ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.15)',
-              border: `2px dashed ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.5)'}`,
-              borderRadius: '12px',
-              padding: '24px',
-              textAlign: 'center',
-              marginBottom: '24px'
-            }}>
-              <button
-                onClick={() => scenarioFileInputRef.current?.click()}
-                disabled={scenarioSaving}
-                style={{
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '14px 28px',
-                  borderRadius: '10px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  opacity: scenarioSaving ? 0.5 : 1
-                }}
-              >
-                {scenarioSaving ? 'Uploading...' : '📄 Upload Scenario File'}
-              </button>
-              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '13px' }}>
-                .txt, .md, or .csv files with field values (e.g., "Full Name: Johnny Cash")
-              </p>
-            </div>
-
-            {/* Existing Scenarios */}
-            <div>
-              <h4 style={{ margin: '0 0 12px', color: getTheme().colors.textPrimary, fontSize: '16px' }}>
-                Existing Scenarios ({testScenarios.length})
-              </h4>
-              {testScenariosLoading ? (
-                <p style={{ color: getTheme().colors.textSecondary }}>Loading...</p>
-              ) : testScenarios.length === 0 ? (
-                <p style={{ color: getTheme().colors.textSecondary, fontStyle: 'italic' }}>No test scenarios yet. Create one above.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {testScenarios.map((scenario) => (
-                    <div key={scenario.id} style={{
-                      background: isLightTheme() ? '#f8fafc' : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${getTheme().colors.cardBorder}`,
-                      borderRadius: '10px',
-                      padding: '16px'
-                    }}>
-                      {editingScenario?.id === scenario.id ? (
-                        <div>
-                          <input
-                            type="text"
-                            value={editingScenario.name}
-                            onChange={(e) => setEditingScenario({ ...editingScenario, name: e.target.value })}
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              border: `1px solid ${getTheme().colors.cardBorder}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
-                              color: getTheme().colors.textPrimary,
-                              fontSize: '14px',
-                              marginBottom: '8px'
-                            }}
-                          />
-                          <textarea
-                            value={editingScenario.content}
-                            onChange={(e) => setEditingScenario({ ...editingScenario, content: e.target.value })}
-                            style={{
-                              width: '100%',
-                              minHeight: '100px',
-                              padding: '12px',
-                              borderRadius: '6px',
-                              border: `1px solid ${getTheme().colors.cardBorder}`,
-                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
-                              color: getTheme().colors.textPrimary,
-                              fontSize: '14px',
-                              fontFamily: 'monospace',
-                              resize: 'vertical',
-                              marginBottom: '8px'
-                            }}
-                          />
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleUpdateScenario(editingScenario)}
-                              disabled={scenarioSaving}
-                              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
-                            >
-                              {scenarioSaving ? 'Saving...' : '💾 Save'}
-                            </button>
-                            <button
-                              onClick={() => setEditingScenario(null)}
-                              style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 600, color: getTheme().colors.textPrimary, fontSize: '15px' }}>
-                              🧪 {scenario.name}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={() => {
-                                  setReplacingScenarioId(scenario.id)
-                                  replaceScenarioFileInputRef.current?.click()
-                                }}
-                                style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
-                              >
-                                Replace
-                              </button>
-                              <button
-                                onClick={() => setEditingScenario(scenario)}
-                                style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteScenario(scenario.id)}
-                                style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                          <pre style={{
-                            margin: 0,
-                            padding: '12px',
-                            background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.2)',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            color: getTheme().colors.textSecondary,
-                            fontFamily: 'Monaco, Consolas, monospace',
-                            whiteSpace: 'pre-wrap',
-                            maxHeight: '150px',
-                            overflow: 'auto'
-                          }}>{scenario.content}</pre>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Scenario Picker Modal */}
-      {showScenarioPicker && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001
-        }} onClick={() => setShowScenarioPicker(false)}>
-          <div style={{
-            background: isLightTheme() ? '#fff' : '#1f2937',
-            borderRadius: '16px',
-            padding: '24px',
-            width: '90%',
-            maxWidth: '500px',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
-                🧪 Select Test Scenario
-              </h3>
-              <button
-                onClick={() => setShowScenarioPicker(false)}
-                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
-              >
-                ×
-              </button>
-            </div>
-
-            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '16px', fontSize: '14px' }}>
-              Choose a scenario to map. This will create one path using the scenario's field values.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {testScenarios.map((scenario) => (
-                <button
-                  key={scenario.id}
-                  onClick={() => handleMapWithScenario(scenario.id)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: '4px',
-                    width: '100%',
-                    padding: '14px 16px',
-                    background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
-                    border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
-                    borderRadius: '10px',
-                    color: isLightTheme() ? '#92400e' : '#fcd34d',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.3)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)'}
-                >
-                  <span style={{ fontWeight: 600, fontSize: '15px' }}>🧪 {scenario.name}</span>
-                  <span style={{ fontSize: '12px', opacity: 0.8 }}>{scenario.content.split('\n').slice(0, 2).join(', ')}...</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}

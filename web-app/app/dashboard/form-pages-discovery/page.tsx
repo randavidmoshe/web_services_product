@@ -869,6 +869,86 @@ export default function DashboardPage() {
     }
   }
 
+  const startMappingWithScenario = async (formPageId: number, scenarioId: number) => {
+    if (!editingFormPage || !token || !userId) return
+
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Use default template
+    const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
+    if (!defaultTemplate) {
+      setError('No test template available')
+      return
+    }
+
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPageId))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'starting' }
+    }))
+
+    try {
+      const response = await fetch('/api/form-mapper/start', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          form_page_route_id: formPageId,
+          user_id: parseInt(userId),
+          company_id: companyId ? parseInt(companyId) : undefined,
+          network_id: editingFormPage.network_id,
+          test_cases: defaultTemplate.test_cases,
+          test_scenario_id: scenarioId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to start mapping')
+      }
+
+      const data = await response.json()
+
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: data.session_id }
+      }))
+
+      startMappingStatusPolling(formPageId, data.session_id)
+      setMessage(`Started mapping with test scenario`)
+
+    } catch (err: any) {
+      console.error('Failed to start mapping with scenario:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPageId)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to start mapping with scenario`)
+    }
+  }
+
   const continueMappingFromEditPanel = async () => {
     if (!editingFormPage || !token || !userId) return
 
@@ -1908,6 +1988,7 @@ export default function DashboardPage() {
         onDeletePath={deletePath}
         onSavePathStep={handleSavePathStep}
         onExportPath={downloadPathJson}
+        onStartMappingWithScenario={isLoginLogoutEdit ? () => {} : startMappingWithScenario}
         onRefreshPaths={() => !isLoginLogoutEdit && fetchCompletedPaths(editingFormPage.id)}
         onDeleteFormPage={isLoginLogoutEdit ? () => {} : rediscoverFormPage}
         getTheme={getTheme}

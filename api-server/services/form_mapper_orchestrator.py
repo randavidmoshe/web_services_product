@@ -263,7 +263,7 @@ class FormMapperOrchestrator:
     
     def create_session(self, session_id=None, user_id=None, company_id=None, network_id=None,
                       form_route_id=None, form_page_route_id=None, test_cases=None, 
-                      product_id=1, config=None, base_url=None, project_id=None, skip_cleanup=False, test_page_route_id=None, mapping_type=None, test_case_description=None):
+                      product_id=1, config=None, base_url=None, project_id=None, skip_cleanup=False, test_page_route_id=None, mapping_type=None, test_case_description=None, test_scenario_id=None):
 
         import uuid
         if form_route_id is None and form_page_route_id is not None:
@@ -288,6 +288,25 @@ class FormMapperOrchestrator:
             except Exception as e:
                 logger.warning(f"[Orchestrator] Failed to get form page data: {e}")
 
+        # If test_scenario_id provided, load scenario and override user_provided_inputs
+        if test_scenario_id and self.db:
+            try:
+                from models.form_mapper_models import FormPageTestScenario
+                scenario = self.db.query(FormPageTestScenario).filter(
+                    FormPageTestScenario.id == test_scenario_id
+                ).first()
+                if scenario:
+                    user_provided_inputs = {
+                        "status": "ready",
+                        "content": scenario.content,
+                        "source": "test_scenario",
+                        "scenario_id": test_scenario_id,
+                        "scenario_name": scenario.name
+                    }
+                    logger.info(f"[Orchestrator] Using test scenario '{scenario.name}' for field values")
+            except Exception as e:
+                logger.warning(f"[Orchestrator] Failed to load test scenario: {e}")
+
         # Get company_name (do this once at session creation)
         if company_id and self.db:
             try:
@@ -309,7 +328,10 @@ class FormMapperOrchestrator:
         
         test_context = {"filled_fields": {}, "clicked_elements": [], "selected_options": {},
                        "credentials": {}, "reported_ui_issues": []}
-        
+
+        # Single path mode if using test scenario
+        single_path_mode = test_scenario_id is not None
+
         session_state = {
             "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0, "company_name": company_name or "",
             "product_id": product_id or 1, "network_id": network_id or 0,
@@ -335,7 +357,9 @@ class FormMapperOrchestrator:
             "upload_urls": json.dumps(
                 self._generate_upload_urls(company_id or 0, project_id or 0, session_id, "mapping", form_route_id or 0)),
             "created_at": datetime.utcnow().isoformat(), "updated_at": datetime.utcnow().isoformat(),
-            "completed_at": ""
+            "completed_at": "",
+            "test_scenario_id": test_scenario_id or 0,
+            "single_path_mode": "1" if single_path_mode else "0"
         }
         
         key = self._get_session_key(session_id)
@@ -2121,6 +2145,25 @@ class FormMapperOrchestrator:
                 self.update_session(session_id, {
                     "pending_completed_paths": json.dumps(completed_paths_for_ai)
                 })
+
+                # Check if single path mode (test scenario) - stop after first path
+                single_path_mode = session.get("single_path_mode") == "1"
+                if single_path_mode:
+                    logger.info(f"[Orchestrator] Single path mode (test scenario) - completing after first path")
+                    log.info("Single path mode - completing after first path", category="milestone")
+                    self.transition_to(session_id, MapperState.SAVING_RESULT)
+                    path_junctions = self._extract_path_junctions_from_steps(executed_steps)
+                    return {
+                        "success": True,
+                        "state": "saving_result",
+                        "trigger_celery": True,
+                        "celery_task": "save_mapping_result",
+                        "celery_args": {
+                            "session_id": session_id,
+                            "stages": executed_steps,
+                            "path_junctions": path_junctions
+                        }
+                    }
 
                 # Check if we've reached max paths - if so, we're done
                 max_paths = config.get("max_junction_paths", 7)

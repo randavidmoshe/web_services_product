@@ -45,6 +45,7 @@ class StartMappingRequest(BaseModel):
     network_id: Optional[int] = None
     agent_id: Optional[str] = None
     config: Optional[dict] = None  # Optional config overrides
+    test_scenario_id: Optional[int] = None  # If provided, use scenario for mapping
 
 
 class StartMappingResponse(BaseModel):
@@ -121,6 +122,8 @@ class CompletedPathResponse(BaseModel):
     is_verified: bool
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    test_scenario_id: Optional[int] = None
+    test_scenario_name: Optional[str] = None
 
 
 class CompletedPathsListResponse(BaseModel):
@@ -236,7 +239,8 @@ async def start_form_mapping(
             network_id=network_id,
             company_id=company_id,
             config=request.config,
-            test_cases=request.test_cases
+            test_cases=request.test_cases,
+            test_scenario_id=request.test_scenario_id
         )
         
         # Start the mapping process (Login → Navigate → Map)
@@ -884,7 +888,9 @@ async def get_completed_paths(
             steps_count=len(result.steps) if result.steps else 0,
             is_verified=result.is_verified or False,
             created_at=result.created_at.isoformat() if result.created_at else None,
-            updated_at=result.updated_at.isoformat() if result.updated_at else None
+            updated_at=result.updated_at.isoformat() if result.updated_at else None,
+            test_scenario_id=result.test_scenario_id,
+            test_scenario_name=result.test_scenario.name if result.test_scenario else None
         ))
 
     return CompletedPathsListResponse(

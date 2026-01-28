@@ -242,7 +242,22 @@ When you have a step for these junctions, use the specified option. If a junctio
 """
         # User-provided inputs section
         user_inputs_section = ""
-        if user_provided_inputs and (
+
+        # Check for test scenario content (raw text)
+        if user_provided_inputs and user_provided_inputs.get("content") and user_provided_inputs.get(
+                "source") == "test_scenario":
+            scenario_name = user_provided_inputs.get("scenario_name", "Test Scenario")
+            content = user_provided_inputs.get("content", "")
+            user_inputs_section = f"""
+📋 TEST SCENARIO: {scenario_name}
+{'=' * 60}
+Use these field values when filling the form:
+
+{content}
+
+{'=' * 60}
+"""
+        elif user_provided_inputs and (
                 user_provided_inputs.get("field_values") or user_provided_inputs.get("file_paths")):
             field_values = user_provided_inputs.get("field_values", [])
             file_paths = user_provided_inputs.get("file_paths", [])
@@ -826,19 +841,14 @@ When you have a step for these junctions, use the specified option. If a junctio
         - Date picker: calendar hidden until focused
         - Any element that reveals hidden content on interaction
 
-        **Custom Dropdown Example:**
+        **Custom Dropdown Example (Only if it is not a native select):**
         Step 1:
         {{"action": "click", "selector": ".dropdown-trigger", "field_name": "gender", "description": "Open dropdown", "force_regenerate": true}}
 
         Step 2 (after regeneration - options now visible):
         {{"action": "click", "selector": "//li[contains(text(), 'Option A')]", "field_name": "male", "description": "Select Option A"}}
         
-        **⚠️ field_name (REQUIRED for ALL click and fill actions):**
-        For ALL click and fill actions, ALWAYS include `field_name` with the EXACT label text:
-        - `field_name` must match the field's label EXACTLY as shown on page (case-insensitive)
-        - Used as fallback if selector fails
-        - Example: If label shows "Hair Type", use `"field_name": "Hair Type"`
-        ## Exception - for dropdown items field_name is the dropdown item name
+        
         
         **Fill Autocomplete Example:**
         Step 1:
@@ -1432,7 +1442,21 @@ Do NOT skip fields just because they are not in the required selections list.
 
             # User-provided inputs section
             user_inputs_section = ""
-            if user_provided_inputs and (
+            # Check for test scenario content (raw text)
+            if user_provided_inputs and user_provided_inputs.get("content") and user_provided_inputs.get(
+                    "source") == "test_scenario":
+                scenario_name = user_provided_inputs.get("scenario_name", "Test Scenario")
+                content = user_provided_inputs.get("content", "")
+                user_inputs_section = f"""
+📋 TEST SCENARIO: {scenario_name}
+{'=' * 60}
+Use these field values when filling the form:
+
+{content}
+
+{'=' * 60}
+"""
+            elif user_provided_inputs and (
                     user_provided_inputs.get("field_values") or user_provided_inputs.get("file_paths")):
                 field_values = user_provided_inputs.get("field_values", [])
                 file_paths = user_provided_inputs.get("file_paths", [])
@@ -1756,7 +1780,7 @@ When generating a step, ask yourself:
 - Date picker: calendar hidden until focused
 - Any element that reveals hidden content on interaction
 
-**Custom Dropdown Example:**
+**Custom Dropdown Example (Only if it is not a native select dropdown):**
 Step 1:
 {{"action": "click", "selector": ".dropdown-trigger", "field_name": "gender", "description": "Open dropdown", "force_regenerate": true}}
 

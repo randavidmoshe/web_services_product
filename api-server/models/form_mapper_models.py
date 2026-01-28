@@ -173,6 +173,7 @@ class FormMapResult(Base):
             "form_page_route_id": self.form_page_route_id,
             "test_page_route_id": self.test_page_route_id,
             "test_scenario_id": self.test_scenario_id,
+            "test_scenario_name": self.test_scenario.name if self.test_scenario else None,
             "network_id": self.network_id,
             "company_id": self.company_id,
             "path_number": self.path_number,
