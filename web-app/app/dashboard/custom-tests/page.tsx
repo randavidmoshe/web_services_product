@@ -682,7 +682,14 @@ export default function CustomTestsPage() {
             if (status === 'completed') {
               setMessage('Mapping completed!')
             } else {
-              setError('Mapping failed')
+              const isAIError = data.error && (
+                data.error.includes('API Error') ||
+                data.error.includes('API Overloaded') ||
+                data.error.includes('credit balance') ||
+                data.error.includes('budget exceeded') ||
+                data.error.includes('AI parse failed')
+              )
+              setError(isAIError ? data.error : 'Mapping failed')
             }
           }
         }

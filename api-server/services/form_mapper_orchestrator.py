@@ -332,6 +332,10 @@ class FormMapperOrchestrator:
         # Single path mode if using test scenario
         single_path_mode = test_scenario_id is not None
 
+        # Don't delete existing paths when mapping with test scenario
+        if single_path_mode:
+            skip_cleanup = True
+
         session_state = {
             "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0, "company_name": company_name or "",
             "product_id": product_id or 1, "network_id": network_id or 0,
@@ -734,6 +738,14 @@ class FormMapperOrchestrator:
     def handle_generate_initial_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+
+        # Check if task failed (API error, parse error, etc.)
+        if result.get("success") is False:
+            error_msg = result.get("error", "Generate steps failed")
+            logger.error(f"[Orchestrator] Generate steps failed: {error_msg}")
+            log = self._get_logger(session_id)
+            log.error(f"!!!!! Generate steps failed: {error_msg}", category="error")
+            return self._fail_session(session_id, error_msg)
 
         # Check if page error detected - fail session
         if result.get("page_error_detected"):
@@ -1813,6 +1825,14 @@ class FormMapperOrchestrator:
     def handle_regenerate_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+
+        # Check if task failed (API error, parse error, etc.)
+        if result.get("success") is False:
+            error_msg = result.get("error", "Regenerate steps failed")
+            logger.error(f"[Orchestrator] Regenerate steps failed: {error_msg}")
+            log = self._get_logger(session_id)
+            log.error(f"!!!!! Regenerate steps failed: {error_msg}", category="error")
+            return self._fail_session(session_id, error_msg)
 
         # Check if AI detected validation errors - route to validation error recovery
         if result.get("validation_errors_detected"):

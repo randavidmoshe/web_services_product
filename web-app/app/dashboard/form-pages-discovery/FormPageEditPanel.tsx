@@ -2842,10 +2842,11 @@ export default function FormPageEditPanel({
                             <span style={{
                               background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.3)',
                               color: isLightTheme() ? '#92400e' : '#fcd34d',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 600
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              fontSize: '18px',
+                              fontWeight: 700,
+                              lineHeight: '1.7'
                             }}>
                               🧪 {path.test_scenario_name || 'Scenario'}
                             </span>
@@ -4326,8 +4327,12 @@ export default function FormPageEditPanel({
               </button>
             </div>
 
-            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
-              Add specific values that must be exact (not random) when mapping "{editingFormPage.form_name}".
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '21px' }}>
+              For auto-mapping: specify fields that require exact values instead of AI-generated random data.
+              <br />
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+                Examples: AD username, database port, specific email domain, company ID, etc.
+              </span>
             </p>
 
             <UserProvidedInputsSection
@@ -4523,8 +4528,8 @@ export default function FormPageEditPanel({
               </button>
             </div>
 
-            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '14px' }}>
-              Provide rules for verifying form field values (e.g., "First Name should be preceded by Mr/Mrs", "Total = Quantity × Price").
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '21px' }}>
+              Provide rules for verifying form field values (e.g., "First Name should be preceded by Mr/Mrs", "Total = Quantity × Price x 0.5", "a flag should appear near State"..).
             </p>
 
             <input
@@ -4544,7 +4549,7 @@ export default function FormPageEditPanel({
                 background: isLightTheme() ? 'rgba(6, 182, 212, 0.05)' : 'rgba(6, 182, 212, 0.1)'
               }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
-                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
                   No verification instructions
                 </p>
                 <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '15px' }}>
@@ -4664,8 +4669,15 @@ export default function FormPageEditPanel({
               </button>
             </div>
 
-            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '14px' }}>
-              Create test scenarios with specific field values. Each scenario will map a single path using your defined values.
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '21px' }}>
+              Create test scenarios for targeted mapping. Each scenario maps a single path using your defined values.
+              <br />
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+                Focus on field values that reveal new fields or trigger different junction combinations.
+              </span>
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
+                In case of exact fields needed (Specific AD user/DB port - put these also here).
+              </span>
             </p>
 
             {/* Hidden file inputs */}
@@ -4710,8 +4722,8 @@ export default function FormPageEditPanel({
               >
                 {scenarioSaving ? 'Uploading...' : '📄 Upload Scenario File'}
               </button>
-              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '13px' }}>
-                .txt, .md, or .csv files with field values (e.g., "Full Name: Johnny Cash")
+              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '17px' }}>
+                .txt, .md, or .csv files with field values (e.g., "Full Name: Johnny B")
               </p>
             </div>
 

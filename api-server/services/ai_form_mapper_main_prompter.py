@@ -67,7 +67,7 @@ class AIHelper:
                     # Last attempt failed
                     print(f"[AIHelper] ❌ API Overloaded after {max_retries} attempts. Giving up.")
                     logger.error(f"[AIHelper] API Overloaded after {max_retries} attempts: {e}")
-                    return None
+                    raise AIParseError(f"API Overloaded after {max_retries} attempts: {e}")
                 
                 # Add jitter to prevent thundering herd
                 jitter = random.uniform(0, delay * 0.5)
@@ -83,7 +83,7 @@ class AIHelper:
                 if attempt == max_retries - 1:
                     print(f"[AIHelper] ❌ API Error after {max_retries} attempts: {e}")
                     logger.error(f"[AIHelper] API Error after {max_retries} attempts: {e}")
-                    return None
+                    raise AIParseError(f"API Error after {max_retries} attempts: {e}")
                 
                 print(f"[AIHelper] ⚠️  API Error: {e}. Retrying in {delay}s... ({attempt + 1}/{max_retries})")
                 logger.warning(f"[AIHelper] API Error. Retry {attempt + 1}/{max_retries} after {delay}s")
@@ -94,9 +94,9 @@ class AIHelper:
             except Exception as e:
                 print(f"[AIHelper] ❌ Unexpected error: {e}")
                 logger.error(f"[AIHelper] Unexpected error: {e}")
-                return None
+                raise AIParseError(f"Unexpected API error: {e}")
         
-        return None
+        raise AIParseError("API call failed after all retries")
     
     def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
         """
@@ -136,7 +136,7 @@ class AIHelper:
                 if attempt == max_retries - 1:
                     print(f"[AIHelper] ❌ API Overloaded after {max_retries} attempts. Giving up.")
                     logger.error(f"[AIHelper] API Overloaded after {max_retries} attempts: {e}")
-                    return None
+                    raise AIParseError(f"API Overloaded after {max_retries} attempts: {e}")
                 
                 jitter = random.uniform(0, delay * 0.5)
                 wait_time = delay + jitter
@@ -151,7 +151,7 @@ class AIHelper:
                 if attempt == max_retries - 1:
                     print(f"[AIHelper] ❌ API Error after {max_retries} attempts: {e}")
                     logger.error(f"[AIHelper] API Error after {max_retries} attempts: {e}")
-                    return None
+                    raise AIParseError(f"API Error after {max_retries} attempts: {e}")
                 
                 print(f"[AIHelper] ⚠️  API Error: {e}. Retrying in {delay}s... ({attempt + 1}/{max_retries})")
                 logger.warning(f"[AIHelper] API Error. Retry {attempt + 1}/{max_retries} after {delay}s")
@@ -162,9 +162,9 @@ class AIHelper:
             except Exception as e:
                 print(f"[AIHelper] ❌ Unexpected error: {e}")
                 logger.error(f"[AIHelper] Unexpected error: {e}")
-                return None
+                raise AIParseError(f"Unexpected API error: {e}")
         
-        return None
+        raise AIParseError("API call failed after all retries")
 
     def generate_test_steps(
             self,
@@ -391,9 +391,11 @@ Use these field values when filling the form:
         - List items (sections with "Add" / "Add New" / "+" buttons to add multiple entries)
         - File upload fields (input type="file")
         
-        **MANDATORY: FILL ALL FIELDS**
+        **⚠️ CRITICAL - WHEN CREATING THE ADDITIONAL STEPS  - DO THEM UNTIL TWO STEPS AFTER THE NEXT TAB OR TWO STEPS AFTER THE SAVE BECAUSE WHEN WE CLICK A TAB WE DO REGENERATE AND COME BACK HERE FOR MORE STEPS 
+        
+        **⚠️ CRITICAL AND MANDATORY - DURING THE CREATION GIVE STEPS TO 100% OF ALL THE FIELDS - INCLUDING 100% OF ALL THE OPTIONAL ONES - MUST NOT SKIP ANY FIELD 
+       
         ================================================================================
-        **CRITICAL: You MUST fill EVERY field you encounter, regardless of whether it has a * (required) marker or not.**
         
         - Fill ALL text inputs
         - Fill ALL textareas
@@ -404,6 +406,7 @@ Use these field values when filling the form:
         - Fill ALL fields in ALL tabs/sections
         - Fill ALL fields in modals/popups
         - Fill ALL fields in iframes
+        - FILL ALL THE OPTIONAL FIELDS - DONT SKIP ANY
         
         **DO NOT skip fields just because they don't have a * (required) marker!**
         Real users fill all visible fields, not just required ones.
@@ -1448,9 +1451,8 @@ Do NOT skip fields just because they are not in the required selections list.
                 scenario_name = user_provided_inputs.get("scenario_name", "Test Scenario")
                 content = user_provided_inputs.get("content", "")
                 user_inputs_section = f"""
-📋 TEST SCENARIO: {scenario_name}
 {'=' * 60}
-Use these field values when filling the form:
+Use these field values when filling matching fields:
 
 {content}
 
@@ -1610,15 +1612,18 @@ For example if the last step already executed was to open a drop down then your 
 
 **⚠️ Never return to a previous Tab that you already filled
 
-** ALSO SCAN THE SCREENSHOT IN ADDITION TO DOM **
+**⚠️ CRITICAL AND MANDATORY - DURING THE CREATION GIVE STEPS TO ALSO 100% OF ALL THE OPTIONAL FIELDS - MUST NOT SKIP ANY FIELD (ALL MANDATORIES FIELDS AND ALL OPTIONALS FIELDS)
+
+**⚠️ CRITICAL - WHEN CREATING THE ADDITIONAL STEPS  - DO THEM UNTIL TWO STEPS AFTER THE NEXT TAB OR TWO STEPS AFTER THE SAVE BECAUSE WHEN WE CLICK A TAB WE DO REGENERATE AND COME BACK HERE FOR MORE STEPS 
+
+**⚠️CRITICAL - SCAN THE SCREENSHOT IN ADDITION TO DOM **
 - Locate the trigger step in SCREENSHOT
-- Critical - look at the image - is there a dropdown that is currently open - if so is that the last executed step that was done - if this is the case then you first step is to click an option from this list
-- Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps the USER will perform to FILL EVERYTHING IN THE SCREENSHOT
-- imagine you are a user: what is EVERY click, selection, and input you would make?
+- Critical - look at the image - is there a dropdown that is currently open - if that was the last executed step that was done - if this is the case then you first step is to click an option from this list
+- Analyze the SCREENSHOT to SEE ALL THE 100% remaining steps to perform to FILL EVERYTHING IN THE SCREENSHOT
+- Look for fields that may appear outside blocks of fields in the current tab so they might be hard to find - we must find all of them
 - Make sure you create steps for all of them
 - Note that the trigger step might be at an inner location so you need to look also outside this trigger step's scope
 - **JUNCTION CHECK:** Look for dropdowns/radio buttons/cards in SCREENSHOT. If they could show/hide different fields based on selection, mark them as junctions (is_junction=true + junction_info).
-- The SCREENSHOT may show only part of whats needed so its in Addition to what you find in DOM
 
 
 **Priority order:**

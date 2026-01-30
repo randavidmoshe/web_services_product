@@ -106,7 +106,8 @@ def _get_session_context(redis_client, session_id: str) -> Dict:
         "company_name": company_name,
         "mapping_type": decoded.get("mapping_type", "form"),
         "test_case_description": decoded.get("test_case_description", ""),
-        "test_page_route_id": int(decoded.get("test_page_route_id", 0))
+        "test_page_route_id": int(decoded.get("test_page_route_id", 0)),
+        "test_scenario_id": int(decoded.get("test_scenario_id", 0)) or None
     }
 
 
@@ -1830,7 +1831,7 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
             company_id=ctx.get("company_id"),
             path_number=existing_paths + 1,
             path_junctions=path_junctions if path_junctions else [],
-            steps=updated_stages if updated_stages else stages
+            steps=updated_stages if updated_stages else stages,
         )
 
         db.add(form_map_result)

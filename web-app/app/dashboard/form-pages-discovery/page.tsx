@@ -51,6 +51,8 @@ interface CompletedPath {
   is_verified: boolean
   created_at: string
   updated_at: string
+  test_scenario_id?: number
+  test_scenario_name?: string
 }
 
 interface SessionStatus {
@@ -1095,7 +1097,14 @@ export default function DashboardPage() {
               fetchCompletedPaths(formPageId)
             } else if (data.status === 'failed') {
               console.error('Mapping failed:', data.error)
-              setError('Mapping failed')
+              const isAIError = data.error && (
+                data.error.includes('API Error') ||
+                data.error.includes('API Overloaded') ||
+                data.error.includes('credit balance') ||
+                data.error.includes('budget exceeded') ||
+                data.error.includes('AI parse failed')
+              )
+              setError(isAIError ? data.error : 'Mapping failed')
             } else if (data.status === 'no_more_paths') {
               setMessage('All form paths have been explored - no additional paths needed!')
             }

@@ -831,8 +831,16 @@ async def get_completed_paths(
 
     Returns paths with steps (junction info filtered out for display).
     """
+    ## Query all form_map_results for this form_page_route
+    #results = db.query(FormMapResult).filter(
+    #    FormMapResult.form_page_route_id == form_page_route_id
+    #).order_by(FormMapResult.path_number.asc()).all()
+
     # Query all form_map_results for this form_page_route
-    results = db.query(FormMapResult).filter(
+    from sqlalchemy.orm import joinedload
+    results = db.query(FormMapResult).options(
+        joinedload(FormMapResult.test_scenario)
+    ).filter(
         FormMapResult.form_page_route_id == form_page_route_id
     ).order_by(FormMapResult.path_number.asc()).all()
 

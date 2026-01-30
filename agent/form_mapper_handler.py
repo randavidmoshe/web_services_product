@@ -54,7 +54,27 @@ class FormMapperTaskHandler:
         self.api_client = api_client
         self.active_sessions: Dict[int, Dict] = {}  # Track active sessions
         self.closed_sessions: set = set()  # Track closed/cancelled sessions
-    
+        self._currently_executing_session = None  # Track session currently running
+
+    def _cleanup_inactive_sessions(self, timeout_minutes: int = 10):
+        """Remove sessions with no activity for timeout_minutes"""
+        current_time = time.time()
+        timeout_seconds = timeout_minutes * 60
+        stale_sessions = []
+
+        for sid, info in self.active_sessions.items():
+            # Skip currently executing session
+            if sid == self._currently_executing_session:
+                continue
+            last_activity = info.get("last_activity_at", info.get("initialized_at", 0))
+            if current_time - last_activity > timeout_seconds:
+                stale_sessions.append(sid)
+
+        for sid in stale_sessions:
+            print(f"[FormMapper] Auto-closing inactive session {sid} (no activity for {timeout_minutes}+ minutes)")
+            del self.active_sessions[sid]
+            self.closed_sessions.add(int(sid))
+
     def handle_task(self, task: Dict) -> Dict:
         """
         Main entry point - route task to appropriate handler.
@@ -69,6 +89,10 @@ class FormMapperTaskHandler:
         session_id = task.get("session_id")
         payload = task.get("payload", {})
 
+        # NEW CODE - Track currently executing session and cleanup stale ones
+        self._currently_executing_session = session_id
+        self._cleanup_inactive_sessions(timeout_minutes=4)
+        # END NEW CODE
 
         # Start session if context provided and not already started
         session_context = payload.get("session_context")
@@ -143,10 +167,17 @@ class FormMapperTaskHandler:
             result = handler(session_id, payload)
             result["task_type"] = task_type
             result["session_id"] = session_id
+
+            # Update last activity after task completes
+            if session_id and session_id in self.active_sessions:
+                self.active_sessions[session_id]["last_activity_at"] = time.time()
+            self._currently_executing_session = None
+
             return result
             
         except Exception as e:
             logger.error(f"[FormMapper] Error handling {task_type}: {e}", exc_info=True)
+            self._currently_executing_session = None
             return {
                 "task_type": task_type,
                 "session_id": session_id,
