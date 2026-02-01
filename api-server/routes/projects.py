@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-from models.database import get_db, Project, Network, FormPageRoute, User
+from models.database import get_db, Project, Network, FormPageRoute, User, Company
 
 router = APIRouter()
 
@@ -77,6 +77,24 @@ async def list_projects(company_id: int, db: Session = Depends(get_db)):
 @router.post("/")
 async def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     """Create a new project"""
+
+    # Validate project_type matches company's account_category
+    company = db.query(Company).filter(Company.id == project_data.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Mapping: form_centric -> enterprise, dynamic -> dynamic_content
+    if company.account_category == 'form_centric' and project_data.project_type != 'enterprise':
+        raise HTTPException(
+            status_code=400,
+            detail="Form-centric accounts can only create enterprise (form-based) projects"
+        )
+    if company.account_category == 'dynamic' and project_data.project_type != 'dynamic_content':
+        raise HTTPException(
+            status_code=400,
+            detail="Dynamic accounts can only create dynamic_content projects"
+        )
+
     project = Project(
         name=project_data.name,
         description=project_data.description,

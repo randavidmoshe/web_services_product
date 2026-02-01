@@ -24,11 +24,9 @@ from models.database import (
     ProjectFormHierarchy
 )
 from services.form_pages_ai_helper import FormPagesAIHelper
+from services.ai_budget_service import get_budget_service, BudgetExceededError, AccessDeniedError
 
 
-class AIBudgetExceededError(Exception):
-    """Raised when company has exceeded their AI budget"""
-    pass
 
 
 class FormPagesLocatorService:
@@ -71,31 +69,7 @@ class FormPagesLocatorService:
             company_id=company_id
         )
 
-    def _check_and_reset_budget(self, subscription: CompanyProductSubscription) -> None:
-        """
-        Check if budget needs to be reset (30 days passed).
-        
-        Args:
-            subscription: The subscription to check
-        """
-        if subscription.budget_reset_date:
-            # Handle both date and datetime types
-            reset_date = subscription.budget_reset_date
-            if hasattr(reset_date, 'date'):
-                reset_date = reset_date.date()
-            
-            if datetime.utcnow().date() >= reset_date:
-                # Reset budget
-                old_usage = subscription.claude_used_this_month
-                subscription.claude_used_this_month = 0.0
-                subscription.budget_reset_date = datetime.utcnow().date() + timedelta(days=30)
-                self.db.commit()
-                print(f"[FormPagesLocatorService] Budget reset for subscription {subscription.id}. Previous usage: ${old_usage:.2f}")
-        else:
-            # Set initial reset date if not set
-            subscription.budget_reset_date = datetime.utcnow().date() + timedelta(days=30)
-            self.db.commit()
-            print(f"[FormPagesLocatorService] Set initial budget reset date for subscription {subscription.id}")
+
     
     def _check_budget(self, company_id: int, product_id: int) -> bool:
         """
@@ -109,43 +83,36 @@ class FormPagesLocatorService:
             True if budget available or BYOK mode
             
         Raises:
-            AIBudgetExceededError if budget exceeded
+            BudgetExceededError if budget exceeded
+            AccessDeniedError if access denied (pending, expired, etc.)
         """
-        subscription = self.db.query(CompanyProductSubscription).filter(
-            CompanyProductSubscription.company_id == company_id,
-            CompanyProductSubscription.product_id == product_id
-        ).first()
-        
-        if not subscription:
-            print(f"[FormPagesLocatorService] No subscription found for company {company_id}, product {product_id}")
-            return True  # No subscription = allow (shouldn't happen in production)
-        
-        self.subscription = subscription
-        
-        # BYOK mode - customer uses their own key, no limits
-        if subscription.customer_claude_api_key:
+        redis_client = None
+        try:
+            import redis
+            import os
+            redis_client = redis.Redis(
+                host=os.getenv("REDIS_HOST", "redis"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                db=0
+            )
+        except:
+            pass
+
+        budget_service = get_budget_service(redis_client)
+        has_budget, remaining, total = budget_service.check_budget(
+            self.db, company_id, product_id
+        )
+
+        if not has_budget:
+            raise BudgetExceededError(company_id, total, total - remaining)
+
+        # Check if BYOK (remaining is infinity)
+        if remaining == float('inf'):
             self.is_byok = True
             print(f"[FormPagesLocatorService] BYOK mode - no budget limits")
-            return True
-        
-        # Check and reset budget if needed
-        self._check_and_reset_budget(subscription)
-        
-        # Check if budget exceeded
-        if subscription.claude_used_this_month >= subscription.monthly_claude_budget:
-            days_until_reset = 0
-            if subscription.budget_reset_date:
-                delta = subscription.budget_reset_date - datetime.utcnow()
-                days_until_reset = max(0, delta.days)
-            
-            raise AIBudgetExceededError(
-                f"AI budget exceeded. Used: ${subscription.claude_used_this_month:.2f}, "
-                f"Budget: ${subscription.monthly_claude_budget:.2f}. "
-                f"Resets in {days_until_reset} days."
-            )
-        
-        remaining = subscription.monthly_claude_budget - subscription.claude_used_this_month
-        print(f"[FormPagesLocatorService] Budget check passed. Used: ${subscription.claude_used_this_month:.2f}, Remaining: ${remaining:.2f}")
+        else:
+            print(f"[FormPagesLocatorService] Budget check passed. Remaining: ${remaining:.2f}")
+
         return True
     
     def _init_ai_helper(self, company_id: int, product_id: int) -> bool:

@@ -36,7 +36,7 @@ def _get_db_session():
 
 def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
     """Check budget and get API key."""
-    from services.ai_budget_service import get_budget_service, BudgetExceededError
+    from services.ai_budget_service import get_budget_service, BudgetExceededError, AccessDeniedError
     from models.database import CompanyProductSubscription
     
     redis_client = _get_redis_client()
@@ -46,6 +46,9 @@ def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
     
     if not has_budget:
         raise BudgetExceededError(company_id, total, total - remaining)
+
+    # Note: AccessDeniedError is raised automatically by check_budget()
+    # for pending access, expired trial, missing API key, etc.
     
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id,

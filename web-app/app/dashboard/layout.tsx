@@ -47,6 +47,9 @@ export default function DashboardLayout({
   
   // Project dropdown
   const [showProjectDropdown, setShowProjectDropdown] = useState(false)
+
+  // User dropdown
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
   
   // Projects modal (for managing projects)
   const [showProjectsModal, setShowProjectsModal] = useState(false)
@@ -268,6 +271,20 @@ export default function DashboardLayout({
       return
     }
     
+    // Check onboarding status for regular users
+    if (storedUserRole !== 'super_admin' && storedUserId) {
+      fetch(`/api/onboarding/status?user_id=${storedUserId}`, {
+        headers: { 'Authorization': `Bearer ${storedToken}` }
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && !data.onboarding_completed) {
+            window.location.href = '/onboarding'
+          }
+        })
+        .catch(err => console.error('Failed to check onboarding:', err))
+    }
+
     setToken(storedToken)
     setUserId(storedUserId)
     setCompanyId(storedCompanyId)
@@ -836,27 +853,93 @@ export default function DashboardLayout({
             <span>⬇️</span> Download Agent
           </button>
           
-          {/* Logout */}
-          <button 
-            onClick={handleLogout} 
-            className="top-btn" 
-            style={{
-              background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
-              borderRadius: '12px',
-              padding: '12px 22px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: getTheme().colors.textPrimary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Logout
-          </button>
+          {/* User Menu Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
+              className="top-btn"
+              style={{
+                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '12px',
+                padding: '12px 22px',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: getTheme().colors.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>👤</span>
+              <span>Account</span>
+              <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
+            </button>
+
+            {showUserDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '8px',
+                background: isLightTheme() ? 'rgba(255,255,255,0.98)' : 'rgba(30,41,59,0.98)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '12px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                minWidth: '180px',
+                overflow: 'hidden',
+                zIndex: 1000
+              }}>
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    router.push('/settings')
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: getTheme().colors.textPrimary,
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>⚙️</span> Settings
+                </div>
+                <div style={{ height: '1px', background: isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }} />
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    handleLogout()
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: '#ef4444',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>🚪</span> Logout
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

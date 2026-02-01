@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 import os
 
@@ -41,6 +41,22 @@ class SuperAdmin(Base):
     totp_secret = Column(String, nullable=True)
     totp_enabled = Column(Boolean, default=False)
 
+    # Password reset fields
+    password_reset_token_hash = Column(String(64), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
+
+
+class SuperAdminAuditLog(Base):
+    __tablename__ = "super_admin_audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("super_admins.id"), nullable=False)
+    action = Column(String(50), nullable=False)
+    target_company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
+    details = Column(JSON, nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class Company(Base):
     __tablename__ = "companies"
     id = Column(Integer, primary_key=True)
@@ -53,6 +69,18 @@ class Company(Base):
     form_mapper_config = Column(JSON, default=dict)
     kms_key_arn = Column(String(255), nullable=True)  # BYOK - Customer's KMS key ARN
     debug_mode = Column(Boolean, default=False)  # Enable verbose AI logging for debugging
+
+    # Onboarding fields
+    account_category = Column(String(20), nullable=True)  # 'form_centric' | 'dynamic' | NULL
+    access_model = Column(String(20), nullable=True)  # 'byok' | 'early_access' | NULL
+    access_status = Column(String(20), default='pending')  # 'active' | 'pending' | 'rejected'
+    onboarding_completed = Column(Boolean, default=False)
+    # Early Access trial limits
+    daily_ai_budget = Column(Float, default=10.00)  # $ per day for Early Access
+    trial_days_total = Column(Integer, default=10)  # Total trial days
+    trial_start_date = Column(DateTime, nullable=True)  # When Early Access approved
+    ai_used_today = Column(Float, default=0.00)  # Reset daily
+    last_usage_reset_date = Column(DateTime, nullable=True)  # For daily reset tracking
 
 class CompanyProductSubscription(Base):
     __tablename__ = "company_product_subscriptions"
@@ -91,6 +119,16 @@ class User(Base):
     invite_token = Column(String(100), unique=True, nullable=True)
     invite_sent_at = Column(DateTime, nullable=True)
     invite_accepted_at = Column(DateTime, nullable=True)
+
+    # Email verification fields (for self-signup)
+    is_verified = Column(Boolean, default=False)
+    email_verification_token_hash = Column(String(64), nullable=True)
+    email_verification_expires_at = Column(DateTime, nullable=True)
+    email_verification_sent_at = Column(DateTime, nullable=True)
+
+    # Password reset fields
+    password_reset_token_hash = Column(String(64), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
 
 class Project(Base):
     __tablename__ = "projects"
@@ -346,6 +384,19 @@ class FormUploadedFile(Base):
 
     __table_args__ = (
         Index('ix_form_uploaded_files_route', 'form_page_route_id'),
+    )
+
+
+class EmailVerificationRateLimit(Base):
+    """Track verification email sends for rate limiting"""
+    __tablename__ = "email_verification_rate_limits"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, nullable=False, index=True)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('ix_email_verification_rate_limits_email_sent', 'email', 'sent_at'),
     )
 
 # Import related models to resolve relationships

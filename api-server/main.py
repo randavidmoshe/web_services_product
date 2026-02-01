@@ -20,9 +20,14 @@ from routes import form_mapper
 from routes import company_config  # <-- ADD THIS
 from routes import test_templates
 from routes import test_pages
+from routes import onboarding
+from routes import super_admin
 from passlib.context import CryptContext
 from routes import user_requirements
 from routes.activity_logs import router as activity_logs_router
+from routes.settings import router as settings_router
+
+
 from utils.logging_config import configure_logging
 
 import logging
@@ -147,6 +152,9 @@ app.include_router(test_templates.router)
 app.include_router(user_requirements.router)
 app.include_router(activity_logs_router)
 app.include_router(test_pages.router)
+app.include_router(onboarding.router)
+app.include_router(super_admin.router)
+app.include_router(settings_router)
 
 @app.get("/")
 async def root():

@@ -52,7 +52,7 @@ const QuatheraLogo = () => (
               fontWeight="300" 
               fill="#FFFFFF" 
               letterSpacing="6">
-          <tspan fill="url(#circuitGradient)" fontWeight="600">Q</tspan>uathera
+          <tspan fill="url(#circuitGradient)" fontWeight="600">Q</tspan>uattera
         </text>
       </g>
     </g>
@@ -73,6 +73,10 @@ export default function WebAppLoginPage() {
   const [pendingCompanyId, setPendingCompanyId] = useState<number | null>(null)
   const [tempToken, setTempToken] = useState<string>('')
   const [show2FASetupModal, setShow2FASetupModal] = useState(false)
+
+  const [emailNotVerified, setEmailNotVerified] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,6 +117,12 @@ export default function WebAppLoginPage() {
         
         completeLogin(data)
       } else {
+        const errorData = await response.json()
+        if (response.status === 403 && errorData.detail === 'Email not verified') {
+          setEmailNotVerified(true)
+          setIsLoading(false)
+          return
+        }
         setMessage('❌ Invalid credentials')
         setIsLoading(false)
       }
@@ -161,7 +171,17 @@ export default function WebAppLoginPage() {
       localStorage.setItem('company_id', String(data.company_id))
     }
     setMessage('✅ Login successful!')
-    setTimeout(() => window.location.href = '/dashboard/form-pages-discovery', 1000)
+
+    // Determine redirect based on user type and onboarding status
+    let redirectUrl = '/dashboard/form-pages-discovery'
+
+    if (data.type === 'super_admin') {
+      redirectUrl = '/admin'
+    } else if (data.onboarding_completed === false) {
+      redirectUrl = '/onboarding'
+    }
+
+    setTimeout(() => window.location.href = redirectUrl, 1000)
   }
 
   const handle2FASetupSuccess = () => {
@@ -175,7 +195,18 @@ export default function WebAppLoginPage() {
       localStorage.setItem('company_id', String(pendingCompanyId))
     }
     setMessage('✅ 2FA enabled! Redirecting...')
-    setTimeout(() => window.location.href = '/dashboard/form-pages-discovery', 1000)
+
+    // Determine redirect based on user type
+    let redirectUrl = '/dashboard/form-pages-discovery'
+
+    if (pendingUserType === 'super_admin') {
+      redirectUrl = '/admin'
+    } else {
+      // For regular users after 2FA setup, check onboarding via API
+      redirectUrl = '/onboarding'  // Will redirect to dashboard if already completed
+    }
+
+    setTimeout(() => window.location.href = redirectUrl, 1000)
   }
 
   const resetLogin = () => {
@@ -185,6 +216,23 @@ export default function WebAppLoginPage() {
     setPendingUserType('')
     setPendingCompanyId(null)
     setMessage('')
+  }
+
+  const handleResendVerification = async () => {
+    if (resendLoading) return
+    setResendLoading(true)
+    try {
+      await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      setResendSuccess(true)
+    } catch (err) {
+      setResendSuccess(true)
+    } finally {
+      setResendLoading(false)
+    }
   }
 
   return (
@@ -226,7 +274,49 @@ export default function WebAppLoginPage() {
           maxWidth: '420px',
           boxShadow: '0 25px 80px rgba(0, 0, 0, 0.4)'
         }}>
-          {!requires2FA ? (
+          {emailNotVerified ? (
+            <>
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <span style={{ fontSize: '48px' }}>📧</span>
+              </div>
+              <h2 style={{ margin: '0 0 8px', fontSize: '24px', fontWeight: 700, color: '#0A0E17', textAlign: 'center' }}>
+                Email Not Verified
+              </h2>
+              <p style={{ margin: '0 0 24px', fontSize: '15px', color: '#64748b', textAlign: 'center', lineHeight: 1.6 }}>
+                Please check your inbox and click the verification link. Check spam if you don't see it.
+              </p>
+              {resendSuccess ? (
+                <div style={{ padding: '14px', textAlign: 'center', borderRadius: '10px', background: '#d1fae5', color: '#059669', fontSize: '14px' }}>
+                  ✓ Verification email sent!
+                </div>
+              ) : (
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resendLoading}
+                  style={{
+                    width: '100%', padding: '14px',
+                    background: resendLoading ? '#94a3b8' : '#00BBF9',
+                    color: 'white', border: 'none', borderRadius: '10px',
+                    fontSize: '15px', fontWeight: 600,
+                    cursor: resendLoading ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {resendLoading ? 'Sending...' : 'Resend Verification Email'}
+                </button>
+              )}
+              <button
+                onClick={() => { setEmailNotVerified(false); setResendSuccess(false); }}
+                style={{
+                  width: '100%', marginTop: '12px', padding: '12px',
+                  background: 'transparent', color: '#64748b',
+                  border: '1px solid #e5e7eb', borderRadius: '10px',
+                  fontSize: '14px', cursor: 'pointer'
+                }}
+              >
+                ← Back to login
+              </button>
+            </>
+          ) : !requires2FA ? (
             <>
               <h2 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 700, color: '#0A0E17', textAlign: 'center' }}>Welcome Back</h2>
               <p style={{ margin: '0 0 32px', fontSize: '15px', color: '#64748b', textAlign: 'center' }}>Sign in to your account</p>
@@ -369,7 +459,7 @@ export default function WebAppLoginPage() {
         onClose={() => setShow2FASetupModal(false)}
         onSuccess={handle2FASetupSuccess}
         token={tempToken}
-        isMandatory={pendingUserType === 'admin'}
+        isMandatory={pendingUserType === 'admin' || pendingUserType === 'super_admin'}
       />
     </div>
   )

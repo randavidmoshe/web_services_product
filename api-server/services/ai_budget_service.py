@@ -12,6 +12,12 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+class AccessDeniedError(Exception):
+    """Raised when AI access is denied (not a budget issue)"""
+    def __init__(self, reason: str, code: str):
+        self.reason = reason
+        self.code = code
+        super().__init__(reason)
 
 class AIOperationType(str, Enum):
     """Types of AI operations for tracking"""
@@ -76,7 +82,7 @@ class AIBudgetService:
         estimated_cost: float = 0.0
     ) -> Tuple[bool, float, float]:
         """
-        Check if company has sufficient AI budget.
+        Check if company has sufficient AI budget AND valid access.
         
         Uses Redis cache to reduce database load for high-frequency checks.
         
@@ -90,8 +96,23 @@ class AIBudgetService:
             Tuple of (has_budget, remaining_budget, monthly_budget)
             
         Raises:
+            AccessDeniedError if access denied (pending, expired, no key, etc.)
             BudgetExceededError if budget exceeded and estimated_cost > 0
         """
+        from models.database import Company, CompanyProductSubscription
+
+        # First check access status (cached)
+        access_info = self._check_access_status(db, company_id, product_id)
+
+        # BYOK mode - no budget limits
+        if access_info.get("mode") == "byok":
+            return (True, float('inf'), float('inf'))
+
+        # Early Access - check daily budget
+        if access_info.get("mode") == "early_access":
+            return self._check_daily_budget(db, company_id, estimated_cost)
+
+        # Legacy/default: check monthly subscription budget
         # Try Redis cache first
         cached = self._get_cached_budget(company_id, product_id)
         if cached:
@@ -104,8 +125,7 @@ class AIBudgetService:
             return (remaining > 0, remaining, budget)
         
         # Cache miss - query database
-        from models.database import CompanyProductSubscription
-        
+
         subscription = db.query(CompanyProductSubscription).filter(
             and_(
                 CompanyProductSubscription.company_id == company_id,
@@ -165,7 +185,188 @@ class AIBudgetService:
             self._invalidate_budget_cache(subscription.company_id, subscription.product_id)
             
             logger.info(f"[AIBudget] Reset budget for company {subscription.company_id}")
-    
+
+    def _check_access_status(self, db: Session, company_id: int, product_id: int) -> dict:
+        """
+        Check company access status. Cached in Redis.
+
+        Returns:
+            dict with 'mode' (byok/early_access/legacy) and access info
+
+        Raises:
+            AccessDeniedError if access denied
+        """
+        from models.database import Company, CompanyProductSubscription
+        from datetime import timedelta
+
+        # Try cache first
+        cache_key = f"ai_access:{company_id}"
+        if self.redis:
+            try:
+                cached = self.redis.get(cache_key)
+                if cached:
+                    import json
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning(f"[AIBudget] Cache read error: {e}")
+
+        # Query company
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise AccessDeniedError("Company not found", "COMPANY_NOT_FOUND")
+
+        # Check access_status
+        access_status = getattr(company, 'access_status', None)
+        access_model = getattr(company, 'access_model', None)
+
+        # Legacy companies (no access_model set) - allow through to monthly budget check
+        if not access_model:
+            result = {"mode": "legacy", "allowed": True}
+            self._cache_access(cache_key, result)
+            return result
+
+        # Check if access is active
+        if access_status != 'active':
+            if access_status == 'pending':
+                raise AccessDeniedError(
+                    "Your Early Access request is pending approval",
+                    "ACCESS_PENDING"
+                )
+            else:
+                raise AccessDeniedError(
+                    "AI access is not available for your account",
+                    "ACCESS_DENIED"
+                )
+
+        # BYOK mode
+        if access_model == 'byok':
+            subscription = db.query(CompanyProductSubscription).filter(
+                CompanyProductSubscription.company_id == company_id,
+                CompanyProductSubscription.product_id == product_id
+            ).first()
+
+            if not subscription or not subscription.customer_claude_api_key:
+                raise AccessDeniedError(
+                    "No API key configured. Please add your API key in settings.",
+                    "NO_API_KEY"
+                )
+
+            result = {"mode": "byok", "allowed": True}
+            self._cache_access(cache_key, result)
+            return result
+
+        # Early Access mode
+        if access_model == 'early_access':
+            # Check trial expiration
+            trial_start = getattr(company, 'trial_start_date', None)
+            trial_days = getattr(company, 'trial_days_total', None) or 10
+
+            if trial_start:
+                trial_end = trial_start + timedelta(days=trial_days)
+                if datetime.utcnow() > trial_end:
+                    raise AccessDeniedError(
+                        "Your trial has expired. Contact support or switch to BYOK.",
+                        "TRIAL_EXPIRED"
+                    )
+
+            result = {
+                "mode": "early_access",
+                "allowed": True,
+                "daily_budget": getattr(company, 'daily_ai_budget', None) or 10.0
+            }
+            self._cache_access(cache_key, result)
+            return result
+
+        # Unknown model - allow through to legacy check
+        result = {"mode": "legacy", "allowed": True}
+        self._cache_access(cache_key, result)
+        return result
+
+    def _cache_access(self, cache_key: str, result: dict) -> None:
+        """Cache access check result"""
+        if not self.redis:
+            return
+        try:
+            import json
+            self.redis.setex(cache_key, self.BUDGET_CACHE_TTL, json.dumps(result))
+        except Exception as e:
+            logger.warning(f"[AIBudget] Cache write error: {e}")
+
+    def _check_daily_budget(
+            self,
+            db: Session,
+            company_id: int,
+            estimated_cost: float = 0.0
+    ) -> Tuple[bool, float, float]:
+        """Check daily budget with Redis caching"""
+
+        # Try cache first
+        cache_key = f"ai_daily_budget:{company_id}"
+        if self.redis:
+            try:
+                cached = self.redis.hgetall(cache_key)
+                if cached:
+                    daily_budget = float(cached.get(b"budget", cached.get("budget", 10.0)))
+                    used_today = float(cached.get(b"used", cached.get("used", 0.0)))
+                    remaining = daily_budget - used_today
+
+                    if estimated_cost > 0 and remaining < estimated_cost:
+                        raise BudgetExceededError(company_id, daily_budget, used_today)
+
+                    return (remaining > 0, remaining, daily_budget)
+            except:
+                pass
+
+        # Cache miss - query DB
+        from models.database import Company
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            return (False, 0.0, 0.0)
+
+        # Reset if needed
+        self._reset_daily_budget_if_needed(db, company)
+
+        daily_budget = getattr(company, 'daily_ai_budget', None) or 10.0
+        used_today = getattr(company, 'ai_used_today', None) or 0.0
+        remaining = daily_budget - used_today
+
+        # Cache it
+        if self.redis:
+            try:
+                self.redis.hset(cache_key, mapping={"budget": daily_budget, "used": used_today})
+                self.redis.expire(cache_key, self.BUDGET_CACHE_TTL)
+            except:
+                pass
+
+        if estimated_cost > 0 and remaining < estimated_cost:
+            raise BudgetExceededError(company_id, daily_budget, used_today)
+
+        return (remaining > 0, remaining, daily_budget)
+
+    def _reset_daily_budget_if_needed(self, db: Session, company) -> None:
+        """Reset daily budget if 24 hours have passed"""
+        now = datetime.utcnow()
+        last_reset = getattr(company, 'last_usage_reset_date', None)
+
+        if last_reset:
+            hours_since_reset = (now - last_reset).total_seconds() / 3600
+            if hours_since_reset >= 24:
+                company.ai_used_today = 0.0
+                company.last_usage_reset_date = now
+                db.commit()
+                logger.info(f"[AIBudget] Daily budget reset for company {company.id}")
+                # Invalidate access cache
+                if self.redis:
+                    try:
+                        self.redis.delete(f"ai_access:{company.id}")
+                    except:
+                        pass
+        else:
+            # First time - initialize
+            company.last_usage_reset_date = now
+            company.ai_used_today = 0.0
+            db.commit()
+
     # ============================================================
     # USAGE RECORDING (with atomic updates)
     # ============================================================
@@ -268,7 +469,32 @@ class AIBudgetService:
         input_cost = (input_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS
         output_cost = (output_tokens / 1_000_000) * self.COST_PER_1M_OUTPUT_TOKENS
         return round(input_cost + output_cost, 6)
-    
+
+    def record_daily_usage(self, db: Session, company_id: int, cost: float) -> None:
+        """Record daily usage with Redis atomic increment + async DB sync"""
+        from models.database import Company
+
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            return
+
+        access_model = getattr(company, 'access_model', None)
+        if access_model != 'early_access':
+            return
+
+        # Atomic increment in Redis (fast)
+        if self.redis:
+            try:
+                cache_key = f"ai_daily_budget:{company_id}"
+                self.redis.hincrbyfloat(cache_key, "used", cost)
+            except:
+                pass
+
+        # Also update DB (for persistence)
+        current_used = getattr(company, 'ai_used_today', None) or 0.0
+        company.ai_used_today = current_used + cost
+        db.commit()
+
     # ============================================================
     # REDIS CACHING (for scalability)
     # ============================================================
@@ -470,6 +696,8 @@ class AIBudgetService:
             ]
         }
 
+# Export error classes for use by callers
+__all__ = ['AIBudgetService', 'BudgetExceededError', 'AccessDeniedError', 'AIOperationType', 'get_budget_service']
 
 # Singleton instance for convenience
 _budget_service: Optional[AIBudgetService] = None

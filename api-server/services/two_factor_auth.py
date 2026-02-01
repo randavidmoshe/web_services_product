@@ -11,7 +11,7 @@ import base64
 class TwoFactorAuth:
     """Handle TOTP-based two-factor authentication"""
     
-    ISSUER_NAME = "Quathera"  # Your app name - shows in authenticator app
+    ISSUER_NAME = "Quattera"  # Your app name - shows in authenticator app
     
     @staticmethod
     def generate_secret() -> str:
