@@ -428,8 +428,8 @@ export default function DashboardPage() {
         if (data.length > 0) {
           const ids = data.map((fp: any) => fp.id).join(',')
           const countsResponse = await fetch(
-            `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
-            { headers: { 'Authorization': `Bearer ${authToken}` } }
+              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}&company_id=${storedCompanyId}`,
+              { headers: { 'Authorization': `Bearer ${authToken}` } }
           )
           if (countsResponse.ok) {
             const counts = await countsResponse.json()
@@ -1670,12 +1670,12 @@ export default function DashboardPage() {
     try {
       setLoadingPaths(true)
       const response = await fetch(
-        `/api/form-mapper/routes/${formPageRouteId}/paths`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+  `/api/form-mapper/routes/${formPageRouteId}/paths?company_id=${companyId}`,
+  {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
         }
       )
       if (response.ok) {

@@ -24,7 +24,7 @@ from celery_app import celery
 import os
 from sqlalchemy.orm.attributes import flag_modified
 from celery_app import celery
-
+from utils.auth_helpers import verify_company_access
 
 
 logger = logging.getLogger(__name__)
@@ -164,6 +164,7 @@ class StepUpdateRequest(BaseModel):
 @router.post("/start", response_model=StartMappingResponse, status_code=202)
 async def start_form_mapping(
     request: StartMappingRequest,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -184,6 +185,7 @@ async def start_form_mapping(
     
     if not form_page_route:
         raise HTTPException(status_code=404, detail="Form page route not found")
+    verify_company_access(authorization, form_page_route.company_id, db)
 
     # Use network_id from request, or fall back to form_page_route.network_id
     if not network_id:
@@ -288,6 +290,7 @@ async def start_form_mapping(
 async def continue_form_mapping(
         form_page_route_id: int,
         request: ContinueMappingRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -308,6 +311,8 @@ async def continue_form_mapping(
 
     if not form_page_route:
         raise HTTPException(status_code=404, detail="Form page route not found")
+    verify_company_access(authorization, form_page_route.company_id, db)
+
 
     if not network_id:
         network_id = form_page_route.network_id
@@ -419,10 +424,17 @@ async def continue_form_mapping(
 
 @router.get("/active-sessions")
 async def get_active_mapping_sessions(
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get all active mapping sessions for the current user."""
+    from utils.auth_helpers import get_token_from_header, decode_token
+    token = get_token_from_header(authorization)
+    payload = decode_token(token)
+    token_company_id = payload.get("company_id")
+
     active_sessions = db.query(FormMapperSession).filter(
+        FormMapperSession.company_id == token_company_id,
         FormMapperSession.status.in_(['initializing', 'pending', 'running'])
     ).all()
 
@@ -441,6 +453,7 @@ async def get_active_mapping_sessions(
 async def get_session_status(
     session_id: str,
     check_celery: bool = Query(True, description="Check for pending Celery results"),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -456,6 +469,7 @@ async def get_session_status(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    verify_company_access(authorization, session.company_id, db)
     
     orchestrator = FormMapperOrchestrator(db)
     
@@ -493,6 +507,7 @@ async def get_session_status(
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(
         session_id: str,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Cancel a mapping session."""
@@ -502,6 +517,7 @@ async def cancel_session(
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    verify_company_access(authorization, session.company_id, db)
 
     if session.status in [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]:
         raise HTTPException(
@@ -524,6 +540,7 @@ async def cancel_session(
 @router.get("/sessions/{session_id}/result", response_model=SessionResultResponse)
 async def get_session_result(
     session_id: str,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Get the final result of a completed mapping session."""
@@ -534,6 +551,7 @@ async def get_session_result(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    verify_company_access(authorization, session.company_id, db)
     
     if session.status != SessionStatus.COMPLETED:
         raise HTTPException(
@@ -577,10 +595,16 @@ async def list_sessions(
     user_id: Optional[int] = Query(None, description="Filter by user"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """List mapping sessions."""
-    query = db.query(FormMapperSession)
+    from utils.auth_helpers import get_token_from_header, decode_token
+    token = get_token_from_header(authorization)
+    payload = decode_token(token)
+    token_company_id = payload.get("company_id")
+
+    query = db.query(FormMapperSession).filter(FormMapperSession.company_id == token_company_id)
     
     if user_id:
         query = query.filter(FormMapperSession.user_id == user_id)
@@ -611,10 +635,16 @@ async def list_results(
     network_id: Optional[int] = Query(None, description="Filter by network"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """List mapping results."""
-    query = db.query(FormMapResult)
+    from utils.auth_helpers import get_token_from_header, decode_token
+    token = get_token_from_header(authorization)
+    payload = decode_token(token)
+    token_company_id = payload.get("company_id")
+
+    query = db.query(FormMapResult).filter(FormMapResult.company_id == token_company_id)
     
     if form_page_route_id:
         query = query.filter(FormMapResult.form_page_route_id == form_page_route_id)
@@ -793,6 +823,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
 @router.get("/results/{result_id}/download")
 async def download_result(
     result_id: int,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Download result as JSON file (like path_1_create_verify_person.json)."""
@@ -802,6 +833,7 @@ async def download_result(
     
     if not result:
         raise HTTPException(status_code=404, detail="Result not found")
+    verify_company_access(authorization, result.company_id, db)
     
     # Return steps as JSON
     from fastapi.responses import JSONResponse
@@ -821,6 +853,8 @@ async def download_result(
 @router.get("/routes/{form_page_route_id}/paths", response_model=CompletedPathsListResponse)
 async def get_completed_paths(
         form_page_route_id: int,
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -831,6 +865,10 @@ async def get_completed_paths(
 
     Returns paths with steps (junction info filtered out for display).
     """
+
+
+    verify_company_access(authorization, company_id, db)
+
     ## Query all form_map_results for this form_page_route
     #results = db.query(FormMapResult).filter(
     #    FormMapResult.form_page_route_id == form_page_route_id
@@ -911,6 +949,7 @@ async def get_completed_paths(
 @router.delete("/paths/{path_id}")
 async def delete_path(
         path_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db),
 ):
     """
@@ -925,6 +964,7 @@ async def delete_path(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
+    verify_company_access(authorization, result.company_id, db)
 
     # Store info for potential S3 cleanup before deletion
     form_page_route_id = result.form_page_route_id
@@ -958,15 +998,20 @@ async def delete_path(
 @router.get("/routes/paths-counts")
 async def get_paths_counts(
         form_page_route_ids: str = Query(..., description="Comma-separated form page route IDs"),
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get path counts for multiple form pages at once (scalable batch query)"""
+    verify_company_access(authorization, company_id, db)
     from sqlalchemy import func
 
     ids = [int(id.strip()) for id in form_page_route_ids.split(",") if id.strip()]
 
     if not ids:
         return {}
+
+
 
     counts = db.query(
         FormMapResult.form_page_route_id,
@@ -982,6 +1027,7 @@ async def get_paths_counts(
 async def update_all_path_steps(
         path_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Replace all steps for a path"""
@@ -989,6 +1035,7 @@ async def update_all_path_steps(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
+    verify_company_access(authorization, result.company_id, db)
 
     steps = request.get("steps", [])
     result.steps = steps
@@ -1004,6 +1051,7 @@ async def update_path_step(
         path_id: int,
         step_index: int,
         step_update: StepUpdateRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1019,6 +1067,7 @@ async def update_path_step(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
+    verify_company_access(authorization, result.company_id, db)
 
     # Validate step_index
     if not result.steps or step_index < 0 or step_index >= len(result.steps):
@@ -1058,6 +1107,7 @@ async def get_session_logs(
     session_id: str,
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     limit: int = Query(100, le=500),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Get logs for a mapping session."""
@@ -1068,6 +1118,7 @@ async def get_session_logs(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    verify_company_access(authorization, session.company_id, db)
     
     query = db.query(FormMapperSessionLog).filter(
         FormMapperSessionLog.session_id == session_id
@@ -1103,12 +1154,18 @@ class FieldAssistRequest(BaseModel):
 @router.post("/field-assist")
 async def start_field_assist_query(
         request: FieldAssistRequest,
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
     Start a field assist query (async via Celery).
     Returns task_id for polling.
     """
+    verify_company_access(authorization, company_id, db)
+
+
+
     from tasks.form_mapper_tasks import field_assist_query
 
     task = field_assist_query.delay(
@@ -1149,6 +1206,7 @@ async def get_field_assist_result(task_id: str):
 @router.post("/pom/generate")
 async def start_pom_generation(
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1165,6 +1223,7 @@ async def start_pom_generation(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     # Get paths for this form page
     paths = db.query(FormMapResult).filter(
@@ -1240,6 +1299,7 @@ async def get_pom_task_status(task_id: str):
 async def upload_spec_document(
         form_page_route_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1249,6 +1309,7 @@ async def upload_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     filename = request.get("filename", "spec.txt")
     content_type = request.get("content_type", "text/plain")
@@ -1275,6 +1336,7 @@ async def upload_spec_document(
 @router.get("/routes/{form_page_route_id}/spec")
 async def get_spec_document(
         form_page_route_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1283,6 +1345,7 @@ async def get_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     if not form_page.spec_document:
         return {"spec_document": None, "content": None}
@@ -1297,6 +1360,7 @@ async def get_spec_document(
 async def update_spec_document(
         form_page_route_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1306,6 +1370,7 @@ async def update_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     if not form_page.spec_document:
         raise HTTPException(status_code=400, detail="No spec document exists. Upload one first.")
@@ -1331,6 +1396,7 @@ async def update_spec_document(
 @router.delete("/routes/{form_page_route_id}/spec")
 async def delete_spec_document(
         form_page_route_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1339,6 +1405,7 @@ async def delete_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     form_page.spec_document = None
     form_page.spec_document_content = None
@@ -1357,6 +1424,7 @@ async def delete_spec_document(
 @router.post("/spec-compliance/generate")
 async def start_spec_compliance_generation(
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1369,6 +1437,7 @@ async def start_spec_compliance_generation(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     # Check if spec document exists
     if not form_page.spec_document or not form_page.spec_document_content:
@@ -1448,6 +1517,7 @@ async def get_spec_compliance_task_status(task_id: str):
 async def upload_verification_instructions(
         form_page_route_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1458,6 +1528,7 @@ async def upload_verification_instructions(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     filename = request.get("filename", "verification_instructions.txt")
     content_type = request.get("content_type", "text/plain")
@@ -1496,12 +1567,14 @@ async def upload_verification_instructions(
 @router.get("/routes/{form_page_route_id}/verification-instructions")
 async def get_verification_instructions(
         form_page_route_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get verification instructions for a form page"""
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     if not form_page.verification_file:
         return {"verification_file": None, "content": None}
@@ -1516,6 +1589,7 @@ async def get_verification_instructions(
 async def update_verification_instructions(
         form_page_route_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """
@@ -1525,6 +1599,7 @@ async def update_verification_instructions(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     if not form_page.verification_file:
         raise HTTPException(status_code=400, detail="No verification instructions exist. Upload first.")
@@ -1548,12 +1623,14 @@ async def update_verification_instructions(
 @router.delete("/routes/{form_page_route_id}/verification-instructions")
 async def delete_verification_instructions(
         form_page_route_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Delete verification instructions for a form page"""
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     form_page.verification_file = None
     form_page.verification_file_content = None
@@ -1572,14 +1649,17 @@ async def delete_verification_instructions(
 @router.get("/routes/{form_page_route_id}/test-scenarios")
 async def get_test_scenarios(
         form_page_route_id: int,
+        scenario_id: int,
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get all test scenarios for a form page"""
+    verify_company_access(authorization, company_id, db)
+
     from models.form_mapper_models import FormPageTestScenario
 
-    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
-    if not form_page:
-        raise HTTPException(status_code=404, detail="Form page not found")
+
 
     scenarios = db.query(FormPageTestScenario).filter(
         FormPageTestScenario.form_page_route_id == form_page_route_id
@@ -1594,6 +1674,7 @@ async def get_test_scenarios(
 async def create_test_scenario(
         form_page_route_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Create a new test scenario"""
@@ -1602,6 +1683,7 @@ async def create_test_scenario(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
+    verify_company_access(authorization, form_page.company_id, db)
 
     name = request.get("name", "").strip()
     content = request.get("content", "").strip()
@@ -1630,6 +1712,7 @@ async def create_test_scenario(
 async def get_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get a specific test scenario"""
@@ -1643,6 +1726,10 @@ async def get_test_scenario(
     if not scenario:
         raise HTTPException(status_code=404, detail="Test scenario not found")
 
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if form_page:
+        verify_company_access(authorization, form_page.company_id, db)
+
     return {
         "scenario": scenario.to_dict()
     }
@@ -1653,9 +1740,13 @@ async def update_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
         request: dict,
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Update a test scenario"""
+    verify_company_access(authorization, company_id, db)
+
     from models.form_mapper_models import FormPageTestScenario
 
     scenario = db.query(FormPageTestScenario).filter(
@@ -1665,6 +1756,8 @@ async def update_test_scenario(
 
     if not scenario:
         raise HTTPException(status_code=404, detail="Test scenario not found")
+
+
 
     if "name" in request:
         name = request["name"].strip()
@@ -1691,9 +1784,13 @@ async def update_test_scenario(
 async def delete_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
+        company_id: int = Query(...),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Delete a test scenario"""
+    verify_company_access(authorization, company_id, db)
+
     from models.form_mapper_models import FormPageTestScenario
 
     scenario = db.query(FormPageTestScenario).filter(
@@ -1703,6 +1800,10 @@ async def delete_test_scenario(
 
     if not scenario:
         raise HTTPException(status_code=404, detail="Test scenario not found")
+
+    #form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    #if form_page:
+    #   verify_company_access(authorization, form_page.company_id, db)
 
     db.delete(scenario)
     db.commit()
