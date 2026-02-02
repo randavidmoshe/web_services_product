@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from models.database import get_db, Project, Network, FormPageRoute, User, Company
+from utils.auth_helpers import verify_company_access
 
 router = APIRouter()
 
@@ -47,8 +48,9 @@ class NetworkUpdate(BaseModel):
 # =============================================================================
 
 @router.get("/")
-async def list_projects(company_id: int, db: Session = Depends(get_db)):
+async def list_projects(company_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """List all projects for a company"""
+    verify_company_access(authorization, company_id, db)
     projects = db.query(Project).filter(Project.company_id == company_id).all()
     
     # Add network count and form page count for each project
@@ -75,8 +77,9 @@ async def list_projects(company_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/")
-async def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
+async def create_project(project_data: ProjectCreate, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Create a new project"""
+    verify_company_access(authorization, project_data.company_id, db)
 
     # Validate project_type matches company's account_category
     company = db.query(Company).filter(Company.id == project_data.company_id).first()
@@ -110,12 +113,12 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
 
 
 @router.get("/{project_id}")
-async def get_project(project_id: int, db: Session = Depends(get_db)):
+async def get_project(project_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Get a single project with its networks and form pages"""
     project = db.query(Project).filter(Project.id == project_id).first()
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     # Get networks grouped by type
     networks = db.query(Network).filter(Network.project_id == project_id).all()
@@ -175,13 +178,14 @@ async def get_project(project_id: int, db: Session = Depends(get_db)):
 async def update_project(
     project_id: int,
     project_data: ProjectUpdate,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Update a project's name or description"""
     project = db.query(Project).filter(Project.id == project_id).first()
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     if project_data.name is not None:
         project.name = project_data.name
@@ -199,6 +203,7 @@ async def update_project(
 async def delete_project(
     project_id: int,
     user_id: int = Query(...),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -208,9 +213,9 @@ async def delete_project(
     - Returns warning about cascading deletes (networks, form pages)
     """
     project = db.query(Project).filter(Project.id == project_id).first()
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     # Check permissions
     user = db.query(User).filter(User.id == user_id).first()
@@ -257,6 +262,7 @@ async def create_network(
     project_id: int,
     network_data: NetworkCreate,
     user_id: int = Query(...),
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -268,6 +274,7 @@ async def create_network(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     # Validate network_type
     if network_data.network_type not in ["qa", "staging", "production"]:
@@ -313,6 +320,7 @@ async def update_network(
     project_id: int,
     network_id: int,
     network_data: NetworkUpdate,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Update a network's details"""
@@ -320,9 +328,9 @@ async def update_network(
         Network.id == network_id,
         Network.project_id == project_id
     ).first()
-    
     if not network:
         raise HTTPException(status_code=404, detail="Network not found in this project")
+    verify_company_access(authorization, network.company_id, db)
     
     # If URL is being changed, check uniqueness
     if network_data.url is not None and network_data.url != network.url:
@@ -367,6 +375,7 @@ async def update_network(
 async def delete_network(
     project_id: int,
     network_id: int,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Delete a network from a project"""
@@ -374,9 +383,9 @@ async def delete_network(
         Network.id == network_id,
         Network.project_id == project_id
     ).first()
-    
     if not network:
         raise HTTPException(status_code=404, detail="Network not found in this project")
+    verify_company_access(authorization, network.company_id, db)
     
     # Count form pages that will be affected
     form_page_count = db.query(FormPageRoute).filter(
@@ -400,12 +409,12 @@ async def delete_network(
 
 
 @router.get("/{project_id}/networks")
-async def list_networks(project_id: int, db: Session = Depends(get_db)):
+async def list_networks(project_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """List all networks for a project, grouped by type"""
     project = db.query(Project).filter(Project.id == project_id).first()
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     networks = db.query(Network).filter(Network.project_id == project_id).all()
     
@@ -438,12 +447,12 @@ async def list_networks(project_id: int, db: Session = Depends(get_db)):
 # =============================================================================
 
 @router.get("/{project_id}/form-pages")
-async def list_form_pages(project_id: int, db: Session = Depends(get_db)):
+async def list_form_pages(project_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """List all form pages for a project"""
     project = db.query(Project).filter(Project.id == project_id).first()
-    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     
     form_pages = db.query(FormPageRoute).filter(
         FormPageRoute.project_id == project_id

@@ -51,12 +51,31 @@ def get_current_super_admin(authorization: str, db: Session) -> SuperAdmin:
     return admin
 
 
-def verify_company_access(authorization: str, company_id: int, db: Session) -> User:
-    """Verify user belongs to company_id. Returns user if valid."""
-    user = get_current_user(authorization, db)
-    if user.company_id != company_id:
+def verify_company_access(authorization: str, company_id: int, db: Session = None) -> dict:
+    """
+    Verify token's company_id matches request.
+    100% scalable - no DB query, JWT decode only.
+
+    Args:
+        authorization: Bearer token header
+        company_id: Company ID from request
+        db: Not used (kept for backward compatibility)
+
+    Returns:
+        Token payload dict with user_id, company_id, type
+    """
+    token = get_token_from_header(authorization)
+    payload = decode_token(token)
+
+    if payload.get("type") == "super_admin":
+        # Super admin can access any company
+        return payload
+
+    token_company_id = payload.get("company_id")
+    if token_company_id != company_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return user
+
+    return payload
 
 
 def verify_user_access(authorization: str, user_id: int, db: Session) -> User:

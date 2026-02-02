@@ -5,7 +5,7 @@
 # UPDATED: Added AI usage endpoint for dashboard
 # UPDATED: Added budget exceeded error handling
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Header
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
@@ -16,6 +16,7 @@ import os
 
 from models.database import get_db, FormPageRoute, CrawlSession, Network
 from models.agent_models import Agent, AgentTask
+from utils.auth_helpers import verify_company_access
 
 router = APIRouter()
 
@@ -27,9 +28,11 @@ redis_client = redis.from_url(REDIS_URL)
 # ========== AI USAGE ENDPOINT (for dashboard) ==========
 
 @router.get("/ai-usage")
+@router.get("/ai-usage")
 async def get_ai_usage(
     company_id: int,
     product_id: int = 1,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -42,6 +45,7 @@ async def get_ai_usage(
         - reset_date: When budget resets
         - days_until_reset: Days until next reset
     """
+    verify_company_access(authorization, company_id, db)
     from services.form_pages_locator_service import FormPagesLocatorService
     
     usage = FormPagesLocatorService.get_ai_usage_for_company(db, company_id, product_id)
@@ -59,6 +63,7 @@ async def locate_form_pages(
     headless: bool = False,
     slow_mode: bool = True,
     ui_verification: bool = True,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -74,12 +79,15 @@ async def locate_form_pages(
         - 400: No online agent found
         - 402: AI budget exceeded (BUDGET_EXCEEDED)
     """
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
-    
-    # Verify network exists
+    # Verify network exists first, then check access
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
+    verify_company_access(authorization, network.company_id, db)
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
+    
+
     
     # Check if user has an online agent
     agent = db.query(Agent).filter(
@@ -113,7 +121,7 @@ async def locate_form_pages(
             slow_mode=slow_mode,
             ui_verification=ui_verification
         )
-    except AIBudgetExceededError as e:
+    except BudgetExceededError as e:
         raise HTTPException(
             status_code=402,  # Payment Required
             detail={
@@ -163,11 +171,14 @@ async def locate_form_pages(
 
 
 @router.get("/sessions/{session_id}")
-async def get_crawl_session(session_id: int, db: Session = Depends(get_db)):
+async def get_crawl_session(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Get crawl session status"""
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
+    verify_company_access(authorization, session.company_id, db)
+    session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
+
     
     return {
         "id": session.id,
@@ -204,20 +215,22 @@ async def update_crawl_session(
 
 
 @router.get("/sessions/{session_id}/status")
-async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
+async def get_discovery_status(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """
     Get discovery status including session info, task status, and discovered forms.
     Designed for frontend polling.
     
     If session is 'running' but agent is offline, marks session as failed.
     """
-    # Heartbeat timeout - agent is offline if no heartbeat for this long
-    HEARTBEAT_TIMEOUT_SECONDS = 60
-    
     # Get crawl session
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
+    verify_company_access(authorization, session.company_id, db)
+    # Heartbeat timeout - agent is offline if no heartbeat for this long
+    HEARTBEAT_TIMEOUT_SECONDS = 60
+    
+
     
     # If session is running, check if agent is still online
     if session.status == 'running':
@@ -267,7 +280,7 @@ async def get_discovery_status(session_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sessions/{session_id}/cancel")
-async def cancel_discovery_session(session_id: int, db: Session = Depends(get_db)):
+async def cancel_discovery_session(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """
     Cancel a running discovery session.
     Updates DB status so heartbeat returns cancel_requested to agent.
@@ -276,6 +289,7 @@ async def cancel_discovery_session(session_id: int, db: Session = Depends(get_db
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
+    verify_company_access(authorization, session.company_id, db)
     
     # Only cancel if running or pending
     if session.status not in ['running', 'pending']:
@@ -294,8 +308,13 @@ async def cancel_discovery_session(session_id: int, db: Session = Depends(get_db
 # ========== FORM ROUTES ENDPOINTS ==========
 
 @router.get("/projects/{project_id}/active-sessions")
-async def get_active_sessions(project_id: int, db: Session = Depends(get_db)):
+async def get_active_sessions(project_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Get active (pending/running) crawl sessions for a project"""
+    from models.database import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
     sessions = db.query(CrawlSession).filter(
         CrawlSession.project_id == project_id,
         CrawlSession.status.in_(['pending', 'running'])
@@ -315,13 +334,17 @@ async def get_active_sessions(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/routes")
+@router.get("/routes")
 async def list_form_routes(
     network_id: Optional[int] = None,
     project_id: Optional[int] = None,
-    company_id: Optional[int] = None,
+    company_id: int = None,
+    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Get form routes with optional filters"""
+    if company_id:
+        verify_company_access(authorization, company_id, db)
     from services.form_pages_locator_service import FormPagesLocatorService
     
     service = FormPagesLocatorService(db)
@@ -394,11 +417,13 @@ async def list_form_routes(
 
 
 @router.get("/networks/{network_id}/login-logout-stages")
-async def get_login_logout_stages(network_id: int, db: Session = Depends(get_db)):
+async def get_login_logout_stages(network_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Get login and logout stages for a network"""
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
+    verify_company_access(authorization, network.company_id, db)
+
 
     return {
         "network_id": network.id,
@@ -413,6 +438,7 @@ async def get_login_logout_stages(network_id: int, db: Session = Depends(get_db)
 @router.put("/networks/{network_id}/login-stages")
 async def update_login_stages(
         network_id: int,
+        authorization: str = Header(...),
         data: Dict[str, Any] = Body(...),
         db: Session = Depends(get_db)
 ):
@@ -420,6 +446,7 @@ async def update_login_stages(
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
+    verify_company_access(authorization, network.company_id, db)
 
     network.login_stages = data.get("login_stages", [])
     db.commit()
@@ -430,6 +457,7 @@ async def update_login_stages(
 @router.put("/networks/{network_id}/logout-stages")
 async def update_logout_stages(
         network_id: int,
+        authorization: str = Header(...),
         data: Dict[str, Any] = Body(...),
         db: Session = Depends(get_db)
 ):
@@ -437,6 +465,7 @@ async def update_logout_stages(
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
+    verify_company_access(authorization, network.company_id, db)
 
     network.logout_stages = data.get("logout_stages", [])
     db.commit()
@@ -472,17 +501,19 @@ async def create_form_route(
 
 
 @router.get("/routes/{route_id}")
-async def get_form_route(route_id: int, db: Session = Depends(get_db)):
+async def get_form_route(route_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Get a single form route by ID"""
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
+    verify_company_access(authorization, route.company_id, db)
     return route
 
 
 @router.put("/routes/{route_id}")
 async def update_form_route(
     route_id: int,
+    authorization: str = Header(...),
     data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)
 ):
@@ -490,6 +521,7 @@ async def update_form_route(
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
+    verify_company_access(authorization, route.company_id, db)
     
     # Update allowed fields
     if "form_name" in data:
@@ -521,11 +553,12 @@ async def update_form_route(
 
 
 @router.delete("/routes/{route_id}")
-async def delete_form_route(route_id: int, db: Session = Depends(get_db)):
+async def delete_form_route(route_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
     """Delete a form route"""
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
+    verify_company_access(authorization, route.company_id, db)
     
     db.delete(route)
     db.commit()
@@ -557,7 +590,8 @@ async def generate_login_steps(
     db: Session = Depends(get_db)
 ):
     """Generate login automation steps using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -567,7 +601,7 @@ async def generate_login_steps(
     
     try:
         service._init_ai_helper(company_id, product_id)
-    except AIBudgetExceededError as e:
+    except BudgetExceededError as e:
         raise HTTPException(
             status_code=402,
             detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -614,7 +648,8 @@ async def generate_logout_steps(
     db: Session = Depends(get_db)
 ):
     """Generate logout automation steps using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -624,7 +659,7 @@ async def generate_logout_steps(
     
     try:
         service._init_ai_helper(company_id, product_id)
-    except AIBudgetExceededError as e:
+    except BudgetExceededError as e:
         raise HTTPException(
             status_code=402,
             detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -658,7 +693,8 @@ async def extract_form_name(
     db: Session = Depends(get_db)
 ):
     """Extract semantic form name using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -669,7 +705,7 @@ async def extract_form_name(
     if company_id and product_id:
         try:
             service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
+        except BudgetExceededError as e:
             raise HTTPException(
                 status_code=402,
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -701,7 +737,8 @@ async def extract_parent_fields(
     db: Session = Depends(get_db)
 ):
     """Extract parent reference fields using AI"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -712,7 +749,7 @@ async def extract_parent_fields(
     if company_id and product_id:
         try:
             service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
+        except BudgetExceededError as e:
             raise HTTPException(
                 status_code=402,
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -737,7 +774,8 @@ async def verify_ui_defects(
     db: Session = Depends(get_db)
 ):
     """Check for UI defects using AI Vision"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -748,7 +786,7 @@ async def verify_ui_defects(
     if company_id and product_id:
         try:
             service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
+        except BudgetExceededError as e:
             raise HTTPException(
                 status_code=402,
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -772,7 +810,8 @@ async def is_submission_button(
     db: Session = Depends(get_db)
 ):
     """Determine if button is a form submission button"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -784,7 +823,7 @@ async def is_submission_button(
     if company_id and product_id:
         try:
             service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
+        except BudgetExceededError as e:
             raise HTTPException(
                 status_code=402,
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}
@@ -812,7 +851,8 @@ async def get_navigation_clickables(
     db: Session = Depends(get_db)
 ):
     """Ask AI to identify navigation clickables from screenshot"""
-    from services.form_pages_locator_service import FormPagesLocatorService, AIBudgetExceededError
+    from services.form_pages_locator_service import FormPagesLocatorService
+    from services.ai_budget_service import BudgetExceededError
     
     service = FormPagesLocatorService(db)
     company_id = data.get("company_id")
@@ -823,7 +863,7 @@ async def get_navigation_clickables(
     if company_id and product_id:
         try:
             service._init_ai_helper(company_id, product_id)
-        except AIBudgetExceededError as e:
+        except BudgetExceededError as e:
             raise HTTPException(
                 status_code=402,
                 detail={"error": "AI budget exceeded", "message": str(e), "code": "BUDGET_EXCEEDED"}

@@ -421,10 +421,19 @@ class AIBudgetService:
             if not subscription:
                 logger.error(f"[AIBudget] No subscription for company {company_id}")
                 return {"success": False, "error": "No subscription found"}
-            
-            # Update usage
-            old_usage = subscription.claude_used_this_month or 0.0
-            subscription.claude_used_this_month = old_usage + cost
+
+            # Check if Early Access - update company.ai_used_today instead
+            from models.database import Company
+            company = db.query(Company).filter(Company.id == company_id).first()
+
+            if company and company.access_model == 'early_access':
+                # Early Access - update daily budget
+                old_usage = company.ai_used_today or 0.0
+                company.ai_used_today = old_usage + cost
+            else:
+                # Legacy/Paid - update monthly budget
+                old_usage = subscription.claude_used_this_month or 0.0
+                subscription.claude_used_this_month = old_usage + cost
             
             # Create usage record
             usage_record = ApiUsage(
@@ -695,6 +704,50 @@ class AIBudgetService:
                 for row in breakdown
             ]
         }
+
+    def get_dashboard_usage(self, db: Session, company_id: int, product_id: int = 1) -> dict:
+        """
+        Get AI usage for dashboard display.
+        Handles BYOK, Early Access, and Legacy modes.
+        Uses Redis caching for scalability.
+        """
+        from models.database import Company, CompanyProductSubscription
+
+        # Check access status (cached)
+        try:
+            access_info = self._check_access_status(db, company_id, product_id)
+        except AccessDeniedError:
+            return {"used": 0, "budget": 0, "is_byok": False}
+
+        # BYOK - no tracking
+        if access_info.get("mode") == "byok":
+            return {"used": None, "budget": None, "is_byok": True}
+
+        # Early Access - daily budget
+        if access_info.get("mode") == "early_access":
+            company = db.query(Company).filter(Company.id == company_id).first()
+            if company:
+                self._reset_daily_budget_if_needed(db, company)
+                return {
+                    "used": int(company.ai_used_today or 0),
+                    "budget": int(company.daily_ai_budget or 10),
+                    "is_byok": False
+                }
+
+        # Legacy - monthly budget
+        subscription = db.query(CompanyProductSubscription).filter(
+            CompanyProductSubscription.company_id == company_id,
+            CompanyProductSubscription.product_id == product_id
+        ).first()
+
+        if subscription:
+            return {
+                "used": int(subscription.claude_used_this_month or 0),
+                "budget": int(subscription.monthly_claude_budget or 0),
+                "is_byok": False
+            }
+
+        return {"used": 0, "budget": 0, "is_byok": False}
 
 # Export error classes for use by callers
 __all__ = ['AIBudgetService', 'BudgetExceededError', 'AccessDeniedError', 'AIOperationType', 'get_budget_service']

@@ -280,10 +280,10 @@ export default function OnboardingPage() {
         {step === 1 && (
           <div>
             <h2 style={{ fontSize: '22px', fontWeight: 600, color: '#1e293b', marginBottom: '8px', textAlign: 'center' }}>
-              What type of applications will you test?
+              What kind of application are you testing?
             </h2>
             <p style={{ color: '#64748b', marginBottom: '32px', textAlign: 'center' }}>
-              This helps us tailor your experience
+              This helps us configure the right testing workflow for you
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -297,11 +297,12 @@ export default function OnboardingPage() {
                   Form-Heavy / Enterprise Applications
                 </div>
                 <ul style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.8, textAlign: 'left', margin: 0, paddingLeft: '20px' }}>
-                  <li>Enterprise systems, workflows, admin panels</li>
+                  <li>Enterprise systems with forms, workflows, and admin panels</li>
                   <li>Multi-step forms, nested fields, validations</li>
                   <li>Automatic form discovery and mapping</li>
                   <li>Spec and Figma comparison</li>
                   <li>Dynamic scenario testing within form projects</li>
+                  <li style={{ listStyle: 'none', marginTop: '12px', fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>Best for internal tools, CRMs, admin portals, and workflow systems</li>
                 </ul>
               </button>
 
@@ -318,7 +319,8 @@ export default function OnboardingPage() {
                   <li>Highly dynamic UIs (Streaming web apps / News sites)</li>
                   <li>User-flow driven testing</li>
                   <li>Visual step-based scenarios</li>
-                  <li>No automatic form discovery</li>
+                  <li>Scenario-driven testing (no automatic form discovery)</li>
+                  <li style={{ listStyle: 'none', marginTop: '12px', fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>Best for consumer apps, media platforms, and highly interactive UIs</li>
                 </ul>
               </button>
             </div>
@@ -329,7 +331,7 @@ export default function OnboardingPage() {
         {step === 2 && (
           <div>
             <h2 style={{ fontSize: '22px', fontWeight: 600, color: '#1e293b', marginBottom: '8px', textAlign: 'center' }}>
-              How would you like to access AI features?
+              How would you like to power AI features?
             </h2>
             <p style={{ color: '#64748b', marginBottom: '32px', textAlign: 'center' }}>
               Choose your AI access method
@@ -347,7 +349,7 @@ export default function OnboardingPage() {
                   Bring Your Own Key (BYOK)
                 </div>
                 <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>
-                  Use your own Anthropic API key — unlimited usage, immediate access
+                  Use your own Anthropic API key — full control, unlimited usage
                 </div>
                 <div style={{
                   display: 'inline-block',
@@ -359,6 +361,9 @@ export default function OnboardingPage() {
                   fontWeight: 600
                 }}>
                   Instant Access
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                  You can switch to a managed plan later
                 </div>
               </button>
 
@@ -380,7 +385,7 @@ export default function OnboardingPage() {
                   Request Early Access
                 </div>
                 <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>
-                  Limited free trial — requires approval, $10/day AI budget
+                  Limited free trial — curated access with a daily AI budget
                 </div>
                 <div style={{
                   display: 'inline-block',
@@ -391,7 +396,10 @@ export default function OnboardingPage() {
                   fontSize: '12px',
                   fontWeight: 600
                 }}>
-                  Requires Approval
+                  Subject to availability
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                  You can bring your own key at any time
                 </div>
               </button>
             </div>
@@ -470,11 +478,11 @@ export default function OnboardingPage() {
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '64px', marginBottom: '24px' }}>⏳</div>
             <h2 style={{ fontSize: '24px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-              Pending Approval
+              Early Access Pending
             </h2>
             <p style={{ color: '#64748b', marginBottom: '32px', lineHeight: 1.6 }}>
               Your Early Access request has been submitted.<br />
-              We'll notify you once it's approved.
+              We'll notify you by email once approved.
             </p>
 
             <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
@@ -497,9 +505,26 @@ export default function OnboardingPage() {
                 }}
                 style={primaryButtonStyle}
               >
-                Switch to BYOK
+                ⚡ Switch to BYOK
               </button>
             </div>
+            <button
+              onClick={() => {
+                localStorage.clear()
+                window.location.href = '/login'
+              }}
+              style={{
+                marginTop: '24px',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                fontSize: '14px',
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
+            >
+              Logout
+            </button>
           </div>
         )}
       </div>

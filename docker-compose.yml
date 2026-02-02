@@ -88,7 +88,7 @@ services:
       - SES_SANDBOX_MODE=${SES_SANDBOX_MODE:-true}
       - SES_TEST_SENDER=${SES_TEST_SENDER:-ranlaser@gmail.com}
       - APP_URL=${APP_URL:-https://localhost}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
       - PYTHONUNBUFFERED=1
     depends_on:
       - db

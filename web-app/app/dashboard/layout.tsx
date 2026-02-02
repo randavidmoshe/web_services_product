@@ -100,6 +100,8 @@ export default function DashboardLayout({
   const [aiBudget, setAiBudget] = useState<number | null>(null)
   const [isByok, setIsByok] = useState<boolean>(false)
 
+  const [accountCategory, setAccountCategory] = useState<string | null>(null)
+
   // Theme configuration - Pearl White only (fixed theme)
   const theme = {
     name: 'Pearl White',
@@ -206,7 +208,7 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `/api/form-pages/ai-usage?company_id=${companyId}&product_id=1`,
+        `/api/company/ai-usage?company_id=${companyId}&product_id=1`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       
@@ -280,6 +282,9 @@ export default function DashboardLayout({
         .then(data => {
           if (data && !data.onboarding_completed) {
             window.location.href = '/onboarding'
+          }
+          if (data && data.account_category) {
+            setAccountCategory(data.account_category)
           }
         })
         .catch(err => console.error('Failed to check onboarding:', err))
@@ -383,8 +388,11 @@ export default function DashboardLayout({
             company_id: parseInt(companyId!),
             product_id: 1,
             user_id: parseInt(userId!),
-            project_type: newProjectType
+            project_type: accountCategory === 'form_centric' ? 'enterprise'
+                        : accountCategory === 'dynamic' ? 'dynamic_content'
+                        : newProjectType
           })
+
         }
       )
       
@@ -768,28 +776,32 @@ export default function DashboardLayout({
           
           <div style={{ width: '1px', height: '40px', background: isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' }} />
           
-          {/* AI Usage Indicator */}
+          {/* AI Usage Indicator - Only for Early Access (not BYOK) */}
           {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
-            <div 
+            <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '15px'
-              }} 
-              title={`AI Usage: $${aiUsed} / $${aiBudget}`}
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                padding: '8px 16px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '10px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`
+              }}
+              title={`AI Usage: ${Math.round(aiUsed)} / ${aiBudget} actions`}
             >
-              <span style={{ 
-                fontSize: '16px',
+              <span style={{
+                fontSize: '12px',
                 color: getTheme().colors.textSecondary,
-                fontWeight: 600
-              }}>AI:</span>
-              <span style={{ 
+                fontWeight: 600,
+                marginBottom: '2px'
+              }}>AI Trial Usage</span>
+              <span style={{
                 color: aiUsed >= aiBudget ? '#ef4444' : aiUsed >= aiBudget * 0.8 ? '#f59e0b' : '#10b981',
                 fontWeight: 700,
-                fontSize: '16px'
+                fontSize: '14px'
               }}>
-                {Math.round(aiUsed)} / {aiBudget}
+                Used: {Math.round(aiUsed)} of {aiBudget} actions
               </span>
             </div>
           )}
@@ -1256,6 +1268,8 @@ export default function DashboardLayout({
                 />
               </div>
 
+              {/* Only show project type selection if accountCategory is null (legacy users) */}
+              {accountCategory === null && (
               <div style={{ marginBottom: '8px' }}>
                 <label style={labelStyle}>Project Type *</label>
                 <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
@@ -1309,6 +1323,7 @@ export default function DashboardLayout({
                   </label>
                 </div>
               </div>
+              )}
             </div>
             
             <div style={modalFooterStyle}>

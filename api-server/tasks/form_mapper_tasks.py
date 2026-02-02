@@ -13,6 +13,7 @@ from celery import shared_task
 from typing import Dict, Optional, List
 from services.ai_form_mapper_main_prompter import AIParseError
 from services.session_logger import SessionLogger, get_session_logger, ActivityType
+from services.ai_budget_service import BudgetExceededError, AccessDeniedError
 logger = logging.getLogger(__name__)
 
 
@@ -364,6 +365,11 @@ def analyze_form_page(
         _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+        return result
+
     except AIParseError as e:
         msg = f"!!!! ❌ AI parse failed: {e}"
         print(msg)
@@ -565,6 +571,11 @@ def analyze_failure_and_recover(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
         return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+        return result
         
     except Exception as e:
         msg = f"!!!! ❌ Failure analysis failed: {e}"
@@ -690,6 +701,11 @@ def handle_alert_recovery(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
         return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
+        return result
         
     except Exception as e:
         msg = f"!!!! ❌ Alert recovery failed: {e}"
@@ -791,6 +807,11 @@ def handle_validation_error_recovery(
         _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+        return result
+
     except Exception as e:
         msg = f"!!!! ❌ Validation error recovery failed: {e}"
         print(msg)
@@ -874,6 +895,11 @@ def verify_ui_visual(
         
     except BudgetExceededError as e:
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
+        return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
         _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
         return result
         
@@ -1037,6 +1063,11 @@ def regenerate_steps(
         _continue_orchestrator_chain(session_id, "regenerate_steps", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+        return result
+
     except AIParseError as e:
         msg = f"!!!! ❌ AI parse failed (regenerate): {e}"
         print(msg)
@@ -1167,6 +1198,11 @@ def regenerate_verify_steps(
     except BudgetExceededError as e:
         logger.warning(f"[FormMapperTask] Budget exceeded for verify regeneration: {e}")
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 
@@ -1852,6 +1888,11 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
         _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "save_mapping_result", result)
+        return result
+
     except Exception as e:
         msg = f"!!!! ❌ Save mapping result failed: {e}"
         print(msg)
@@ -1942,6 +1983,9 @@ def field_assist_query(
 
     except BudgetExceededError as e:
         return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+
+    except AccessDeniedError as e:
+        return {"success": False, "error": str(e), "access_denied": True}
 
     except Exception as e:
         msg = f"!!!! ❌ Field assist query failed: {e}"

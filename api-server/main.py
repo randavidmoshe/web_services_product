@@ -26,7 +26,7 @@ from passlib.context import CryptContext
 from routes import user_requirements
 from routes.activity_logs import router as activity_logs_router
 from routes.settings import router as settings_router
-
+from routes.company import router as company_router
 
 from utils.logging_config import configure_logging
 
@@ -155,6 +155,7 @@ app.include_router(test_pages.router)
 app.include_router(onboarding.router)
 app.include_router(super_admin.router)
 app.include_router(settings_router)
+app.include_router(company_router)
 
 @app.get("/")
 async def root():

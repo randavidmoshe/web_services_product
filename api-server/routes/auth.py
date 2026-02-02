@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models.database import get_db, SuperAdmin, User, Company, Product, CompanyProductSubscription, Project, EmailVerificationRateLimit
@@ -21,9 +21,10 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: LoginRequest, req: Request, db: Session = Depends(get_db)):
     email = request.email
     password = request.password
+    ip_address = req.client.host if req.client else None
 
     # Check super admin
     admin = db.query(SuperAdmin).filter(SuperAdmin.email == email).first()
@@ -38,6 +39,10 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
         admin.last_login_at = datetime.utcnow()
         db.commit()
+
+        # Notify product owner about super admin login
+        from services.email_service import notify_super_admin_login
+        notify_super_admin_login(ip_address=ip_address)
 
         # Super admin must set up 2FA if not enabled
         return {
@@ -90,7 +95,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         return {
             "requires_2fa": False,
             "requires_2fa_setup": requires_2fa_setup,
-            "token": create_token({"user_id": user.id, "type": user_type}),
+            "token": create_token({"user_id": user.id, "type": user_type, "company_id": user.company_id}),
             "type": user_type,
             "user_id": user.id,
             "company_id": user.company_id,
@@ -239,8 +244,8 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         db.commit()
 
         # Send verification email
-        from services.email_service import send_verification_email
-        email_result = send_verification_email(
+        from services.email_service import send_verification_email_queued
+        email_result = send_verification_email_queued(
             to_email=request.email,
             to_name=request.full_name,
             verification_token=verification_token
@@ -344,8 +349,8 @@ async def resend_verification(request: ResendVerificationRequest, db: Session = 
     db.commit()
 
     # Send verification email
-    from services.email_service import send_verification_email
-    send_verification_email(
+    from services.email_service import send_verification_email_queued
+    send_verification_email_queued(
         to_email=user.email,
         to_name=user.name,
         verification_token=verification_token
@@ -424,9 +429,9 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     db.commit()
 
     # Send reset email
-    from services.email_service import send_password_reset_email
+    from services.email_service import send_password_reset_email_queued
     target_name = user.name if user else super_admin.name
-    send_password_reset_email(
+    send_password_reset_email_queued(
         to_email=email,
         to_name=target_name or "User",
         reset_token=reset_token

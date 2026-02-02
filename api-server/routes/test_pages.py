@@ -14,7 +14,7 @@
 import logging
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from services.s3_storage import generate_presigned_put_url, get_screenshot_presi
 from services.test_page_visual_assets import validate_image_upload, validate_file_upload, MAX_IMAGES_PER_TEST_PAGE
 from sqlalchemy.orm.attributes import flag_modified
 from celery_app import celery
+from utils.auth_helpers import verify_company_access
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +113,11 @@ class CompletedPathsListResponse(BaseModel):
 @router.post("", response_model=TestPageResponse, status_code=201)
 async def create_test_page(
         request: CreateTestPageRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Create a new test page for dynamic content testing"""
+    verify_company_access(authorization, request.company_id, db)
 
     # Validate network exists
     network = db.query(Network).filter(Network.id == request.network_id).first()
@@ -221,9 +224,15 @@ class RequestVerificationFileUploadRequest(BaseModel):
 @router.get("", response_model=TestPageListResponse)
 async def list_test_pages(
         project_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """List all test pages for a project"""
+    from models.database import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    verify_company_access(authorization, project.company_id, db)
 
     test_pages = db.query(TestPageRoute).filter(
         TestPageRoute.project_id == project_id
@@ -252,6 +261,7 @@ async def list_test_pages(
 @router.get("/{test_page_id}", response_model=TestPageResponse)
 async def get_test_page(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get a test page by ID"""
@@ -259,6 +269,7 @@ async def get_test_page(
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     return TestPageResponse(
         id=test_page.id,
@@ -278,6 +289,7 @@ async def get_test_page(
 async def update_test_page(
         test_page_id: int,
         request: UpdateTestPageRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Update a test page"""
@@ -285,6 +297,7 @@ async def update_test_page(
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     if request.url is not None:
         test_page.url = request.url
@@ -317,6 +330,7 @@ async def update_test_page(
 @router.delete("/{test_page_id}")
 async def delete_test_page(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Delete a test page"""
@@ -324,6 +338,7 @@ async def delete_test_page(
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     db.delete(test_page)
     db.commit()
@@ -341,6 +356,7 @@ async def delete_test_page(
 async def start_test_page_mapping(
         test_page_id: int,
         request: StartMappingRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Start mapping a test page (dynamic content)"""
@@ -348,6 +364,7 @@ async def start_test_page_mapping(
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     # Get network for login
     network = db.query(Network).filter(Network.id == test_page.network_id).first()
@@ -418,6 +435,7 @@ async def start_test_page_mapping(
 @router.get("/{test_page_id}/paths", response_model=CompletedPathsListResponse)
 async def get_test_page_paths(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get completed mapping paths for a test page"""
@@ -425,6 +443,7 @@ async def get_test_page_paths(
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     paths = db.query(FormMapResult).filter(
         FormMapResult.test_page_route_id == test_page_id
@@ -458,12 +477,14 @@ async def request_reference_image_upload(
         content_type: str = Query(..., description="MIME type"),
         file_size_bytes: int = Query(..., description="File size in bytes"),
         description: str = Query(None, description="Optional description"),
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Request presigned URL for reference image upload"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     current_count = db.query(TestPageReferenceImage).filter(
         TestPageReferenceImage.test_page_route_id == test_page_id
@@ -514,6 +535,7 @@ async def confirm_reference_image_upload(
         test_page_id: int,
         image_id: int,
         request: ConfirmUploadRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Confirm reference image upload completed"""
@@ -524,6 +546,7 @@ async def confirm_reference_image_upload(
 
     if not image:
         raise HTTPException(status_code=404, detail="Reference image not found")
+    verify_company_access(authorization, image.company_id, db)
 
     if image.status == "ready":
         raise HTTPException(status_code=400, detail="Upload already confirmed")
@@ -559,12 +582,14 @@ async def confirm_reference_image_upload(
 @router.get("/{test_page_id}/reference-images", response_model=ReferenceImagesListResponse)
 async def list_reference_images(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """List all reference images for a test page"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     images = db.query(TestPageReferenceImage).filter(
         TestPageReferenceImage.test_page_route_id == test_page_id,
@@ -598,6 +623,7 @@ async def list_reference_images(
 async def get_reference_image(
         test_page_id: int,
         image_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get reference image with presigned URL for viewing"""
@@ -608,6 +634,7 @@ async def get_reference_image(
 
     if not image:
         raise HTTPException(status_code=404, detail="Reference image not found")
+    verify_company_access(authorization, image.company_id, db)
 
     presigned_url = get_screenshot_presigned_url(image.s3_key) if image.status == "ready" else None
 
@@ -631,6 +658,7 @@ async def update_reference_image(
         test_page_id: int,
         image_id: int,
         request: UpdateReferenceImageRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Update reference image name/description"""
@@ -641,6 +669,7 @@ async def update_reference_image(
 
     if not image:
         raise HTTPException(status_code=404, detail="Reference image not found")
+    verify_company_access(authorization, image.company_id, db)
 
     if request.name is not None:
         image.name = request.name
@@ -669,6 +698,7 @@ async def update_reference_image(
 async def delete_reference_image(
         test_page_id: int,
         image_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Delete reference image"""
@@ -679,6 +709,7 @@ async def delete_reference_image(
 
     if not image:
         raise HTTPException(status_code=404, detail="Reference image not found")
+    verify_company_access(authorization, image.company_id, db)
 
     if image.s3_key and image.s3_key != "pending":
         celery.send_task('tasks.delete_s3_file', kwargs={'s3_key': image.s3_key})
@@ -697,12 +728,14 @@ async def delete_reference_image(
 async def request_verification_file_upload(
         test_page_id: int,
         request: RequestVerificationFileUploadRequest,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Request presigned URL for verification file upload"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     is_valid, error = validate_file_upload(request.content_type, request.file_size_bytes or 0, request.filename)
     if not is_valid:
@@ -744,12 +777,14 @@ async def request_verification_file_upload(
 @router.post("/{test_page_id}/verification-file/confirm-upload")
 async def confirm_verification_file_upload(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Confirm verification file upload - triggers text extraction via Celery"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     if not test_page.verification_file:
         raise HTTPException(status_code=400, detail="No verification file upload in progress")
@@ -780,12 +815,14 @@ async def confirm_verification_file_upload(
 @router.get("/{test_page_id}/verification-file")
 async def get_verification_file(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get verification file info and content"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     if not test_page.verification_file:
         return {"verification_file": None}
@@ -810,12 +847,14 @@ async def get_verification_file(
 @router.delete("/{test_page_id}/verification-file")
 async def delete_verification_file(
         test_page_id: int,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Delete verification file"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     if not test_page.verification_file:
         raise HTTPException(status_code=404, detail="No verification file exists")
@@ -834,12 +873,14 @@ async def delete_verification_file(
 async def update_verification_file_content(
         test_page_id: int,
         request: dict,
+        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Update verification file extracted content"""
     test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_id).first()
     if not test_page:
         raise HTTPException(status_code=404, detail="Test page not found")
+    verify_company_access(authorization, test_page.company_id, db)
 
     if not test_page.verification_file:
         raise HTTPException(status_code=404, detail="No verification file uploaded")

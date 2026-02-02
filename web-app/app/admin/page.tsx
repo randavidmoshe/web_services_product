@@ -491,7 +491,9 @@ export default function SuperAdminDashboard() {
                       </span>
                     </td>
                     <td style={tdStyle}>
-                      {log.target_company_id ? `Company #${log.target_company_id}` : '-'}
+                      {log.target_company_id
+  ? allCompanies.find(c => c.company_id === log.target_company_id)?.company_name || `Company #${log.target_company_id}`
+  : '-'}
                     </td>
                     <td style={tdStyle}>
                       <code style={{ fontSize: '12px', color: '#64748b' }}>

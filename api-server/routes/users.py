@@ -15,7 +15,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 from models.database import get_db, User, SuperAdmin, Company
-from services.email_service import send_invitation_email
+from services.email_service import send_invitation_email_queued
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 import os
@@ -223,7 +223,7 @@ async def invite_user(
     db.refresh(new_user)
     
     # Send invitation email
-    email_result = send_invitation_email(
+    email_result = send_invitation_email_queued(
         to_email=user_data.email,
         to_name=user_data.name,
         inviter_name=current_user.name,
@@ -377,7 +377,7 @@ async def resend_invite(
     inviter_name = current_user.name if hasattr(current_user, 'name') else "Admin"
     
     # Send email
-    email_result = send_invitation_email(
+    email_result = send_invitation_email_queued(
         to_email=target_user.email,
         to_name=target_user.name,
         inviter_name=inviter_name,

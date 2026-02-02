@@ -5,6 +5,7 @@ from typing import Optional
 from datetime import datetime
 from models.database import get_db, Company, User, SuperAdmin, CompanyProductSubscription
 from utils.auth_helpers import get_current_super_admin, log_super_admin_action
+from services.email_service import notify_product_owner
 
 router = APIRouter(prefix="/api/super-admin", tags=["super-admin"])
 
@@ -141,6 +142,22 @@ async def approve_access(
 
     db.commit()
 
+    # Send approval notification email
+    admin_user = db.query(User).filter(
+        User.company_id == company.id,
+        User.role == 'admin'
+    ).first()
+
+    if admin_user and admin_user.email:
+        from services.email_service import send_early_access_approved_email_queued
+        send_early_access_approved_email_queued(
+            to_email=admin_user.email,
+            to_name=admin_user.name or "User",
+            company_name=company.name,
+            daily_budget=company.daily_ai_budget,
+            trial_days=company.trial_days_total
+        )
+
     # Audit log
     log_super_admin_action(
         db=db,
@@ -150,6 +167,18 @@ async def approve_access(
         details={
             "daily_ai_budget": company.daily_ai_budget,
             "trial_days_total": company.trial_days_total
+        },
+        ip_address=request.client.host if request.client else None
+    )
+
+    # Notify product owner
+    notify_product_owner(
+        action="approve_access",
+        details={
+            "company": company.name,
+            "company_id": company.id,
+            "daily_budget": f"${company.daily_ai_budget:.2f}",
+            "trial_days": company.trial_days_total
         },
         ip_address=request.client.host if request.client else None
     )
@@ -188,6 +217,17 @@ async def reject_access(
         action="reject_access",
         target_company_id=company.id,
         details={"reason": data.reason} if data.reason else None,
+        ip_address=request.client.host if request.client else None
+    )
+
+    # Notify product owner
+    notify_product_owner(
+        action="reject_access",
+        details={
+            "company": company.name,
+            "company_id": company.id,
+            "reason": data.reason or "No reason provided"
+        },
         ip_address=request.client.host if request.client else None
     )
 
@@ -240,6 +280,20 @@ async def update_company_limits(
         ip_address=request.client.host if request.client else None
     )
 
+    # Notify product owner
+    notify_product_owner(
+        action="update_limits",
+        details={
+            "company": company.name,
+            "company_id": company.id,
+            "old_budget": f"${old_values['daily_ai_budget']:.2f}" if old_values['daily_ai_budget'] else "N/A",
+            "new_budget": f"${company.daily_ai_budget:.2f}" if company.daily_ai_budget else "N/A",
+            "old_trial_days": old_values['trial_days_total'],
+            "new_trial_days": company.trial_days_total
+        },
+        ip_address=request.client.host if request.client else None
+    )
+
     return {
         "status": "success",
         "company_id": company.id,
@@ -274,6 +328,13 @@ async def disable_company(
         ip_address=request.client.host if request.client else None
     )
 
+    # Notify product owner
+    notify_product_owner(
+        action="disable_company",
+        details={"company": company.name, "company_id": company.id},
+        ip_address=request.client.host if request.client else None
+    )
+
     return {
         "status": "success",
         "message": f"Disabled {company.name}"
@@ -302,12 +363,36 @@ async def enable_company(
 
     db.commit()
 
+    # Send notification email if this is an Early Access company
+    if company.access_model == 'early_access':
+        admin_user = db.query(User).filter(
+            User.company_id == company.id,
+            User.role == 'admin'
+        ).first()
+
+        if admin_user and admin_user.email:
+            from services.email_service import send_early_access_approved_email_queued
+            send_early_access_approved_email_queued(
+                to_email=admin_user.email,
+                to_name=admin_user.name or "User",
+                company_name=company.name,
+                daily_budget=company.daily_ai_budget or 10.0,
+                trial_days=company.trial_days_total or 10
+            )
+
     # Audit log
     log_super_admin_action(
         db=db,
         admin_id=admin.id,
         action="enable_company",
         target_company_id=company.id,
+        ip_address=request.client.host if request.client else None
+    )
+
+    # Notify product owner
+    notify_product_owner(
+        action="enable_company",
+        details={"company": company.name, "company_id": company.id},
         ip_address=request.client.host if request.client else None
     )
 

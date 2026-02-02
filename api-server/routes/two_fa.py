@@ -157,7 +157,7 @@ async def verify_2fa_login(
         token_data = {"user_id": user.id, "type": "super_admin"}
         company_id = None
     else:
-        token_data = {"user_id": user.id, "type": user.role if user.role else "user"}
+        token_data = {"user_id": user.id, "type": user.role if user.role else "user", "company_id": user.company_id}
         company_id = user.company_id
     
     return {
