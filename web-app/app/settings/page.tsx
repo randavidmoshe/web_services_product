@@ -6,7 +6,6 @@ type SettingsTab = 'profile' | 'api-key' | 'notifications' | 'security' | 'billi
 
 export default function SettingsPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -31,21 +30,29 @@ export default function SettingsPage() {
   ]
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    setToken(storedToken)
-    setUserId(storedUserId)
-    fetchApiKeyStatus(storedToken, storedUserId)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        setUserId(String(data.user_id))
+        fetchApiKeyStatus()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
-  const fetchApiKeyStatus = async (authToken: string, odUserId: string | null) => {
+  const fetchApiKeyStatus = async () => {
     try {
-      const res = await fetch(`/api/settings/api-key?user_id=${odUserId}`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+      const res = await fetch(`/api/settings/api-key`, {
+        credentials: 'include'
       })
 
       if (!res.ok) {
@@ -67,7 +74,6 @@ export default function SettingsPage() {
   }
 
   const saveApiKey = async () => {
-    if (!token || !userId) return
     if (!newKey.trim()) {
       setMessage({ type: 'error', text: 'API key is required' })
       return
@@ -81,12 +87,10 @@ export default function SettingsPage() {
     setMessage(null)
 
     try {
-      const res = await fetch(`/api/settings/api-key?user_id=${userId}`, {
+      const res = await fetch(`/api/settings/api-key`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ api_key: newKey.trim() })
       })
 
@@ -98,7 +102,7 @@ export default function SettingsPage() {
       setMessage({ type: 'success', text: 'API key saved successfully' })
       setShowKeyInput(false)
       setNewKey('')
-      fetchApiKeyStatus(token, userId)
+      fetchApiKeyStatus()
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message })
     } finally {
@@ -107,7 +111,6 @@ export default function SettingsPage() {
   }
 
   const deleteApiKey = async () => {
-    if (!token || !userId) return
     if (!confirm('Are you sure you want to remove your API key? AI features will be disabled.')) {
       return
     }
@@ -115,9 +118,9 @@ export default function SettingsPage() {
     setSaving(true)
 
     try {
-      const res = await fetch(`/api/settings/api-key?user_id=${userId}`, {
+      const res = await fetch(`/api/settings/api-key`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       if (!res.ok) {

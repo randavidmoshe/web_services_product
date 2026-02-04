@@ -1,7 +1,8 @@
 # routes/settings.py
 # User settings endpoints
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
+from utils.auth_helpers import get_current_user_from_request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -24,18 +25,14 @@ class ApiKeyResponse(BaseModel):
 
 @router.get("/api-key", response_model=ApiKeyResponse)
 async def get_api_key_status(
-        user_id: int = Query(None),
-        company_id: int = Query(None),
+        request: Request,
         db: Session = Depends(get_db)
 ):
-    """Get API key status (masked)"""
-    if not company_id and user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            company_id = user.company_id
-
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id or user_id required")
+    """Get API key status (masked) - Admin only"""
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    company_id = current_user["company_id"]
 
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id
@@ -56,18 +53,14 @@ async def get_api_key_status(
 @router.put("/api-key")
 async def update_api_key(
         payload: ApiKeyUpdate,
-        user_id: int = Query(None),
-        company_id: int = Query(None),
+        request: Request,
         db: Session = Depends(get_db)
 ):
-    """Update user's API key (BYOK)"""
-    if not company_id and user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            company_id = user.company_id
-
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id or user_id required")
+    """Update company's API key (BYOK) - Admin only"""
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    company_id = current_user["company_id"]
 
     api_key = payload.api_key.strip()
     if not api_key.startswith("sk-ant-"):
@@ -112,18 +105,14 @@ async def update_api_key(
 
 @router.delete("/api-key")
 async def delete_api_key(
-        user_id: int = Query(None),
-        company_id: int = Query(None),
+        request: Request,
         db: Session = Depends(get_db)
 ):
-    """Delete user's API key"""
-    if not company_id and user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            company_id = user.company_id
-
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id or user_id required")
+    """Delete company's API key - Admin only"""
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    company_id = current_user["company_id"]
 
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id

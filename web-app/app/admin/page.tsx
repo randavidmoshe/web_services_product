@@ -41,7 +41,6 @@ interface AuditLog {
 }
 
 export default function SuperAdminDashboard() {
-  const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'pending' | 'companies' | 'audit'>('pending')
 
@@ -60,32 +59,41 @@ export default function SuperAdminDashboard() {
   const [editDays, setEditDays] = useState('')
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
-    const userType = localStorage.getItem('userType')
-
-    if (!storedToken || userType !== 'super_admin') {
-      window.location.href = '/login'
-      return
-    }
-
-    setToken(storedToken)
-    loadData(storedToken)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        if (data.type !== 'super_admin') {
+          window.location.href = '/login'
+          return
+        }
+        loadData()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
-  const loadData = async (authToken: string) => {
+  const loadData = async () => {
     setLoading(true)
     await Promise.all([
-      loadPendingCompanies(authToken),
-      loadAllCompanies(authToken),
-      loadAuditLogs(authToken)
+      loadPendingCompanies(),
+      loadAllCompanies(),
+      loadAuditLogs()
     ])
     setLoading(false)
   }
 
-  const loadPendingCompanies = async (authToken: string) => {
+  const loadPendingCompanies = async () => {
     try {
       const response = await fetch('/api/super-admin/pending-access', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -96,10 +104,10 @@ export default function SuperAdminDashboard() {
     }
   }
 
-  const loadAllCompanies = async (authToken: string) => {
+  const loadAllCompanies = async () => {
     try {
       const response = await fetch('/api/super-admin/all-companies', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -110,10 +118,10 @@ export default function SuperAdminDashboard() {
     }
   }
 
-  const loadAuditLogs = async (authToken: string) => {
+  const loadAuditLogs = async () => {
     try {
       const response = await fetch('/api/super-admin/audit-logs?limit=50', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -125,23 +133,20 @@ export default function SuperAdminDashboard() {
   }
 
   const approveAccess = async (companyId: number) => {
-    if (!token) return
     setActionLoading(companyId)
     setMessage(null)
 
     try {
       const response = await fetch('/api/super-admin/approve-access', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ company_id: companyId })
       })
 
       if (response.ok) {
         setMessage({ type: 'success', text: 'Access approved!' })
-        loadData(token)
+        loadData()
       } else {
         const err = await response.json()
         setMessage({ type: 'error', text: err.detail || 'Failed to approve' })
@@ -153,23 +158,20 @@ export default function SuperAdminDashboard() {
   }
 
   const rejectAccess = async (companyId: number) => {
-    if (!token) return
     setActionLoading(companyId)
     setMessage(null)
 
     try {
       const response = await fetch('/api/super-admin/reject-access', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ company_id: companyId })
       })
 
       if (response.ok) {
         setMessage({ type: 'success', text: 'Access rejected' })
-        loadData(token)
+        loadData()
       } else {
         const err = await response.json()
         setMessage({ type: 'error', text: err.detail || 'Failed to reject' })
@@ -181,7 +183,6 @@ export default function SuperAdminDashboard() {
   }
 
   const toggleCompanyStatus = async (company: Company) => {
-    if (!token) return
     setActionLoading(company.company_id)
 
     const endpoint = company.access_status === 'active'
@@ -191,12 +192,12 @@ export default function SuperAdminDashboard() {
     try {
       const response = await fetch(`${endpoint}?company_id=${company.company_id}`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       if (response.ok) {
         setMessage({ type: 'success', text: company.access_status === 'active' ? 'Company disabled' : 'Company enabled' })
-        loadData(token)
+        loadData()
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to update status' })
@@ -211,16 +212,14 @@ export default function SuperAdminDashboard() {
   }
 
   const saveLimits = async () => {
-    if (!token || !editingCompany) return
+    if (!editingCompany) return
     setActionLoading(editingCompany.company_id)
 
     try {
       const response = await fetch('/api/super-admin/company-limits', {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           company_id: editingCompany.company_id,
           daily_ai_budget: parseFloat(editBudget),
@@ -231,7 +230,7 @@ export default function SuperAdminDashboard() {
       if (response.ok) {
         setMessage({ type: 'success', text: 'Limits updated' })
         setEditingCompany(null)
-        loadData(token)
+        loadData()
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to update limits' })

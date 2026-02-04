@@ -5,7 +5,7 @@
 # UPDATED: Added AI usage endpoint for dashboard
 # UPDATED: Added budget exceeded error handling
 
-from fastapi import APIRouter, Depends, HTTPException, Body, Header
+from fastapi import APIRouter, Depends, HTTPException, Body, Header, Request
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ import os
 
 from models.database import get_db, FormPageRoute, CrawlSession, Network
 from models.agent_models import Agent, AgentTask
-from utils.auth_helpers import verify_company_access
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter()
 
@@ -28,11 +28,9 @@ redis_client = redis.from_url(REDIS_URL)
 # ========== AI USAGE ENDPOINT (for dashboard) ==========
 
 @router.get("/ai-usage")
-@router.get("/ai-usage")
 async def get_ai_usage(
-    company_id: int,
+    request: Request,
     product_id: int = 1,
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -45,7 +43,8 @@ async def get_ai_usage(
         - reset_date: When budget resets
         - days_until_reset: Days until next reset
     """
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
     from services.form_pages_locator_service import FormPagesLocatorService
     
     usage = FormPagesLocatorService.get_ai_usage_for_company(db, company_id, product_id)
@@ -57,13 +56,13 @@ async def get_ai_usage(
 @router.post("/networks/{network_id}/locate")
 async def locate_form_pages(
     network_id: int,
+    request: Request,
     user_id: int,
     max_depth: int = 20,
     max_form_pages: Optional[int] = None,
     headless: bool = False,
     slow_mode: bool = True,
     ui_verification: bool = True,
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -83,7 +82,10 @@ async def locate_form_pages(
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
-    verify_company_access(authorization, network.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     from services.form_pages_locator_service import FormPagesLocatorService
     from services.ai_budget_service import BudgetExceededError
     
@@ -171,12 +173,15 @@ async def locate_form_pages(
 
 
 @router.get("/sessions/{session_id}")
-async def get_crawl_session(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def get_crawl_session(session_id: int, request: Request, db: Session = Depends(get_db)):
     """Get crawl session status"""
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
 
     
@@ -215,7 +220,7 @@ async def update_crawl_session(
 
 
 @router.get("/sessions/{session_id}/status")
-async def get_discovery_status(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def get_discovery_status(session_id: int, request: Request, db: Session = Depends(get_db)):
     """
     Get discovery status including session info, task status, and discovered forms.
     Designed for frontend polling.
@@ -226,7 +231,9 @@ async def get_discovery_status(session_id: int, authorization: str = Header(...)
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     # Heartbeat timeout - agent is offline if no heartbeat for this long
     HEARTBEAT_TIMEOUT_SECONDS = 60
     
@@ -280,7 +287,7 @@ async def get_discovery_status(session_id: int, authorization: str = Header(...)
 
 
 @router.post("/sessions/{session_id}/cancel")
-async def cancel_discovery_session(session_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def cancel_discovery_session(session_id: int, request: Request, db: Session = Depends(get_db)):
     """
     Cancel a running discovery session.
     Updates DB status so heartbeat returns cancel_requested to agent.
@@ -289,7 +296,9 @@ async def cancel_discovery_session(session_id: int, authorization: str = Header(
     session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Crawl session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Only cancel if running or pending
     if session.status not in ['running', 'pending']:
@@ -308,13 +317,17 @@ async def cancel_discovery_session(session_id: int, authorization: str = Header(
 # ========== FORM ROUTES ENDPOINTS ==========
 
 @router.get("/projects/{project_id}/active-sessions")
-async def get_active_sessions(project_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def get_active_sessions(project_id: int, request: Request, db: Session = Depends(get_db)):
     """Get active (pending/running) crawl sessions for a project"""
     from models.database import Project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    verify_company_access(authorization, project.company_id, db)
+
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != project.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     sessions = db.query(CrawlSession).filter(
         CrawlSession.project_id == project_id,
         CrawlSession.status.in_(['pending', 'running'])
@@ -336,15 +349,14 @@ async def get_active_sessions(project_id: int, authorization: str = Header(...),
 @router.get("/routes")
 @router.get("/routes")
 async def list_form_routes(
+    request: Request,
     network_id: Optional[int] = None,
     project_id: Optional[int] = None,
-    company_id: int = None,
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Get form routes with optional filters"""
-    if company_id:
-        verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
     from services.form_pages_locator_service import FormPagesLocatorService
     
     service = FormPagesLocatorService(db)
@@ -417,12 +429,14 @@ async def list_form_routes(
 
 
 @router.get("/networks/{network_id}/login-logout-stages")
-async def get_login_logout_stages(network_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def get_login_logout_stages(network_id: int, request: Request, db: Session = Depends(get_db)):
     """Get login and logout stages for a network"""
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
-    verify_company_access(authorization, network.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
     return {
@@ -438,7 +452,7 @@ async def get_login_logout_stages(network_id: int, authorization: str = Header(.
 @router.put("/networks/{network_id}/login-stages")
 async def update_login_stages(
         network_id: int,
-        authorization: str = Header(...),
+        request: Request,
         data: Dict[str, Any] = Body(...),
         db: Session = Depends(get_db)
 ):
@@ -446,7 +460,9 @@ async def update_login_stages(
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
-    verify_company_access(authorization, network.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     network.login_stages = data.get("login_stages", [])
     db.commit()
@@ -457,7 +473,7 @@ async def update_login_stages(
 @router.put("/networks/{network_id}/logout-stages")
 async def update_logout_stages(
         network_id: int,
-        authorization: str = Header(...),
+        request: Request,
         data: Dict[str, Any] = Body(...),
         db: Session = Depends(get_db)
 ):
@@ -465,7 +481,9 @@ async def update_logout_stages(
     network = db.query(Network).filter(Network.id == network_id).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
-    verify_company_access(authorization, network.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     network.logout_stages = data.get("logout_stages", [])
     db.commit()
@@ -501,19 +519,21 @@ async def create_form_route(
 
 
 @router.get("/routes/{route_id}")
-async def get_form_route(route_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def get_form_route(route_id: int, request: Request, db: Session = Depends(get_db)):
     """Get a single form route by ID"""
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
-    verify_company_access(authorization, route.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != route.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return route
 
 
 @router.put("/routes/{route_id}")
 async def update_form_route(
     route_id: int,
-    authorization: str = Header(...),
+    request: Request,
     data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)
 ):
@@ -521,7 +541,9 @@ async def update_form_route(
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
-    verify_company_access(authorization, route.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != route.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Update allowed fields
     if "form_name" in data:
@@ -553,12 +575,14 @@ async def update_form_route(
 
 
 @router.delete("/routes/{route_id}")
-async def delete_form_route(route_id: int, authorization: str = Header(...), db: Session = Depends(get_db)):
+async def delete_form_route(route_id: int, request: Request, db: Session = Depends(get_db)):
     """Delete a form route"""
     route = db.query(FormPageRoute).filter(FormPageRoute.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Form route not found")
-    verify_company_access(authorization, route.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != route.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     db.delete(route)
     db.commit()

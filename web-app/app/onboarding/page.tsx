@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -18,23 +17,30 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
 
-    if (!storedToken || !storedUserId) {
-      window.location.href = '/login'
-      return
-    }
-
-    setToken(storedToken)
-    setUserId(storedUserId)
-    checkOnboardingStatus(storedToken, storedUserId)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        setUserId(String(data.user_id))
+        checkOnboardingStatus()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
-  const checkOnboardingStatus = async (authToken: string, uid: string) => {
+  const checkOnboardingStatus = async () => {
     try {
-      const response = await fetch(`/api/onboarding/status?user_id=${uid}`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+      const response = await fetch(`/api/onboarding/status`, {
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -66,7 +72,7 @@ export default function OnboardingPage() {
           setStep(4)
         } else if (data.access_status === 'active') {
           // Everything ready, complete onboarding
-          completeOnboarding(authToken, uid)
+          completeOnboarding()
           return
         }
 
@@ -82,17 +88,14 @@ export default function OnboardingPage() {
   }
 
   const saveCategory = async (category: string) => {
-    if (!token || !userId) return
     setSaving(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/onboarding/category?user_id=${userId}`, {
+      const response = await fetch(`/api/onboarding/category`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ account_category: category })
       })
 
@@ -108,7 +111,7 @@ export default function OnboardingPage() {
           setStep(4)
         } else if (accessModel && accessStatus === 'active') {
           // Already active, complete
-          completeOnboarding(token, userId)
+          completeOnboarding()
         } else {
           // No access model set, go to selection
           setStep(2)
@@ -123,17 +126,14 @@ export default function OnboardingPage() {
   }
 
   const saveAccessModel = async (model: string) => {
-    if (!token || !userId) return
     setSaving(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/onboarding/access-model?user_id=${userId}`, {
+      const response = await fetch(`/api/onboarding/access-model`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ access_model: model })
       })
 
@@ -160,7 +160,6 @@ export default function OnboardingPage() {
   }
 
   const saveApiKey = async () => {
-    if (!token || !userId) return
     if (!apiKey.trim()) {
       setError('Please enter your API key')
       return
@@ -176,10 +175,8 @@ export default function OnboardingPage() {
     try {
       const response = await fetch(`/api/settings/api-key`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ api_key: apiKey.trim() })
       })
 
@@ -196,11 +193,11 @@ export default function OnboardingPage() {
     setSaving(false)
   }
 
-  const completeOnboarding = async (authToken: string, uid: string) => {
+  const completeOnboarding = async () => {
     try {
-      const response = await fetch(`/api/onboarding/complete?user_id=${uid}`, {
+      const response = await fetch(`/api/onboarding/complete`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
 
       if (response.ok) {

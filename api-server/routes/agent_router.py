@@ -11,7 +11,7 @@
 # - Registering a new agent generates NEW API key (invalidates previous agent)
 # - JWT session_id must match DB to prevent old agents from reconnecting
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
@@ -26,6 +26,7 @@ from models.agent_models import Agent, AgentTask
 from services.agent_service import AgentService
 from utils.jwt_utils import create_jwt_token, decode_jwt_token, get_token_expiry_seconds
 from jose import JWTError
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -479,11 +480,17 @@ async def update_task_progress(
 # ============================================================================
 
 @router.get("/agents")
-async def list_agents(company_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def list_agents(request: Request, db: Session = Depends(get_db)):
     """List all agents (for admin dashboard - no agent auth required)."""
-    query = db.query(Agent)
-    if company_id:
-        query = query.filter(Agent.company_id == company_id)
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
+    #query = db.query(Agent)
+    #if company_id:
+    #    query = query.filter(Agent.company_id == company_id)
+
+    query = db.query(Agent).filter(Agent.company_id == company_id)
     
     agents = query.all()
     
@@ -504,12 +511,14 @@ async def list_agents(company_id: Optional[int] = None, db: Session = Depends(ge
 
 
 @router.post("/create-task")
-async def create_task(task_data: dict, db: Session = Depends(get_db)):
+async def create_task(task_data: dict, request: Request, db: Session = Depends(get_db)):
     """
     Create task (called by web app - no agent auth required).
     Tasks are pushed to user-specific Redis queue: 'agent:{user_id}'
     """
-    company_id = task_data.get('company_id')
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     user_id = task_data.get('user_id')
     task_type = task_data.get('task_type')
     parameters = task_data.get('parameters', {})
@@ -542,13 +551,19 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/task-status/{task_id}")
-async def get_task_status_endpoint(task_id: str, db: Session = Depends(get_db)):
+async def get_task_status_endpoint(task_id: str, request: Request, db: Session = Depends(get_db)):
     """Get task status (for dashboard - no agent auth required)."""
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     agent_service = AgentService(db)
     db_task = agent_service.get_celery_task(task_id)
-    
+
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if current_user["type"] != "super_admin" and db_task.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     return {
         "task_id": task_id,
@@ -564,9 +579,13 @@ async def get_task_status_endpoint(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/queue-stats")
-async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(get_db)):
+async def get_queue_stats(request: Request, user_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get queue statistics (for admin dashboard)."""
     try:
+
+        current_user = get_current_user_from_request(request)
+        company_id = current_user["company_id"]
+
         if user_id:
             queue_name = f'agent:{user_id}'
             queue_length = redis_client.llen(queue_name)
@@ -600,12 +619,17 @@ async def get_queue_stats(user_id: Optional[int] = None, db: Session = Depends(g
 @router.post("/regenerate-api-key")
 async def regenerate_api_key_endpoint(
     data: dict,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Regenerate API key for an agent (from web dashboard).
     This also regenerates the session_id, invalidating all existing JWTs.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     agent_id = data.get('agent_id')
     user_id = data.get('user_id')
     
@@ -616,9 +640,11 @@ async def regenerate_api_key_endpoint(
         Agent.agent_id == agent_id,
         Agent.user_id == user_id
     ).first()
-    
+
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found or not owned by user")
+    if current_user["type"] != "super_admin" and agent.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Regenerate both API key and session
     agent.api_key = generate_api_key()

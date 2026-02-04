@@ -26,12 +26,12 @@ class FormMapperSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Link to discovered form page
-    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True, index=True)
     test_page_route_id = Column(Integer, ForeignKey("test_page_routes.id", ondelete="CASCADE"), nullable=True)
     # Ownership
     network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
-    company_id = Column(Integer, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    company_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Agent assignment
     agent_id = Column(String(100), nullable=True)
@@ -126,7 +126,7 @@ class FormMapResult(Base):
     
     # Links
     form_mapper_session_id = Column(Integer, ForeignKey("form_mapper_sessions.id", ondelete="CASCADE"), nullable=False)
-    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True)
+    form_page_route_id = Column(Integer, ForeignKey("form_page_routes.id", ondelete="CASCADE"), nullable=True, index=True)
     test_page_route_id = Column(Integer, ForeignKey("test_page_routes.id", ondelete="CASCADE"), nullable=True)
 
     # Test scenario (if mapped with scenario)
@@ -134,7 +134,7 @@ class FormMapResult(Base):
     
     # Ownership (denormalized)
     network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
-    company_id = Column(Integer, nullable=True)
+    company_id = Column(Integer, nullable=True, index=True)
     
     # Path info
     path_number = Column(Integer, default=1)

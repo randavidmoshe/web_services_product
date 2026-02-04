@@ -46,7 +46,6 @@ interface CompletedPath {
 
 export default function CustomTestsPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
@@ -126,9 +125,7 @@ export default function CustomTestsPage() {
   }
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedProjectId = localStorage.getItem('active_project_id')
     
     if (!storedToken) {
@@ -153,9 +150,9 @@ export default function CustomTestsPage() {
       const newProjectId = localStorage.getItem('active_project_id')
       if (newProjectId !== activeProjectId) {
         setActiveProjectId(newProjectId)
-        if (newProjectId && token) {
-          loadNetworks(newProjectId, token)
-          loadTestPages(newProjectId, token)
+        if (newProjectId) {
+          loadNetworks(newProjectId)
+          loadTestPages(newProjectId)
         }
       }
     }
@@ -167,13 +164,13 @@ export default function CustomTestsPage() {
       window.removeEventListener('storage', handleStorageChange)
       clearInterval(interval)
     }
-  }, [activeProjectId, token])
+  }, [activeProjectId])
 
   const loadNetworks = async (projectId: string, authToken: string) => {
     try {
       const response = await fetch(
         `/api/projects/${projectId}/networks`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -191,7 +188,7 @@ export default function CustomTestsPage() {
     try {
       const response = await fetch(
         `/api/test-pages?project_id=${projectId}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -212,8 +209,8 @@ export default function CustomTestsPage() {
   // Check for active mapping sessions and restore UI state
   const checkActiveMappingSessions = async (authToken: string) => {
     try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+      const response = await fetch(`/api/form-mapper/active-sessions`, {
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -299,7 +296,6 @@ export default function CustomTestsPage() {
         network_id: formData.network_id
       } : {
         project_id: parseInt(activeProjectId!),
-        company_id: parseInt(companyId!),
         network_id: formData.network_id,
         url: formData.url,
         test_name: formData.test_name,
@@ -309,17 +305,15 @@ export default function CustomTestsPage() {
       
       const response = await fetch(url, {
         method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body)
       })
       
       if (response.ok) {
         setMessage(editingTestPage ? 'Custom test updated' : 'Custom test created')
         setShowAddModal(false)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to save')
@@ -340,7 +334,7 @@ export default function CustomTestsPage() {
         `/api/test-pages/${testPageToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -348,7 +342,7 @@ export default function CustomTestsPage() {
         setMessage('Custom test deleted')
         setShowDeleteConfirm(false)
         setTestPageToDelete(null)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         setError('Failed to delete')
       }
@@ -371,7 +365,7 @@ export default function CustomTestsPage() {
     try {
       const response = await fetch(
         `/api/test-pages/${testPage.id}/paths`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -394,10 +388,8 @@ export default function CustomTestsPage() {
         `/api/test-pages/${selectedTestPage.id}`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             test_name: editTestName,
             url: editUrl,
@@ -408,7 +400,7 @@ export default function CustomTestsPage() {
       
       if (response.ok) {
         setMessage('Custom test updated')
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
         setSelectedTestPage({
           ...selectedTestPage,
           test_name: editTestName,
@@ -450,10 +442,8 @@ export default function CustomTestsPage() {
         `/api/test-pages/${testPage.id}/start-mapping`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ user_id: parseInt(userId!) })
         }
       )
@@ -497,7 +487,7 @@ export default function CustomTestsPage() {
         `/api/form-mapper/sessions/${status.sessionId}/cancel`,
         {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -530,14 +520,14 @@ export default function CustomTestsPage() {
         `/api/form-mapper/paths/${pathId}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
       if (response.ok) {
         setPaths(prev => prev.filter(p => p.id !== pathId))
         setMessage('Path deleted')
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         setError('Failed to delete path')
       }
@@ -561,10 +551,8 @@ export default function CustomTestsPage() {
         `/api/form-mapper/paths/${pathId}`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ steps: updatedSteps })
         }
       )
@@ -608,7 +596,7 @@ export default function CustomTestsPage() {
     try {
       const response = await fetch(
         `/api/test-pages/${selectedTestPage.id}/paths`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -628,7 +616,7 @@ export default function CustomTestsPage() {
         `/api/test-pages/${testPageId}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -636,7 +624,7 @@ export default function CustomTestsPage() {
         setMessage('Custom test deleted')
         setShowDetailPanel(false)
         setSelectedTestPage(null)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         setError('Failed to delete')
       }
@@ -649,7 +637,7 @@ export default function CustomTestsPage() {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         
         if (response.ok) {
@@ -672,7 +660,7 @@ export default function CustomTestsPage() {
               return next
             })
             
-            loadTestPages(activeProjectId!, token!)
+            loadTestPages(activeProjectId!)
             
             // Refresh paths if the completed test page is currently selected
             if (selectedTestPage && selectedTestPage.id === testPageId) {
@@ -841,7 +829,6 @@ export default function CustomTestsPage() {
           editingTestPage={selectedTestPage}
           completedPaths={paths}
           loadingPaths={loadingPaths}
-          token={token || ''}
           editTestName={editTestName}
           setEditTestName={setEditTestName}
           editUrl={editUrl}

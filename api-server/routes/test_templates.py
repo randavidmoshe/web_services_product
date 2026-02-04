@@ -2,8 +2,9 @@
 Test Templates API Routes
 Provides endpoints to list and get test templates for form mapping
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from utils.auth_helpers import get_current_user_from_request
 from typing import List
 from pydantic import BaseModel
 from models.database import get_db, TestTemplate
@@ -45,12 +46,14 @@ class TestTemplateListResponse(BaseModel):
 
 @router.get("", response_model=TestTemplateListResponse)
 async def list_test_templates(
+        request: Request,
         active_only: bool = True,
         db: Session = Depends(get_db)
 ):
     """
     Get all available test templates
     """
+    get_current_user_from_request(request)  # Verify authenticated
     try:
         query = db.query(TestTemplate)
         if active_only:
@@ -78,11 +81,13 @@ async def list_test_templates(
 @router.get("/{template_id}", response_model=TestTemplateResponse)
 async def get_test_template(
         template_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Get a specific test template by ID
     """
+    get_current_user_from_request(request)  # Verify authenticated
     try:
         template = db.query(TestTemplate).filter(TestTemplate.id == template_id).first()
 

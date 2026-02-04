@@ -17,9 +17,7 @@ interface Project {
 
 export default function ProjectsPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   
   // Projects
@@ -40,34 +38,39 @@ export default function ProjectsPage() {
   const [deletingProject, setDeletingProject] = useState(false)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedUserRole = localStorage.getItem('userType')
     
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
+    // Verify auth via API
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        setUserId(String(data.user_id))
+        setUserRole(data.type)
+        loadProjects()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
     
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setUserRole(storedUserRole)
-    
-    if (storedCompanyId) {
-      loadProjects(storedCompanyId, storedToken)
-    }
+
   }, [])
 
-  const loadProjects = async (companyId: string, authToken: string) => {
+  const loadProjects = async () => {
     setLoading(true)
     setError(null)
     
     try {
       const response = await fetch(
-        `/api/projects/?company_id=${companyId}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        `/api/projects/`,
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -97,16 +100,12 @@ export default function ProjectsPage() {
         '/api/projects/',
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
-            company_id: parseInt(companyId!),
-            product_id: 1, // Default product ID
-            user_id: parseInt(userId!)
+            product_id: 1
           })
         }
       )
@@ -116,7 +115,7 @@ export default function ProjectsPage() {
         setShowAddModal(false)
         setNewProjectName('')
         setNewProjectDescription('')
-        loadProjects(companyId!, token!)
+        loadProjects()
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to create project')
@@ -142,10 +141,10 @@ export default function ProjectsPage() {
     
     try {
       const response = await fetch(
-        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
+        `/api/projects/${projectToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -154,7 +153,7 @@ export default function ProjectsPage() {
         setMessage(`Project deleted. ${data.deleted.networks_deleted} networks and ${data.deleted.form_pages_deleted} form pages removed.`)
         setShowDeleteModal(false)
         setProjectToDelete(null)
-        loadProjects(companyId!, token!)
+        loadProjects()
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to delete project')
@@ -170,7 +169,7 @@ export default function ProjectsPage() {
     router.push(`/dashboard/projects/${projectId}`)
   }
 
-  if (!token) return <p>Loading...</p>
+  if (loading) return <p>Loading...</p>
 
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>

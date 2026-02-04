@@ -87,6 +87,7 @@ export default function WebAppLoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password })
       })
       
@@ -141,6 +142,7 @@ export default function WebAppLoginPage() {
       const response = await fetch('/api/2fa/verify-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_id: pendingUserId,
           user_type: pendingUserType,
@@ -164,12 +166,10 @@ export default function WebAppLoginPage() {
   }
 
   const completeLogin = (data: any) => {
-    localStorage.setItem('token', data.token)
+    // Token is in HttpOnly cookie (set by backend)
+    // company_id removed - backend derives from token
     localStorage.setItem('userType', data.type)
     localStorage.setItem('user_id', String(data.user_id))
-    if (data.company_id) {
-      localStorage.setItem('company_id', String(data.company_id))
-    }
     setMessage('✅ Login successful!')
 
     // Determine redirect based on user type and onboarding status
@@ -186,13 +186,11 @@ export default function WebAppLoginPage() {
 
   const handle2FASetupSuccess = () => {
     setShow2FASetupModal(false)
-    localStorage.setItem('token', tempToken)
+    // Token is in HttpOnly cookie (set by backend)
+    // company_id removed - backend derives from token
     localStorage.setItem('userType', pendingUserType)
     if (pendingUserId) {
       localStorage.setItem('user_id', String(pendingUserId))
-    }
-    if (pendingCompanyId) {
-      localStorage.setItem('company_id', String(pendingCompanyId))
     }
     setMessage('✅ 2FA enabled! Redirecting...')
 

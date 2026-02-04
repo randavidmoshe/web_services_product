@@ -12,7 +12,7 @@
 import logging
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ from celery_app import celery
 import os
 from sqlalchemy.orm.attributes import flag_modified
 from celery_app import celery
-from utils.auth_helpers import verify_company_access
+from utils.auth_helpers import get_current_user_from_request
 
 
 logger = logging.getLogger(__name__)
@@ -163,8 +163,8 @@ class StepUpdateRequest(BaseModel):
 
 @router.post("/start", response_model=StartMappingResponse, status_code=202)
 async def start_form_mapping(
-    request: StartMappingRequest,
-    authorization: str = Header(...),
+    body: StartMappingRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -173,30 +173,32 @@ async def start_form_mapping(
     This creates a new mapping session and queues the initial task
     to the agent. Returns immediately with session_id.
     """
-    user_id = request.user_id
-    network_id = request.network_id
-    print(f"[DEBUG] start_form_mapping: network_id from request = {network_id}")
-    company_id = request.company_id
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+    user_id = current_user["user_id"]
+    network_id = body.network_id
+    print(f"[DEBUG] start_form_mapping: network_id from body = {network_id}")
     
     # Validate form_page_route exists
     form_page_route = db.query(FormPageRoute).filter(
-        FormPageRoute.id == request.form_page_route_id
+        FormPageRoute.id == body.form_page_route_id
     ).first()
     
     if not form_page_route:
         raise HTTPException(status_code=404, detail="Form page route not found")
-    verify_company_access(authorization, form_page_route.company_id, db)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page_route.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Use network_id from request, or fall back to form_page_route.network_id
     if not network_id:
         network_id = form_page_route.network_id
 
     # Validate test_cases
-    if not request.test_cases:
+    if not body.test_cases:
         raise HTTPException(status_code=400, detail="At least one test case is required")
     
     # Get or assign agent
-    agent_id = request.agent_id
+    agent_id = body.agent_id
     if not agent_id:
         # Use default agent assignment logic
         agent_id = f"agent-{user_id}"  # Simplified - you may have more complex logic
@@ -208,11 +210,11 @@ async def start_form_mapping(
             kwargs={
                 'company_id': company_id,
                 'project_id': form_page_route.project_id,
-                'form_page_route_id': request.form_page_route_id,
+                'form_page_route_id': body.form_page_route_id,
                 'reason': 'remap'
             }
         )
-        logger.info(f"[API] Queued cleanup of old form files for route {request.form_page_route_id}")
+        logger.info(f"[API] Queued cleanup of old form files for route {body.form_page_route_id}")
 
     # Create orchestrator and session
     orchestrator = FormMapperOrchestrator(db)
@@ -221,13 +223,13 @@ async def start_form_mapping(
     try:
         # First create database record to get integer ID
         db_session = FormMapperSession(
-            form_page_route_id=request.form_page_route_id,
+            form_page_route_id=body.form_page_route_id,
             user_id=user_id,
             network_id=network_id,
             company_id=company_id,
             agent_id=agent_id,
             status="initializing",
-            config=request.config or {}
+            config=body.config or {}
         )
         db.add(db_session)
         db.commit()
@@ -235,14 +237,14 @@ async def start_form_mapping(
         
         # Now create Redis session with the database ID
         session = orchestrator.create_session(
-            session_id=str(db_session.id),  # Use DB integer ID as string
-            form_page_route_id=request.form_page_route_id,
+            session_id=str(db_session.id),
+            form_page_route_id=body.form_page_route_id,
             user_id=user_id,
             network_id=network_id,
             company_id=company_id,
-            config=request.config,
-            test_cases=request.test_cases,
-            test_scenario_id=request.test_scenario_id
+            config=body.config,
+            test_cases=body.test_cases,
+            test_scenario_id=body.test_scenario_id
         )
         
         # Start the mapping process (Login → Navigate → Map)
@@ -289,8 +291,8 @@ async def start_form_mapping(
 @router.post("/routes/{form_page_route_id}/continue-mapping", response_model=ContinueMappingResponse, status_code=202)
 async def continue_form_mapping(
         form_page_route_id: int,
-        request: ContinueMappingRequest,
-        authorization: str = Header(...),
+        body: ContinueMappingRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -300,9 +302,10 @@ async def continue_form_mapping(
     If yes - starts full mapping flow with junction instructions.
     If no - returns immediately with all_paths_complete=True.
     """
-    user_id = request.user_id
-    network_id = request.network_id
-    company_id = request.company_id
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+    user_id = current_user["user_id"]
+    network_id = body.network_id
 
     # Validate form_page_route exists
     form_page_route = db.query(FormPageRoute).filter(
@@ -311,7 +314,8 @@ async def continue_form_mapping(
 
     if not form_page_route:
         raise HTTPException(status_code=404, detail="Form page route not found")
-    verify_company_access(authorization, form_page_route.company_id, db)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page_route.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
     if not network_id:
@@ -326,15 +330,15 @@ async def continue_form_mapping(
         raise HTTPException(status_code=400, detail="No existing paths found. Use /start for initial mapping.")
 
     # Validate test_cases
-    if not request.test_cases:
+    if not body.test_cases:
         raise HTTPException(status_code=400, detail="At least one test case is required")
 
-    agent_id = request.agent_id
+    agent_id = body.agent_id
     if not agent_id:
         agent_id = f"agent-{user_id}"
 
     # Build completed_paths for AI evaluation (same format as _load_junction_paths_from_db)
-    config = request.config or {}
+    config = body.config or {}
     max_options_for_junction = config.get("max_options_for_junction", 8)
 
     completed_paths_for_ai = []
@@ -368,7 +372,7 @@ async def continue_form_mapping(
             company_id=company_id,
             agent_id=agent_id,
             status="initializing",
-            config=request.config or {}
+            config=body.config or {}
         )
         db.add(db_session)
         db.commit()
@@ -382,8 +386,8 @@ async def continue_form_mapping(
             user_id=user_id,
             network_id=network_id,
             company_id=company_id,
-            config=request.config,
-            test_cases=request.test_cases,
+            config=body.config,
+            test_cases=body.test_cases,
             skip_cleanup=True
         )
 
@@ -424,14 +428,12 @@ async def continue_form_mapping(
 
 @router.get("/active-sessions")
 async def get_active_mapping_sessions(
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Get all active mapping sessions for the current user."""
-    from utils.auth_helpers import get_token_from_header, decode_token
-    token = get_token_from_header(authorization)
-    payload = decode_token(token)
-    token_company_id = payload.get("company_id")
+    current_user = get_current_user_from_request(request)
+    token_company_id = current_user["company_id"]
 
     active_sessions = db.query(FormMapperSession).filter(
         FormMapperSession.company_id == token_company_id,
@@ -452,8 +454,8 @@ async def get_active_mapping_sessions(
 @router.get("/sessions/{session_id}/status", response_model=SessionStatusResponse)
 async def get_session_status(
     session_id: str,
+    request: Request,
     check_celery: bool = Query(True, description="Check for pending Celery results"),
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -469,7 +471,9 @@ async def get_session_status(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     orchestrator = FormMapperOrchestrator(db)
     
@@ -507,7 +511,7 @@ async def get_session_status(
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(
         session_id: str,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Cancel a mapping session."""
@@ -517,7 +521,9 @@ async def cancel_session(
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if session.status in [SessionStatus.COMPLETED, SessionStatus.FAILED, SessionStatus.CANCELLED]:
         raise HTTPException(
@@ -540,7 +546,7 @@ async def cancel_session(
 @router.get("/sessions/{session_id}/result", response_model=SessionResultResponse)
 async def get_session_result(
     session_id: str,
-    authorization: str = Header(...),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Get the final result of a completed mapping session."""
@@ -551,7 +557,9 @@ async def get_session_result(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     if session.status != SessionStatus.COMPLETED:
         raise HTTPException(
@@ -590,19 +598,17 @@ async def get_session_result(
 
 @router.get("/sessions")
 async def list_sessions(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by status"),
     form_page_route_id: Optional[int] = Query(None, description="Filter by form page route"),
     user_id: Optional[int] = Query(None, description="Filter by user"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """List mapping sessions."""
-    from utils.auth_helpers import get_token_from_header, decode_token
-    token = get_token_from_header(authorization)
-    payload = decode_token(token)
-    token_company_id = payload.get("company_id")
+    current_user = get_current_user_from_request(request)
+    token_company_id = current_user["company_id"]
 
     query = db.query(FormMapperSession).filter(FormMapperSession.company_id == token_company_id)
     
@@ -631,18 +637,16 @@ async def list_sessions(
 
 @router.get("/results")
 async def list_results(
+    request: Request,
     form_page_route_id: Optional[int] = Query(None, description="Filter by form page route"),
     network_id: Optional[int] = Query(None, description="Filter by network"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """List mapping results."""
-    from utils.auth_helpers import get_token_from_header, decode_token
-    token = get_token_from_header(authorization)
-    payload = decode_token(token)
-    token_company_id = payload.get("company_id")
+    current_user = get_current_user_from_request(request)
+    token_company_id = current_user["company_id"]
 
     query = db.query(FormMapResult).filter(FormMapResult.company_id == token_company_id)
     
@@ -823,7 +827,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
 @router.get("/results/{result_id}/download")
 async def download_result(
     result_id: int,
-    authorization: str = Header(...),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Download result as JSON file (like path_1_create_verify_person.json)."""
@@ -833,7 +837,9 @@ async def download_result(
     
     if not result:
         raise HTTPException(status_code=404, detail="Result not found")
-    verify_company_access(authorization, result.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != result.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Return steps as JSON
     from fastapi.responses import JSONResponse
@@ -853,8 +859,7 @@ async def download_result(
 @router.get("/routes/{form_page_route_id}/paths", response_model=CompletedPathsListResponse)
 async def get_completed_paths(
         form_page_route_id: int,
-        company_id: int = Query(...),
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -866,8 +871,8 @@ async def get_completed_paths(
     Returns paths with steps (junction info filtered out for display).
     """
 
-
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
 
     ## Query all form_map_results for this form_page_route
     #results = db.query(FormMapResult).filter(
@@ -876,11 +881,13 @@ async def get_completed_paths(
 
     # Query all form_map_results for this form_page_route
     from sqlalchemy.orm import joinedload
+    query_filter = FormMapResult.form_page_route_id == form_page_route_id
+    if current_user["type"] != "super_admin":
+        query_filter = query_filter & (FormMapResult.company_id == company_id)
+
     results = db.query(FormMapResult).options(
         joinedload(FormMapResult.test_scenario)
-    ).filter(
-        FormMapResult.form_page_route_id == form_page_route_id
-    ).order_by(FormMapResult.path_number.asc()).all()
+    ).filter(query_filter).order_by(FormMapResult.path_number.asc()).all()
 
     paths = []
     for result in results:
@@ -949,7 +956,7 @@ async def get_completed_paths(
 @router.delete("/paths/{path_id}")
 async def delete_path(
         path_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db),
 ):
     """
@@ -964,7 +971,9 @@ async def delete_path(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
-    verify_company_access(authorization, result.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != result.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Store info for potential S3 cleanup before deletion
     form_page_route_id = result.form_page_route_id
@@ -997,13 +1006,13 @@ async def delete_path(
 
 @router.get("/routes/paths-counts")
 async def get_paths_counts(
+        request: Request,
         form_page_route_ids: str = Query(..., description="Comma-separated form page route IDs"),
-        company_id: int = Query(...),
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get path counts for multiple form pages at once (scalable batch query)"""
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
     from sqlalchemy import func
 
     ids = [int(id.strip()) for id in form_page_route_ids.split(",") if id.strip()]
@@ -1011,14 +1020,14 @@ async def get_paths_counts(
     if not ids:
         return {}
 
-
+    query_filter = FormMapResult.form_page_route_id.in_(ids)
+    if current_user["type"] != "super_admin":
+        query_filter = query_filter & (FormMapResult.company_id == company_id)
 
     counts = db.query(
         FormMapResult.form_page_route_id,
         func.count(FormMapResult.id)
-    ).filter(
-        FormMapResult.form_page_route_id.in_(ids)
-    ).group_by(FormMapResult.form_page_route_id).all()
+    ).filter(query_filter).group_by(FormMapResult.form_page_route_id).all()
 
     return {str(route_id): count for route_id, count in counts}
 
@@ -1026,8 +1035,8 @@ async def get_paths_counts(
 @router.put("/paths/{path_id}/steps")
 async def update_all_path_steps(
         path_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Replace all steps for a path"""
@@ -1035,9 +1044,11 @@ async def update_all_path_steps(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
-    verify_company_access(authorization, result.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != result.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    steps = request.get("steps", [])
+    steps = body.get("steps", [])
     result.steps = steps
 
     db.commit()
@@ -1051,7 +1062,7 @@ async def update_path_step(
         path_id: int,
         step_index: int,
         step_update: StepUpdateRequest,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1067,7 +1078,9 @@ async def update_path_step(
 
     if not result:
         raise HTTPException(status_code=404, detail="Path not found")
-    verify_company_access(authorization, result.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != result.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Validate step_index
     if not result.steps or step_index < 0 or step_index >= len(result.steps):
@@ -1105,9 +1118,9 @@ async def update_path_step(
 @router.get("/sessions/{session_id}/logs")
 async def get_session_logs(
     session_id: str,
+    request: Request,
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     limit: int = Query(100, le=500),
-    authorization: str = Header(...),
     db: Session = Depends(get_db)
 ):
     """Get logs for a mapping session."""
@@ -1118,7 +1131,9 @@ async def get_session_logs(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    verify_company_access(authorization, session.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != session.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     query = db.query(FormMapperSessionLog).filter(
         FormMapperSessionLog.session_id == session_id
@@ -1153,38 +1168,44 @@ class FieldAssistRequest(BaseModel):
 
 @router.post("/field-assist")
 async def start_field_assist_query(
-        request: FieldAssistRequest,
-        company_id: int = Query(...),
-        authorization: str = Header(...),
+        body: FieldAssistRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Start a field assist query (async via Celery).
     Returns task_id for polling.
     """
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
 
-
+    # Verify session belongs to user's company
+    session = db.query(FormMapperSession).filter(
+        FormMapperSession.id == body.session_id
+    ).first()
+    if session and current_user["type"] != "super_admin" and session.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     from tasks.form_mapper_tasks import field_assist_query
 
     task = field_assist_query.delay(
-        session_id=request.session_id,
-        screenshot_base64=request.screenshot_base64,
-        step=request.step,
-        query_type=request.query_type,
-        rail_bounds = request.rail_bounds,
-        action_type = request.action_type
+        session_id=body.session_id,
+        screenshot_base64=body.screenshot_base64,
+        step=body.step,
+        query_type=body.query_type,
+        rail_bounds=body.rail_bounds,
+        action_type=body.action_type
     )
 
     return {"task_id": task.id, "status": "pending"}
 
 
 @router.get("/field-assist/{task_id}")
-async def get_field_assist_result(task_id: str):
+async def get_field_assist_result(task_id: str, request: Request):
     """
     Get field assist query result by task_id.
     """
+    get_current_user_from_request(request)
     from celery.result import AsyncResult
 
     result = AsyncResult(task_id, app=celery)
@@ -1205,8 +1226,8 @@ async def get_field_assist_result(task_id: str):
 
 @router.post("/pom/generate")
 async def start_pom_generation(
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1214,16 +1235,18 @@ async def start_pom_generation(
     Returns task_id for polling
     """
 
-    form_page_route_id = request.get("form_page_route_id")
-    language = request.get("language", "python")
-    framework = request.get("framework", "selenium")
-    style = request.get("style", "basic")
+    form_page_route_id = body.get("form_page_route_id")
+    language = body.get("language", "python")
+    framework = body.get("framework", "selenium")
+    style = body.get("style", "basic")
 
     # Get form page data
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get paths for this form page
     paths = db.query(FormMapResult).filter(
@@ -1264,10 +1287,11 @@ async def start_pom_generation(
 
 
 @router.get("/pom/tasks/{task_id}")
-async def get_pom_task_status(task_id: str):
+async def get_pom_task_status(task_id: str, request: Request):
     """
     Get POM generation task status and result
     """
+    get_current_user_from_request(request)
     from celery_app import celery
 
     result = AsyncResult(task_id, app=celery)
@@ -1298,8 +1322,8 @@ async def get_pom_task_status(task_id: str):
 @router.post("/routes/{form_page_route_id}/spec")
 async def upload_spec_document(
         form_page_route_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1309,11 +1333,13 @@ async def upload_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    filename = request.get("filename", "spec.txt")
-    content_type = request.get("content_type", "text/plain")
-    content = request.get("content", "")
+    filename = body.get("filename", "spec.txt")
+    content_type = body.get("content_type", "text/plain")
+    content = body.get("content", "")
 
     if not content:
         raise HTTPException(status_code=400, detail="Spec content is required")
@@ -1336,7 +1362,7 @@ async def upload_spec_document(
 @router.get("/routes/{form_page_route_id}/spec")
 async def get_spec_document(
         form_page_route_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1345,7 +1371,9 @@ async def get_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not form_page.spec_document:
         return {"spec_document": None, "content": None}
@@ -1359,8 +1387,8 @@ async def get_spec_document(
 @router.put("/routes/{form_page_route_id}/spec")
 async def update_spec_document(
         form_page_route_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1370,12 +1398,14 @@ async def update_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not form_page.spec_document:
         raise HTTPException(status_code=400, detail="No spec document exists. Upload one first.")
 
-    content = request.get("content", "")
+    content = body.get("content", "")
     if not content:
         raise HTTPException(status_code=400, detail="Spec content is required")
 
@@ -1396,7 +1426,7 @@ async def update_spec_document(
 @router.delete("/routes/{form_page_route_id}/spec")
 async def delete_spec_document(
         form_page_route_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1405,7 +1435,9 @@ async def delete_spec_document(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     form_page.spec_document = None
     form_page.spec_document_content = None
@@ -1423,21 +1455,23 @@ async def delete_spec_document(
 
 @router.post("/spec-compliance/generate")
 async def start_spec_compliance_generation(
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Start spec compliance report generation task
     Returns task_id for polling
     """
-    form_page_route_id = request.get("form_page_route_id")
+    form_page_route_id = body.get("form_page_route_id")
 
     # Get form page data
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if spec document exists
     if not form_page.spec_document or not form_page.spec_document_content:
@@ -1485,10 +1519,11 @@ async def start_spec_compliance_generation(
 
 
 @router.get("/spec-compliance/tasks/{task_id}")
-async def get_spec_compliance_task_status(task_id: str):
+async def get_spec_compliance_task_status(task_id: str, request: Request):
     """
     Get spec compliance generation task status and result
     """
+    get_current_user_from_request(request)
     result = AsyncResult(task_id, app=celery)
 
     response = {
@@ -1516,8 +1551,8 @@ async def get_spec_compliance_task_status(task_id: str):
 @router.post("/routes/{form_page_route_id}/verification-instructions")
 async def upload_verification_instructions(
         form_page_route_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1528,11 +1563,13 @@ async def upload_verification_instructions(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    filename = request.get("filename", "verification_instructions.txt")
-    content_type = request.get("content_type", "text/plain")
-    content = request.get("content", "")
+    filename = body.get("filename", "verification_instructions.txt")
+    content_type = body.get("content_type", "text/plain")
+    content = body.get("content", "")
 
     if not content:
         raise HTTPException(status_code=400, detail="Content is required")
@@ -1567,14 +1604,16 @@ async def upload_verification_instructions(
 @router.get("/routes/{form_page_route_id}/verification-instructions")
 async def get_verification_instructions(
         form_page_route_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Get verification instructions for a form page"""
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not form_page.verification_file:
         return {"verification_file": None, "content": None}
@@ -1588,8 +1627,8 @@ async def get_verification_instructions(
 @router.put("/routes/{form_page_route_id}/verification-instructions")
 async def update_verification_instructions(
         form_page_route_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -1599,12 +1638,14 @@ async def update_verification_instructions(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not form_page.verification_file:
         raise HTTPException(status_code=400, detail="No verification instructions exist. Upload first.")
 
-    content = request.get("content", "")
+    content = body.get("content", "")
     if not content:
         raise HTTPException(status_code=400, detail="Content is required")
 
@@ -1623,14 +1664,16 @@ async def update_verification_instructions(
 @router.delete("/routes/{form_page_route_id}/verification-instructions")
 async def delete_verification_instructions(
         form_page_route_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Delete verification instructions for a form page"""
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     form_page.verification_file = None
     form_page.verification_file_content = None
@@ -1649,13 +1692,16 @@ async def delete_verification_instructions(
 @router.get("/routes/{form_page_route_id}/test-scenarios")
 async def get_test_scenarios(
         form_page_route_id: int,
-        scenario_id: int,
-        company_id: int = Query(...),
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Get all test scenarios for a form page"""
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     from models.form_mapper_models import FormPageTestScenario
 
@@ -1673,8 +1719,8 @@ async def get_test_scenarios(
 @router.post("/routes/{form_page_route_id}/test-scenarios")
 async def create_test_scenario(
         form_page_route_id: int,
-        request: dict,
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Create a new test scenario"""
@@ -1683,10 +1729,12 @@ async def create_test_scenario(
     form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page not found")
-    verify_company_access(authorization, form_page.company_id, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    name = request.get("name", "").strip()
-    content = request.get("content", "").strip()
+    name = body.get("name", "").strip()
+    content = body.get("content", "").strip()
 
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
@@ -1712,10 +1760,19 @@ async def create_test_scenario(
 async def get_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Get a specific test scenario"""
+    current_user = get_current_user_from_request(request)
+
+    # Verify form_page_route belongs to user's company
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     from models.form_mapper_models import FormPageTestScenario
 
     scenario = db.query(FormPageTestScenario).filter(
@@ -1726,9 +1783,6 @@ async def get_test_scenario(
     if not scenario:
         raise HTTPException(status_code=404, detail="Test scenario not found")
 
-    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
-    if form_page:
-        verify_company_access(authorization, form_page.company_id, db)
 
     return {
         "scenario": scenario.to_dict()
@@ -1739,13 +1793,19 @@ async def get_test_scenario(
 async def update_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
-        request: dict,
-        company_id: int = Query(...),
-        authorization: str = Header(...),
+        body: dict,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Update a test scenario"""
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+
+    # Verify form_page_route belongs to user's company
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     from models.form_mapper_models import FormPageTestScenario
 
@@ -1757,16 +1817,14 @@ async def update_test_scenario(
     if not scenario:
         raise HTTPException(status_code=404, detail="Test scenario not found")
 
-
-
-    if "name" in request:
-        name = request["name"].strip()
+    if "name" in body:
+        name = body["name"].strip()
         if not name:
             raise HTTPException(status_code=400, detail="Name cannot be empty")
         scenario.name = name
 
-    if "content" in request:
-        content = request["content"].strip()
+    if "content" in body:
+        content = body["content"].strip()
         if not content:
             raise HTTPException(status_code=400, detail="Content cannot be empty")
         scenario.content = content
@@ -1784,12 +1842,18 @@ async def update_test_scenario(
 async def delete_test_scenario(
         form_page_route_id: int,
         scenario_id: int,
-        company_id: int = Query(...),
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Delete a test scenario"""
-    verify_company_access(authorization, company_id, db)
+    current_user = get_current_user_from_request(request)
+
+    # Verify form_page_route belongs to user's company
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     from models.form_mapper_models import FormPageTestScenario
 

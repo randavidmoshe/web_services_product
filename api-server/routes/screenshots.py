@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from utils.auth_helpers import get_current_user_from_request
 from sqlalchemy.orm import Session
 from models.database import get_db, Screenshot
 from services.s3_storage import upload_screenshot_to_s3, delete_screenshot_from_s3, get_screenshot_presigned_url
@@ -8,14 +9,13 @@ router = APIRouter()
 
 @router.post("/upload")
 async def upload_screenshot(
+    request: Request,
     image: UploadFile = File(...),
-    company_id: int = Form(...),
     crawl_session_id: int = Form(...),
     image_type: str = Form(...),
     form_page_id: Optional[int] = Form(None),
     product_id: Optional[int] = Form(None),
     description: Optional[str] = Form(None),
-    user_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -34,7 +34,11 @@ async def upload_screenshot(
     Returns:
         Screenshot metadata with S3 URL
     """
-    
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+    user_id = current_user["user_id"]
+
     try:
         # Read image bytes
         image_bytes = await image.read()
@@ -96,13 +100,18 @@ async def upload_screenshot(
 @router.get("/session/{session_id}")
 async def get_session_screenshots(
     session_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get all screenshots for a crawl session
     """
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     screenshots = db.query(Screenshot).filter(
-        Screenshot.crawl_session_id == session_id
+        Screenshot.crawl_session_id == session_id,
+        Screenshot.company_id == company_id
     ).order_by(Screenshot.created_at.desc()).all()
     
     return [{
@@ -121,13 +130,18 @@ async def get_session_screenshots(
 @router.get("/form-page/{form_page_id}")
 async def get_form_page_screenshots(
     form_page_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get all screenshots for a specific form page
     """
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     screenshots = db.query(Screenshot).filter(
-        Screenshot.form_page_id == form_page_id
+        Screenshot.form_page_id == form_page_id,
+        Screenshot.company_id == company_id
     ).order_by(Screenshot.created_at.desc()).all()
     
     return [{
@@ -143,15 +157,20 @@ async def get_form_page_screenshots(
 @router.get("/{screenshot_id}")
 async def get_screenshot(
     screenshot_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get screenshot metadata by ID
     """
+    current_user = get_current_user_from_request(request)
+
     screenshot = db.query(Screenshot).filter(Screenshot.id == screenshot_id).first()
-    
+
     if not screenshot:
         raise HTTPException(404, "Screenshot not found")
+    if current_user["type"] != "super_admin" and screenshot.company_id != current_user["company_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     return {
         "id": screenshot.id,
@@ -172,16 +191,21 @@ async def get_screenshot(
 @router.get("/{screenshot_id}/presigned-url")
 async def get_screenshot_presigned(
     screenshot_id: int,
+    request: Request,
     expiration: int = 3600,
     db: Session = Depends(get_db)
 ):
     """
     Get presigned URL for private screenshot access
     """
+    current_user = get_current_user_from_request(request)
+
     screenshot = db.query(Screenshot).filter(Screenshot.id == screenshot_id).first()
-    
+
     if not screenshot:
         raise HTTPException(404, "Screenshot not found")
+    if current_user["type"] != "super_admin" and screenshot.company_id != current_user["company_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     try:
         presigned_url = get_screenshot_presigned_url(screenshot.s3_key, expiration)
@@ -193,15 +217,22 @@ async def get_screenshot_presigned(
 @router.delete("/{screenshot_id}")
 async def delete_screenshot(
     screenshot_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Delete screenshot from S3 and database
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     screenshot = db.query(Screenshot).filter(Screenshot.id == screenshot_id).first()
-    
+
     if not screenshot:
         raise HTTPException(404, "Screenshot not found")
+    if current_user["type"] != "super_admin" and screenshot.company_id != current_user["company_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     try:
         # Delete from S3

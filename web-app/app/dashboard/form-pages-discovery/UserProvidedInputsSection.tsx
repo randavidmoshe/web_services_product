@@ -3,7 +3,6 @@ import { useEffect, useState, useRef } from 'react'
 
 interface UserProvidedInputsProps {
   formPageId: number
-  token: string
   apiBase: string
   isLightTheme: boolean
   themeColors: {
@@ -24,7 +23,6 @@ interface UserInputsData {
 
 export default function UserProvidedInputsSection({
   formPageId,
-  token,
   apiBase,
   isLightTheme,
   themeColors
@@ -60,7 +58,7 @@ export default function UserProvidedInputsSection({
   const fetchUserInputsData = async (): Promise<UserInputsData | null> => {
     try {
       const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (res.ok) {
         const data = await res.json()
@@ -86,7 +84,7 @@ export default function UserProvidedInputsSection({
 
       const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
         body: formData
       })
 
@@ -116,7 +114,7 @@ export default function UserProvidedInputsSection({
 
       const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'include',
         body: formData
       })
 
@@ -142,7 +140,7 @@ export default function UserProvidedInputsSection({
     try {
       await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       setUserInputs(null)
       setInputText('')

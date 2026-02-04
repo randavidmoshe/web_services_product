@@ -57,7 +57,6 @@ export interface CustomTestEditPanelProps {
   editingTestPage: TestPage
   completedPaths: CompletedPath[]
   loadingPaths: boolean
-  token: string
   editTestName: string
   setEditTestName: (name: string) => void
   editUrl: string
@@ -95,7 +94,6 @@ export default function CustomTestEditPanel({
   editingTestPage,
   completedPaths,
   loadingPaths,
-  token,
   editTestName,
   setEditTestName,
   editUrl,
@@ -241,7 +239,7 @@ export default function CustomTestEditPanel({
     setLoadingRefImages(true)
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -272,7 +270,7 @@ export default function CustomTestEditPanel({
       })
       const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (!requestRes.ok) throw new Error('Failed to get upload URL')
       const { id, presigned_url } = await requestRes.json()
@@ -281,7 +279,8 @@ export default function CustomTestEditPanel({
 
       await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ file_size_bytes: file.size })
       })
 
@@ -301,7 +300,7 @@ export default function CustomTestEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setMessage('Reference image deleted')
@@ -316,7 +315,8 @@ export default function CustomTestEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name: editRefImageName, description: editRefImageDescription })
       })
       if (response.ok) {
@@ -340,7 +340,7 @@ export default function CustomTestEditPanel({
     setLoadingVerificationFile(true)
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -361,7 +361,8 @@ export default function CustomTestEditPanel({
     try {
       const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ filename: file.name, content_type: file.type, file_size_bytes: file.size })
       })
       if (!requestRes.ok) throw new Error('Failed to get upload URL')
@@ -371,7 +372,7 @@ export default function CustomTestEditPanel({
 
       await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       setMessage('Verification file uploaded')
@@ -390,7 +391,7 @@ export default function CustomTestEditPanel({
       attempts++
       try {
         const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         if (response.ok) {
           const data = await response.json()
@@ -413,7 +414,7 @@ export default function CustomTestEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setMessage('Verification file deleted')
@@ -429,7 +430,8 @@ export default function CustomTestEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {

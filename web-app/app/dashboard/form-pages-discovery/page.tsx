@@ -113,9 +113,7 @@ interface LoginLogoutData {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
   
@@ -252,7 +250,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchTestTemplates = async () => {
       try {
-        const response = await fetch('/api/test-templates')
+        const response = await fetch('/api/test-templates', { credentials: 'include' })
         if (response.ok) {
           const data = await response.json()
           setTestTemplates(data.templates || [])
@@ -283,36 +281,43 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedProjectId = localStorage.getItem('active_project_id')
     const storedProjectName = localStorage.getItem('active_project_name')
-    
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setActiveProjectId(storedProjectId)
-    setActiveProjectName(storedProjectName)
-    
-    if (storedProjectId) {
-      loadNetworks(storedProjectId, storedToken)
-      loadFormPages(storedProjectId, storedToken)
-      checkActiveSessions(storedProjectId, storedToken)
-    }
+
+    // Verify auth via API (cookie sent automatically)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+
+        setUserId(String(data.user_id))
+        setActiveProjectId(storedProjectId)
+        setActiveProjectName(storedProjectName)
+
+        if (storedProjectId) {
+          loadNetworks(storedProjectId)
+          loadFormPages(storedProjectId)
+          checkActiveSessions(storedProjectId)
+        }
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
   // Check for active/running sessions on page load
-  const checkActiveSessions = async (projectId: string, authToken: string) => {
+  const checkActiveSessions = async (projectId: string) => {
     try {
       const response = await fetch(
         `/api/form-pages/projects/${projectId}/active-sessions`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -355,15 +360,13 @@ export default function DashboardPage() {
       setActiveProjectName(project.name)
       setSelectedNetworkIds([])
       stopDiscovery()
-      if (token) {
-        loadNetworks(project.id.toString(), token)
-        loadFormPages(project.id.toString(), token)
-      }
+      loadNetworks(project.id.toString())
+      loadFormPages(project.id.toString())
     }
-    
+
     window.addEventListener('activeProjectChanged', handleProjectChange as EventListener)
     return () => window.removeEventListener('activeProjectChanged', handleProjectChange as EventListener)
-  }, [token])
+  }, [])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -376,20 +379,20 @@ export default function DashboardPage() {
 
   // Fetch login/logout stages when formPages change
   useEffect(() => {
-    if (formPages.length > 0 && token) {
+    if (formPages.length > 0) {
       // Get unique network IDs from form pages
       const networkIds = [...new Set(formPages.map(fp => fp.network_id))] as number[]
-      fetchLoginLogoutStages(networkIds, token)
+      fetchLoginLogoutStages(networkIds)
     }
-  }, [formPages, token])
+  }, [formPages])
 
-  const loadNetworks = async (projectId: string, authToken: string) => {
+  const loadNetworks = async (projectId: string) => {
     setLoadingNetworks(true)
     try {
       const response = await fetch(
-        `/api/projects/${projectId}/networks`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
-      )
+          `/api/projects/${projectId}/networks`,
+          { credentials: 'include' }
+        )
       
       if (response.ok) {
         const data = await response.json()
@@ -413,23 +416,23 @@ export default function DashboardPage() {
     }
   }
 
-  const loadFormPages = async (projectId: string, authToken: string) => {
+  const loadFormPages = async (projectId: string) => {
     setLoadingFormPages(true)
     try {
       const response = await fetch(
         `/api/projects/${projectId}/form-pages`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { credentials: 'include' }
       )
-      
+
       if (response.ok) {
         const data = await response.json()
-        
+
         // Fetch paths counts for all form pages
         if (data.length > 0) {
           const ids = data.map((fp: any) => fp.id).join(',')
           const countsResponse = await fetch(
-              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}&company_id=${storedCompanyId}`,
-              { headers: { 'Authorization': `Bearer ${authToken}` } }
+              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
+              { credentials: 'include' }
           )
           if (countsResponse.ok) {
             const counts = await countsResponse.json()
@@ -443,9 +446,9 @@ export default function DashboardPage() {
         } else {
           setFormPages(data)
         }
-        
+
         // Check for active mapping sessions after loading form pages
-        checkActiveMappingSessions(authToken)
+        checkActiveMappingSessions()
       } else if (response.status === 401 || response.status === 403) {
         const errData = await response.json().catch(() => ({}))
         console.error('Auth error:', errData.detail)
@@ -461,10 +464,10 @@ export default function DashboardPage() {
   }
 
   // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
+  const checkActiveMappingSessions = async () => {
     try {
       const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
@@ -498,19 +501,14 @@ export default function DashboardPage() {
   }
 
   // Fetch login/logout stages for networks
-  const fetchLoginLogoutStages = async (networkIds: number[], authToken: string) => {
+  const fetchLoginLogoutStages = async (networkIds: number[]) => {
     const results: Record<number, LoginLogoutData> = {}
-    
+
     for (const networkId of networkIds) {
       try {
         const response = await fetch(
           `/api/form-pages/networks/${networkId}/login-logout-stages`,
-          {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json'
-            }
-          }
+          { credentials: 'include' }
         )
         if (response.ok) {
           const data = await response.json()
@@ -566,24 +564,22 @@ export default function DashboardPage() {
 
   // Save login/logout steps
   const saveLoginLogoutSteps = async () => {
-    if (!editingLoginLogout || !token) return
-    
+    if (!editingLoginLogout) return
+
     setSavingFormPage(true)
     try {
-      const endpoint = editingLoginLogout.type === 'login' 
+      const endpoint = editingLoginLogout.type === 'login'
         ? `/api/form-pages/networks/${editingLoginLogout.networkId}/login-stages`
         : `/api/form-pages/networks/${editingLoginLogout.networkId}/logout-stages`
-      
+
       const body = editingLoginLogout.type === 'login'
         ? { login_stages: editNavigationSteps }
         : { logout_stages: editNavigationSteps }
-      
+
       const response = await fetch(endpoint, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body)
       })
       
@@ -616,12 +612,12 @@ export default function DashboardPage() {
   // ============================================
   
   const startFormMapping = async (formPage: FormPage) => {
-    if (!token || !userId) return
-    
+    if (!userId) return
+
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const agentResponse = await fetch('/api/agent/status', {
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -645,18 +641,12 @@ export default function DashboardPage() {
     try {
       const response = await fetch('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: formPage.id,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: formPage.network_id,
-          test_cases: [
-            { test_id: 1, test_name: 'Default Test', description: 'Auto-generated test case' }
-          ]
+          test_cases: []
         })
       })
       
@@ -700,15 +690,15 @@ export default function DashboardPage() {
   }
 
   const startMappingWithTemplate = async () => {
-    if (!selectedFormForMapping || !selectedTemplateId || !token || !userId) return
+    if (!selectedFormForMapping || !selectedTemplateId || !userId) return
     
     const template = testTemplates.find(t => t.id === selectedTemplateId)
     if (!template) return
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const agentResponse = await fetch('/api/agent/status', {
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -733,14 +723,10 @@ export default function DashboardPage() {
     try {
       const response = await fetch('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: selectedFormForMapping.id,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: selectedFormForMapping.network_id,
           test_cases: template.test_cases
         })
@@ -780,7 +766,7 @@ export default function DashboardPage() {
   }
 
   const startMappingFromEditPanel = async () => {
-    if (!editingFormPage || !token || !userId) return
+    if (!editingFormPage || !userId) return
     
     // Warn if paths exist - they will be deleted on remap
     if (completedPaths.length > 0) {
@@ -790,8 +776,8 @@ export default function DashboardPage() {
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const agentResponse = await fetch('/api/agent/status', {
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -824,14 +810,10 @@ export default function DashboardPage() {
     try {
       const response = await fetch('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          form_page_route_id: formPageId,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
+          form_page_route_id: selectedFormForMapping.id,
           network_id: editingFormPage.network_id,
           test_cases: defaultTemplate.test_cases
         })
@@ -872,12 +854,12 @@ export default function DashboardPage() {
   }
 
   const startMappingWithScenario = async (formPageId: number, scenarioId: number) => {
-    if (!editingFormPage || !token || !userId) return
+    if (!editingFormPage || !userId) return
 
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const agentResponse = await fetch('/api/agent/status', {
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -907,14 +889,10 @@ export default function DashboardPage() {
     try {
       const response = await fetch('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: formPageId,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: editingFormPage.network_id,
           test_cases: defaultTemplate.test_cases,
           test_scenario_id: scenarioId
@@ -952,7 +930,7 @@ export default function DashboardPage() {
   }
 
   const continueMappingFromEditPanel = async () => {
-    if (!editingFormPage || !token || !userId) return
+    if (!editingFormPage || !userId) return
 
     // Must have existing paths to continue
     if (completedPaths.length === 0) {
@@ -962,8 +940,8 @@ export default function DashboardPage() {
 
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const agentResponse = await fetch('/api/agent/status', {
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -995,18 +973,14 @@ export default function DashboardPage() {
 
     try {
       const response = await fetch(`/api/form-mapper/routes/${formPageId}/continue-mapping`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
-          network_id: editingFormPage.network_id,
-          test_cases: defaultTemplate.test_cases
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            network_id: editingFormPage.network_id,
+            test_cases: defaultTemplate.test_cases
+          })
         })
-      })
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -1062,7 +1036,7 @@ export default function DashboardPage() {
     const poll = async () => {
       try {
         const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         
         if (response.ok) {
@@ -1143,9 +1117,9 @@ export default function DashboardPage() {
     
     try {
       const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+          method: 'POST',
+          credentials: 'include'
+        })
       
       if (response.ok) {
         // Stop old polling
@@ -1158,7 +1132,7 @@ export default function DashboardPage() {
         const pollUntilStopped = setInterval(async () => {
           try {
             const statusResponse = await fetch(`/api/form-mapper/sessions/${cancelledSessionId}/status`, {
-              headers: { 'Authorization': `Bearer ${token}` }
+              credentials: 'include'
             })
             if (statusResponse.ok) {
               const data = await statusResponse.json()
@@ -1269,13 +1243,13 @@ export default function DashboardPage() {
     }
     
     // Call backend to cancel running sessions
-    if (currentSessionId && token) {
+    if (currentSessionId) {
       try {
         await fetch(
           `/api/form-pages/sessions/${currentSessionId}/cancel`,
-          { 
+          {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` } 
+            credentials: 'include'
           }
         )
       } catch (err) {
@@ -1348,15 +1322,13 @@ export default function DashboardPage() {
       })
       
       const response = await fetch(
-        `/api/form-pages/networks/${item.networkId}/locate?${params}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+          `/api/form-pages/networks/${item.networkId}/locate?${params}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
           }
-        }
-      )
+        )
       
       if (response.ok) {
         const data = await response.json()
@@ -1413,7 +1385,7 @@ export default function DashboardPage() {
       try {
         const response = await fetch(
           `/api/form-pages/sessions/${sessionId}/status`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
+          { credentials: 'include' }
         )
         
         if (response.ok) {
@@ -1495,8 +1467,8 @@ export default function DashboardPage() {
     }
     
     // Reload form pages
-    if (activeProjectId && token) {
-      loadFormPages(activeProjectId, token)
+    if (activeProjectId) {
+      loadFormPages(activeProjectId)
     }
   }
 
@@ -1666,18 +1638,12 @@ export default function DashboardPage() {
 
   // ============ COMPLETED PATHS FUNCTIONS ============
   const fetchCompletedPaths = async (formPageRouteId: number) => {
-    if (!token) return
-    try {
-      setLoadingPaths(true)
-      const response = await fetch(
-  `/api/form-mapper/routes/${formPageRouteId}/paths?company_id=${companyId}`,
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-        }
-      )
+  try {
+    setLoadingPaths(true)
+    const response = await fetch(
+      `/api/form-mapper/routes/${formPageRouteId}/paths`,
+      { credentials: 'include' }
+    )
       if (response.ok) {
         const data = await response.json()
         setCompletedPaths(data.paths || [])
@@ -1708,20 +1674,17 @@ export default function DashboardPage() {
   }
 
   const handleSavePathStep = async (pathId: number, stepIndex: number, stepData?: any) => {
-    if (!token) return
-    const dataToSave = stepData || editedPathStepData
-    try {
-      const response = await fetch(
-        `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(dataToSave)
-        }
-      )
+      const dataToSave = stepData || editedPathStepData
+      try {
+        const response = await fetch(
+          `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+              body: JSON.stringify(dataToSave)
+            }
+          )
       if (response.ok) {
         setCompletedPaths(completedPaths.map(path => {
           if (path.id === pathId) {
@@ -1774,17 +1737,15 @@ export default function DashboardPage() {
 
   const saveFormPage = async () => {
     if (!editingFormPage || !token) return
-    
+
     setSavingFormPage(true)
     try {
       const response = await fetch(
         `/api/form-pages/routes/${editingFormPage.id}`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             form_name: editFormName,
             navigation_steps: editNavigationSteps
@@ -1797,7 +1758,7 @@ export default function DashboardPage() {
         setShowEditPanel(false)
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
@@ -1816,7 +1777,7 @@ export default function DashboardPage() {
   }
 
   const deleteFormPage = async () => {
-    if (!formPageToDelete || !token) return
+    if (!formPageToDelete) return
     
     setDeletingFormPage(true)
     try {
@@ -1824,7 +1785,7 @@ export default function DashboardPage() {
         `/api/form-pages/routes/${formPageToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -1834,7 +1795,7 @@ export default function DashboardPage() {
         setFormPageToDelete(null)
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
@@ -1849,14 +1810,13 @@ export default function DashboardPage() {
 
   // Rediscover form page - deletes and redirects to main page with discovery expanded
   const rediscoverFormPage = async (formPageId: number) => {
-    if (!token) return
-    
+
     try {
       const response = await fetch(
         `/api/form-pages/routes/${formPageId}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -1873,7 +1833,7 @@ export default function DashboardPage() {
         
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
@@ -1887,7 +1847,6 @@ export default function DashboardPage() {
 
   // Delete a path
   const deletePath = async (pathId: number) => {
-    if (!token) return
 
     const confirmed = confirm('Are you sure you want to delete this path?')
     if (!confirmed) return
@@ -1897,7 +1856,7 @@ export default function DashboardPage() {
         `/api/form-mapper/paths/${pathId}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
 
@@ -1959,7 +1918,6 @@ export default function DashboardPage() {
         formPages={getAllNavigableItems()}
         completedPaths={isLoginLogoutEdit ? [] : completedPaths}
         loadingPaths={isLoginLogoutEdit ? false : loadingPaths}
-        token={token || ''}
         editFormName={editFormName}
         setEditFormName={setEditFormName}
         editNavigationSteps={editNavigationSteps}

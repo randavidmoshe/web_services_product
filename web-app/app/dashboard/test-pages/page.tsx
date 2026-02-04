@@ -101,7 +101,6 @@ const getErrorMessage = (errorCode: string | null | undefined, errorMessage: str
 
 export default function TestPagesPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
@@ -214,9 +213,7 @@ export default function TestPagesPage() {
   }
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedProjectId = localStorage.getItem('active_project_id')
     
     if (!storedToken) {
@@ -240,8 +237,7 @@ export default function TestPagesPage() {
   useEffect(() => {
     const checkAndLoadProject = () => {
       const currentProjectId = localStorage.getItem('active_project_id')
-      const currentToken = localStorage.getItem('token')
-      
+
       if (currentProjectId && currentToken) {
         if (currentProjectId !== activeProjectId) {
           setActiveProjectId(currentProjectId)
@@ -261,10 +257,10 @@ export default function TestPagesPage() {
     }
   }, [])
 
-  const loadNetworks = async (projectId: string, authToken: string) => {
+  const loadNetworks = async (projectId: string) => {
     try {
       const response = await fetch(`/api/projects/${projectId}/networks`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -274,7 +270,7 @@ export default function TestPagesPage() {
         // Fetch login/logout stages for QA networks
         const qaNetworks = allNetworks.filter((n: Network) => n.network_type?.toLowerCase() === 'qa')
         if (qaNetworks.length > 0) {
-          fetchLoginLogoutStages(qaNetworks.map((n: Network) => n.id), authToken)
+          fetchLoginLogoutStages(qaNetworks.map((n: Network) => n.id))
         }
       }
     } catch (err) {
@@ -282,11 +278,11 @@ export default function TestPagesPage() {
     }
   }
 
-  const loadTestPages = async (projectId: string, authToken: string) => {
+  const loadTestPages = async (projectId: string) => {
     setLoading(true)
     try {
       const response = await fetch(`/api/test-pages?project_id=${projectId}`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -303,10 +299,10 @@ export default function TestPagesPage() {
   }
 
   // Check for active mapping sessions and restore UI state (prevent stuck mapping)
-  const checkActiveMappingSessions = async (authToken: string, projectId: string) => {
+  const checkActiveMappingSessions = async (projectId: string) => {
     try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+      const response = await fetch(`/api/form-mapper/active-sessions`, {
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -337,7 +333,7 @@ export default function TestPagesPage() {
   }
 
   // Fetch login/logout stages for networks
-  const fetchLoginLogoutStages = async (networkIds: number[], authToken: string) => {
+  const fetchLoginLogoutStages = async (networkIds: number[]) => {
     const results: Record<number, LoginLogoutData> = {}
     
     for (const networkId of networkIds) {
@@ -345,10 +341,7 @@ export default function TestPagesPage() {
         const response = await fetch(
           `/api/form-pages/networks/${networkId}/login-logout-stages`,
           {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json'
-            }
+            credentials: 'include'
           }
         )
         if (response.ok) {
@@ -405,13 +398,13 @@ export default function TestPagesPage() {
       pollingRef.current = null
     }
     
-    if (currentSessionId && token) {
+    if (currentSessionId) {
       try {
         await fetch(
           `/api/form-pages/sessions/${currentSessionId}/cancel`,
           { 
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` } 
+            credentials: 'include'
           }
         )
       } catch (err) {
@@ -482,10 +475,8 @@ export default function TestPagesPage() {
         `/api/form-pages/networks/${item.networkId}/locate?${params}`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
         }
       )
       
@@ -537,7 +528,7 @@ export default function TestPagesPage() {
       try {
         const response = await fetch(
           `/api/form-pages/sessions/${sessionId}/status`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
+          { credentials: 'include' }
         )
         
         if (response.ok) {
@@ -572,9 +563,7 @@ export default function TestPagesPage() {
             setCurrentSessionId(null)
             
             // Refresh login/logout data after discovery
-            if (token) {
-              fetchLoginLogoutStages(selectedNetworkIds, token)
-            }
+            fetchLoginLogoutStages(selectedNetworkIds)
             
             if (shouldContinueRef.current) {
               await startNetworkDiscovery(updatedQueue, index + 1)
@@ -663,7 +652,6 @@ export default function TestPagesPage() {
         network_id: formData.network_id
       } : {
         project_id: parseInt(activeProjectId!),
-        company_id: parseInt(companyId!),
         network_id: formData.network_id,
         url: formData.url,
         test_name: formData.test_name,
@@ -673,17 +661,15 @@ export default function TestPagesPage() {
       
       const response = await fetch(url, {
         method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body)
       })
       
       if (response.ok) {
         setMessage(editingTestPage ? 'Test page updated' : 'Test page created')
         setShowAddModal(false)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to save')
@@ -702,14 +688,14 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/test-pages/${testPageToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
         setMessage('Test page deleted')
         setShowDeleteConfirm(false)
         setTestPageToDelete(null)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
         if (selectedTestPage?.id === testPageToDelete.id) {
           setShowDetailPanel(false)
           setSelectedTestPage(null)
@@ -734,7 +720,7 @@ export default function TestPagesPage() {
     setLoadingPaths(true)
     try {
       const response = await fetch(`/api/test-pages/${testPage.id}/paths`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -753,10 +739,8 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/test-pages/${selectedTestPage.id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           test_name: editTestName,
           url: editUrl,
@@ -765,7 +749,7 @@ export default function TestPagesPage() {
       })
       if (response.ok) {
         setMessage('Test page updated')
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
         setSelectedTestPage({ ...selectedTestPage, test_name: editTestName, url: editUrl, test_case_description: editTestCaseDescription })
       } else {
         setError('Failed to update test page')
@@ -795,7 +779,7 @@ export default function TestPagesPage() {
       // Call API to cancel the mapping session
       const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -818,7 +802,7 @@ export default function TestPagesPage() {
         })
 
         // Refresh test pages to get updated status
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
         setMessage('Mapping cancelled')
       } else {
         setError('Failed to cancel mapping')
@@ -843,7 +827,7 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/form-mapper/paths/${pathId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setPaths(prev => prev.filter(p => p.id !== pathId))
@@ -861,10 +845,8 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/form-mapper/paths/${pathId}/steps/${stepIndex}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(stepData)
       })
       if (response.ok) {
@@ -872,7 +854,7 @@ export default function TestPagesPage() {
         // Refresh paths
         if (selectedTestPage) {
           const pathsResponse = await fetch(`/api/test-pages/${selectedTestPage.id}/paths`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
           })
           if (pathsResponse.ok) {
             const data = await pathsResponse.json()
@@ -903,7 +885,7 @@ export default function TestPagesPage() {
     setLoadingPaths(true)
     try {
       const response = await fetch(`/api/test-pages/${selectedTestPage.id}/paths`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -920,13 +902,13 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/test-pages/${testPageId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setMessage('Test page deleted')
         setShowDetailPanel(false)
         setSelectedTestPage(null)
-        loadTestPages(activeProjectId!, token!)
+        loadTestPages(activeProjectId!)
       } else {
         setError('Failed to delete test page')
       }
@@ -939,7 +921,7 @@ export default function TestPagesPage() {
     // Check if agent is online first
     try {
       const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
@@ -964,10 +946,8 @@ export default function TestPagesPage() {
     try {
       const response = await fetch(`/api/test-pages/${testPage.id}/start-mapping`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_id: parseInt(userId!),
           agent_id: `agent-test-001`,
@@ -1013,7 +993,7 @@ export default function TestPagesPage() {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         
         if (response.ok) {
@@ -1037,7 +1017,7 @@ export default function TestPagesPage() {
               return next
             })
             
-            loadTestPages(projectId, token!)
+            loadTestPages(projectId)
 
             // Refresh paths if the completed test page is currently selected
             if (selectedTestPage && selectedTestPage.id === testPageId) {
@@ -1207,7 +1187,6 @@ export default function TestPagesPage() {
           editingTestPage={selectedTestPage}
           completedPaths={paths}
           loadingPaths={loadingPaths}
-          token={token || ''}
           editTestName={editTestName}
           setEditTestName={setEditTestName}
           editUrl={editUrl}

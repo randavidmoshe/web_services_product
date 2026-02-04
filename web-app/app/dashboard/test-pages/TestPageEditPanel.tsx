@@ -81,7 +81,6 @@ export interface TestPageEditPanelProps {
   editingTestPage: TestPage
   completedPaths: CompletedPath[]
   loadingPaths: boolean
-  token: string
   editTestName: string
   setEditTestName: (name: string) => void
   editUrl: string
@@ -119,7 +118,6 @@ export default function TestPageEditPanel({
   editingTestPage,
   completedPaths,
   loadingPaths,
-  token,
   editTestName,
   setEditTestName,
   editUrl,
@@ -245,7 +243,7 @@ export default function TestPageEditPanel({
     setLoadingRefImages(true)
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -278,7 +276,7 @@ export default function TestPageEditPanel({
       })
       const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (!requestRes.ok) {
         const err = await requestRes.json()
@@ -296,7 +294,8 @@ export default function TestPageEditPanel({
       // 3. Confirm upload
       await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ file_size_bytes: file.size })
       })
 
@@ -316,7 +315,7 @@ export default function TestPageEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setMessage('Reference image deleted')
@@ -331,7 +330,8 @@ export default function TestPageEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: editRefImageName,
           description: editRefImageDescription
@@ -360,7 +360,7 @@ export default function TestPageEditPanel({
     setLoadingVerificationFile(true)
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -383,7 +383,8 @@ export default function TestPageEditPanel({
       // 1. Request presigned URL
       const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type,
@@ -406,7 +407,7 @@ export default function TestPageEditPanel({
       // 3. Confirm upload (triggers text extraction)
       await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       setMessage('Verification file uploaded - extracting text...')
@@ -425,7 +426,7 @@ export default function TestPageEditPanel({
       await new Promise(resolve => setTimeout(resolve, 1000))
       try {
         const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         if (response.ok) {
           const data = await response.json()
@@ -453,7 +454,7 @@ export default function TestPageEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setVerificationFile(null)
@@ -469,7 +470,8 @@ export default function TestPageEditPanel({
     try {
       const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {

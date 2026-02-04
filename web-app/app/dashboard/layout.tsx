@@ -35,9 +35,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   
   // Active project
@@ -141,18 +139,18 @@ export default function DashboardLayout({
 
   // Load networks when Test Sites tab is selected
   useEffect(() => {
-    if (pathname?.includes('test-sites') && activeProject && token) {
+    if (pathname?.includes('test-sites') && activeProject) {
       loadNetworksForTab()
     }
   }, [pathname, activeProject])
 
   const loadNetworksForTab = async () => {
-    if (!activeProject || !token) return
+    if (!activeProject) return
     setLoadingNetworks(true)
     try {
       const response = await fetch(
         `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        { credentials: 'include' }
       )
       if (response.ok) {
         const data = await response.json()
@@ -167,12 +165,12 @@ export default function DashboardLayout({
 
   // Check agent status
   const checkAgentStatus = async () => {
-    if (!userId || !token) return
-    
+    if (!userId) return
+
     try {
       const response = await fetch(
-        `/api/agent/status?user_id=${userId}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        `/api/agent/status`,
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -195,21 +193,21 @@ export default function DashboardLayout({
 
   // Poll agent status every 30 seconds
   useEffect(() => {
-    if (userId && token) {
+    if (userId) {
       checkAgentStatus()
       const interval = setInterval(checkAgentStatus, 30000)
       return () => clearInterval(interval)
     }
-  }, [userId, token, companyId])
+  }, [userId])
 
   // Check AI usage (for admin only)
   const checkAiUsage = async () => {
-    if (!companyId || !token || userRole !== 'admin') return
-    
+    if (userRole !== 'admin') return
+
     try {
       const response = await fetch(
-        `/api/company/ai-usage?company_id=${companyId}&product_id=1`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        `/api/company/ai-usage?product_id=1`,
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -228,76 +226,62 @@ export default function DashboardLayout({
 
   // Fetch AI usage on load and every 60 seconds (for admin only)
   useEffect(() => {
-    if (userRole === 'admin' && companyId && token) {
+    if (userRole === 'admin') {
       checkAiUsage()
       const interval = setInterval(checkAiUsage, 60000)
       return () => clearInterval(interval)
     }
-  }, [userRole, companyId, token])
+  }, [userRole])
 
   useEffect(() => {
-    // Check URL params first (coming from marketing site login)
+    // URL params no longer used - auth is via HttpOnly cookies
+    // Clean any legacy URL params
     const urlParams = new URLSearchParams(window.location.search)
-    const urlToken = urlParams.get('token')
-    const urlUserId = urlParams.get('user_id')
-    const urlCompanyId = urlParams.get('company_id')
-    const urlUserType = urlParams.get('type')
-    
-    // If token in URL, store it and clean URL
-    if (urlToken && urlUserId && urlCompanyId) {
-      localStorage.setItem('token', urlToken)
-      localStorage.setItem('user_id', urlUserId)
-      localStorage.setItem('company_id', urlCompanyId)
-      localStorage.setItem('userType', urlUserType || 'user')
-      
-      // Clean URL (remove params)
+    if (urlParams.has('token')) {
       window.history.replaceState({}, '', '/dashboard')
-      
-      setToken(urlToken)
-      setUserId(urlUserId)
-      setCompanyId(urlCompanyId)
-      setUserRole(urlUserType || 'user')
-      
-      loadProjects(urlCompanyId, urlToken)
-      return
     }
     
-    // Otherwise check localStorage
-    const storedToken = localStorage.getItem('token')
+    // Check localStorage for UI display data
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedUserRole = localStorage.getItem('userType')
-    
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    // Check onboarding status for regular users
-    if (storedUserRole !== 'super_admin' && storedUserId) {
-      fetch(`/api/onboarding/status?user_id=${storedUserId}`, {
-        headers: { 'Authorization': `Bearer ${storedToken}` }
-      })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data && !data.onboarding_completed) {
-            window.location.href = '/onboarding'
-          }
-          if (data && data.account_category) {
-            setAccountCategory(data.account_category)
-          }
-        })
-        .catch(err => console.error('Failed to check onboarding:', err))
-    }
 
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setUserRole(storedUserRole)
-    
-    if (storedCompanyId) {
-      loadProjects(storedCompanyId, storedToken)
-    }
+    // Verify auth by calling API (cookie will be sent automatically)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+
+        setUserId(String(data.user_id))
+        setUserRole(data.type)
+        localStorage.setItem('user_id', String(data.user_id))
+        localStorage.setItem('userType', data.type)
+
+        // Check onboarding status for regular users
+        if (data.type !== 'super_admin') {
+          fetch('/api/onboarding/status', { credentials: 'include' })
+            .then(res => res.ok ? res.json() : null)
+            .then(onboardingData => {
+              if (onboardingData && !onboardingData.onboarding_completed) {
+                window.location.href = '/onboarding'
+              }
+              if (onboardingData && onboardingData.account_category) {
+                setAccountCategory(onboardingData.account_category)
+              }
+            })
+            .catch(err => console.error('Failed to check onboarding:', err))
+        }
+
+        loadProjects()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
   // Close dropdowns when clicking outside
@@ -312,12 +296,12 @@ export default function DashboardLayout({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const loadProjects = async (companyId: string, authToken: string) => {
+  const loadProjects = async () => {
     setLoadingProjects(true)
     try {
       const response = await fetch(
-        `/api/projects/?company_id=${companyId}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        '/api/projects/',
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -378,16 +362,12 @@ export default function DashboardLayout({
         '/api/projects/',
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
-            company_id: parseInt(companyId!),
             product_id: 1,
-            user_id: parseInt(userId!),
             project_type: accountCategory === 'form_centric' ? 'enterprise'
                         : accountCategory === 'dynamic' ? 'dynamic_content'
                         : newProjectType
@@ -403,7 +383,7 @@ export default function DashboardLayout({
         setNewProjectName('')
         setNewProjectDescription('')
         setNewProjectType('enterprise')
-        loadProjects(companyId!, token!)
+        loadProjects()
         // Auto-select the new project
         selectProject(newProject)
       } else {
@@ -425,10 +405,10 @@ export default function DashboardLayout({
     
     try {
       const response = await fetch(
-        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
+        `/api/projects/${projectToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -444,7 +424,7 @@ export default function DashboardLayout({
           localStorage.removeItem('active_project_name')
         }
         
-        loadProjects(companyId!, token!)
+        loadProjects()
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to delete project')
@@ -468,7 +448,7 @@ export default function DashboardLayout({
     try {
       const response = await fetch(
         `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -520,14 +500,12 @@ export default function DashboardLayout({
     try {
       const url = editingNetwork
         ? `/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
-        : `/api/projects/${activeProject!.id}/networks?user_id=${userId}`
-      
+        : `/api/projects/${activeProject!.id}/networks`
+
       const response = await fetch(url, {
         method: editingNetwork ? 'PUT' : 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: networkName.trim(),
           url: networkUrl.trim(),
@@ -565,7 +543,7 @@ export default function DashboardLayout({
         `/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -585,7 +563,15 @@ export default function DashboardLayout({
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
     localStorage.clear()
     window.location.href = '/login'
   }
@@ -617,7 +603,7 @@ export default function DashboardLayout({
     </div>
   )
 
-  if (!token) return (
+  if (!userId) return (
     <div style={{ 
       minHeight: '100vh', 
       background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',

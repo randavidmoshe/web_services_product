@@ -1,7 +1,7 @@
 """
 Two-Factor Authentication Routes
 """
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
@@ -11,6 +11,14 @@ from services.two_factor_auth import TwoFactorAuth
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 import os
+
+from utils.auth_helpers import (
+    create_tokens_for_user,
+    create_tokens_for_super_admin,
+    get_current_user_from_request,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS
+)
 
 router = APIRouter(prefix="/2fa", tags=["Two-Factor Authentication"])
 
@@ -42,31 +50,39 @@ class ResetUser2FARequest(BaseModel):
 
 # ========== Helper Functions ==========
 
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-    """Extract and validate user from JWT token"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-    
-    token = authorization.replace("Bearer ", "")
-    
+def get_current_user(request: Request = None, authorization: str = Header(None), db: Session = Depends(get_db)):
+    """Extract and validate user from JWT token (cookie or header)"""
+    token = None
+
+    # Try cookie first (frontend)
+    if request:
+        token = request.cookies.get("access_token")
+
+    # Fallback to Authorization header (agent or legacy)
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         user_id = payload.get("user_id")
         user_type = payload.get("type")
-        
+
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
-        
+
         if user_type == "super_admin":
             user = db.query(SuperAdmin).filter(SuperAdmin.id == user_id).first()
         else:
             user = db.query(User).filter(User.id == user_id).first()
-        
+
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
-        
+
         return user, user_type
-    
+
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -75,6 +91,7 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 
 @router.post("/setup", response_model=Setup2FAResponse)
 async def setup_2fa(
+    request: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -82,7 +99,7 @@ async def setup_2fa(
     Initialize 2FA setup for a user.
     Returns QR code and secret for authenticator app.
     """
-    user, user_type = get_current_user(authorization, db)
+    user, user_type = get_current_user(request, authorization, db)
     
     if getattr(user, 'totp_enabled', False):
         raise HTTPException(status_code=400, detail="2FA is already enabled. Disable it first to reconfigure.")
@@ -105,11 +122,12 @@ async def setup_2fa(
 @router.post("/verify-setup")
 async def verify_2fa_setup(
     request: Verify2FARequest,
+    req: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Verify the TOTP code to complete 2FA setup."""
-    user, user_type = get_current_user(authorization, db)
+    user, user_type = get_current_user(req, authorization, db)
     
     if not user.totp_secret:
         raise HTTPException(status_code=400, detail="2FA setup not initiated. Call /2fa/setup first.")
@@ -131,6 +149,8 @@ async def verify_2fa_setup(
 @router.post("/verify-login")
 async def verify_2fa_login(
     request: Verify2FALoginRequest,
+    req: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """Verify 2FA code during login."""
@@ -150,23 +170,64 @@ async def verify_2fa_login(
     
     user.last_login_at = datetime.utcnow()
     db.commit()
-    
-    from routes.auth import create_token
-    
+
+    ip_address = req.client.host if req.client else None
+    user_agent = req.headers.get("User-Agent")
+
     if request.user_type == "super_admin":
-        token_data = {"user_id": user.id, "type": "super_admin"}
-        company_id = None
+        # Super admin: access token only (no refresh - security)
+        access_token = create_tokens_for_super_admin(user)
+
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=3600,  # 1 hour for super admin
+            path="/"
+        )
+
+        return {
+            "success": True,
+            "type": "super_admin",
+            "user_id": user.id,
+            "company_id": None
+        }
     else:
-        token_data = {"user_id": user.id, "type": user.role if user.role else "user", "company_id": user.company_id}
-        company_id = user.company_id
-    
-    return {
-        "success": True,
-        "token": create_token(token_data),
-        "type": request.user_type if request.user_type == "super_admin" else user.role,
-        "user_id": user.id,
-        "company_id": company_id
-    }
+        # Regular user: access + refresh tokens
+        access_token, refresh_token, session_id = create_tokens_for_user(
+            db=db,
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            path="/"
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            path="/api/auth"
+        )
+
+        return {
+            "success": True,
+            "type": user.role if user.role else "user",
+            "user_id": user.id,
+            "company_id": user.company_id
+        }
 
 
 # ========== 2FA Management ==========
@@ -174,11 +235,12 @@ async def verify_2fa_login(
 @router.post("/disable")
 async def disable_2fa(
     request: Disable2FARequest,
+    req: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Disable 2FA for the current user."""
-    user, user_type = get_current_user(authorization, db)
+    user, user_type = get_current_user(req, authorization, db)
     
     if not user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
@@ -195,11 +257,12 @@ async def disable_2fa(
 
 @router.get("/status")
 async def get_2fa_status(
+    request: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Get current 2FA status for the user"""
-    user, user_type = get_current_user(authorization, db)
+    user, user_type = get_current_user(request, authorization, db)
     
     return {
         "enabled": getattr(user, 'totp_enabled', False),
@@ -212,11 +275,12 @@ async def get_2fa_status(
 @router.post("/reset-user")
 async def reset_user_2fa(
     request: ResetUser2FARequest,
+    req: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Reset 2FA for another user (admin function)."""
-    current_user, current_type = get_current_user(authorization, db)
+    current_user, current_type = get_current_user(req, authorization, db)
     
     target_user = db.query(User).filter(User.id == request.user_id).first()
     if not target_user:
@@ -242,11 +306,12 @@ async def reset_user_2fa(
 @router.post("/enforce-company")
 async def set_company_2fa_enforcement(
     enforce: bool,
+    request: Request,
     authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Set whether 2FA is mandatory for all users in the company."""
-    current_user, current_type = get_current_user(authorization, db)
+    current_user, current_type = get_current_user(request, authorization, db)
     
     if current_type not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admins can change this setting")

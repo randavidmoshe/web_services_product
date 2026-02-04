@@ -44,6 +44,8 @@ class SuperAdmin(Base):
     # Password reset fields
     password_reset_token_hash = Column(String(64), nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
+    # Token invalidation (for logout all devices)
+    token_version = Column(Integer, default=1)
 
 
 class SuperAdminAuditLog(Base):
@@ -85,8 +87,8 @@ class Company(Base):
 class CompanyProductSubscription(Base):
     __tablename__ = "company_product_subscriptions"
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("companies.id"))
-    product_id = Column(Integer, ForeignKey("products.id"))
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), index=True)
     status = Column(String, default="trial")
     is_trial = Column(Boolean, default=True)
     trial_ends_at = Column(DateTime)
@@ -101,7 +103,7 @@ class CompanyProductSubscription(Base):
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("companies.id"))
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
     email = Column(String, unique=True)
     password_hash = Column(String)
     name = Column(String)
@@ -129,11 +131,13 @@ class User(Base):
     # Password reset fields
     password_reset_token_hash = Column(String(64), nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
+    # Token invalidation (for logout all devices)
+    token_version = Column(Integer, default=1)
 
 class Project(Base):
     __tablename__ = "projects"
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("companies.id"))
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
     name = Column(String)
     description = Column(Text)
@@ -146,8 +150,8 @@ class Project(Base):
 class Network(Base):
     __tablename__ = "networks"
     id = Column(Integer, primary_key=True)
-    project_id = Column(Integer, ForeignKey("projects.id"))
-    company_id = Column(Integer, ForeignKey("companies.id"))
+    project_id = Column(Integer, ForeignKey("projects.id"), index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
     name = Column(String)
     url = Column(String)
@@ -165,11 +169,11 @@ class Network(Base):
 class CrawlSession(Base):
     __tablename__ = "crawl_sessions"
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("companies.id"))
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    project_id = Column(Integer, ForeignKey("projects.id"))
+    project_id = Column(Integer, ForeignKey("projects.id"), index=True)
     network_id = Column(Integer, ForeignKey("networks.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     agent_instance_id = Column(Integer)
     session_type = Column(String)
     status = Column(String, default="pending")
@@ -272,10 +276,10 @@ class ApiUsage(Base):
 class Screenshot(Base):
     __tablename__ = "screenshots"
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
-    crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"))
-    form_page_id = Column(Integer, ForeignKey("form_page_routes.id"))  # Updated FK reference
+    crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"), index=True)
+    form_page_id = Column(Integer, ForeignKey("form_page_routes.id"), index=True)  # Updated FK reference
     
     # Image metadata
     filename = Column(String, nullable=False)
@@ -397,6 +401,46 @@ class EmailVerificationRateLimit(Base):
 
     __table_args__ = (
         Index('ix_email_verification_rate_limits_email_sent', 'email', 'sent_at'),
+    )
+
+# ============================================================================
+# Session & Security Tables
+# ============================================================================
+
+class UserSession(Base):
+    """Track active user sessions for session management and logout all devices."""
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    refresh_token_hash = Column(String(255), nullable=False)
+    device_info = Column(String(255), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    is_revoked = Column(Boolean, default=False)
+
+    __table_args__ = (
+        Index('ix_user_sessions_user_id', 'user_id'),
+        Index('ix_user_sessions_refresh_hash', 'refresh_token_hash'),
+    )
+
+
+class LoginAttempt(Base):
+    """Track login attempts for rate limiting and security audit."""
+    __tablename__ = "login_attempts"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    success = Column(Boolean, default=False)
+    attempted_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_login_attempts_email_time', 'email', 'attempted_at'),
+        Index('ix_login_attempts_ip_time', 'ip_address', 'attempted_at'),
     )
 
 # Import related models to resolve relationships

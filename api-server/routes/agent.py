@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 from models.database import get_db, User
 from models.agent_models import Agent
 from datetime import datetime, timedelta
 import secrets
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter()
 
@@ -12,18 +13,25 @@ HEARTBEAT_TIMEOUT_SECONDS = 60
 
 
 @router.get("/status")
-async def get_agent_status(user_id: int, db: Session = Depends(get_db)):
+async def get_agent_status(user_id: int, request: Request, db: Session = Depends(get_db)):
     """
     Get agent status for a specific user.
     Scalable endpoint - returns only ONE agent's status.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     agent = db.query(Agent).filter(Agent.user_id == user_id).first()
-    
+
     if not agent:
         return {
             "status": "not_registered",
             "last_heartbeat": None
         }
+
+    if current_user["type"] != "super_admin" and agent.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Check if agent is online (heartbeat within timeout)
     is_online = False
@@ -37,10 +45,15 @@ async def get_agent_status(user_id: int, db: Session = Depends(get_db)):
     }
 
 @router.post("/generate-token")
-async def generate_agent_token(user_id: int, db: Session = Depends(get_db)):
+async def generate_agent_token(user_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
+    if current_user["type"] != "super_admin" and user.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     if not user.agent_api_token:
         user.agent_api_token = secrets.token_urlsafe(32)

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from models.database import get_db, Company, User, SuperAdmin, CompanyProductSubscription
-from utils.auth_helpers import get_current_super_admin, log_super_admin_action
+from utils.auth_helpers import get_current_user_from_request, log_super_admin_action
 from services.email_service import notify_product_owner
 
 router = APIRouter(prefix="/api/super-admin", tags=["super-admin"])
@@ -30,11 +30,12 @@ class UpdateLimitsRequest(BaseModel):
 @router.get("/pending-access")
 async def get_pending_access_requests(
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get all companies with pending Early Access requests."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     pending_companies = db.query(Company).filter(
         Company.access_model == 'early_access',
@@ -66,11 +67,12 @@ async def get_pending_access_requests(
 @router.get("/all-companies")
 async def get_all_companies(
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Get all companies with their access status."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     companies = db.query(Company).order_by(Company.created_at.desc()).all()
 
@@ -105,11 +107,12 @@ async def get_all_companies(
 async def approve_access(
         data: ApproveAccessRequest,
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Approve Early Access for a company."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     company = db.query(Company).filter(Company.id == data.company_id).first()
     if not company:
@@ -161,7 +164,7 @@ async def approve_access(
     # Audit log
     log_super_admin_action(
         db=db,
-        admin_id=admin.id,
+        admin_id=current_user["user_id"],
         action="approve_access",
         target_company_id=company.id,
         details={
@@ -197,11 +200,12 @@ async def approve_access(
 async def reject_access(
         data: RejectAccessRequest,
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Reject Early Access for a company."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     company = db.query(Company).filter(Company.id == data.company_id).first()
     if not company:
@@ -213,7 +217,7 @@ async def reject_access(
     # Audit log
     log_super_admin_action(
         db=db,
-        admin_id=admin.id,
+        admin_id=current_user["user_id"],
         action="reject_access",
         target_company_id=company.id,
         details={"reason": data.reason} if data.reason else None,
@@ -242,11 +246,12 @@ async def reject_access(
 async def update_company_limits(
         data: UpdateLimitsRequest,
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Update daily budget or trial days for a company."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     company = db.query(Company).filter(Company.id == data.company_id).first()
     if not company:
@@ -267,7 +272,7 @@ async def update_company_limits(
     # Audit log
     log_super_admin_action(
         db=db,
-        admin_id=admin.id,
+        admin_id=current_user["user_id"],
         action="update_limits",
         target_company_id=company.id,
         details={
@@ -306,11 +311,12 @@ async def update_company_limits(
 async def disable_company(
         company_id: int,
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Disable a company (set access_status to rejected)."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
@@ -322,7 +328,7 @@ async def disable_company(
     # Audit log
     log_super_admin_action(
         db=db,
-        admin_id=admin.id,
+        admin_id=current_user["user_id"],
         action="disable_company",
         target_company_id=company.id,
         ip_address=request.client.host if request.client else None
@@ -345,11 +351,12 @@ async def disable_company(
 async def enable_company(
         company_id: int,
         request: Request,
-        authorization: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Re-enable a disabled company."""
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
@@ -383,7 +390,7 @@ async def enable_company(
     # Audit log
     log_super_admin_action(
         db=db,
-        admin_id=admin.id,
+        admin_id=current_user["user_id"],
         action="enable_company",
         target_company_id=company.id,
         ip_address=request.client.host if request.client else None
@@ -405,14 +412,15 @@ async def enable_company(
 @router.get("/audit-logs")
 async def get_audit_logs(
         request: Request,
-        authorization: str = Header(...),
         limit: int = 50,
         db: Session = Depends(get_db)
 ):
     """Get super admin audit logs."""
     from models.database import SuperAdminAuditLog
 
-    admin = get_current_super_admin(authorization, db)
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
 
     logs = db.query(SuperAdminAuditLog).order_by(
         SuperAdminAuditLog.created_at.desc()

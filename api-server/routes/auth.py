@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models.database import get_db, SuperAdmin, User, Company, Product, CompanyProductSubscription, Project, EmailVerificationRateLimit
@@ -10,6 +10,23 @@ import secrets
 import hashlib
 from pydantic import BaseModel
 from typing import Optional
+from utils.auth_helpers import (
+    create_tokens_for_user,
+    create_tokens_for_super_admin,
+    validate_refresh_token,
+    create_access_token,
+    create_refresh_token,
+    rotate_refresh_token,
+    check_rate_limit,
+    log_login_attempt,
+    revoke_session,
+    revoke_all_sessions,
+    increment_token_version,
+    get_user_sessions,
+    get_current_user_from_request,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS
+)
 
 router = APIRouter()
 
@@ -21,10 +38,14 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-async def login(request: LoginRequest, req: Request, db: Session = Depends(get_db)):
-    email = request.email
+async def login(request: LoginRequest, req: Request, response: Response, db: Session = Depends(get_db)):
+    email = request.email.lower().strip()
     password = request.password
     ip_address = req.client.host if req.client else None
+    user_agent = req.headers.get("User-Agent")
+
+    # Check rate limit BEFORE any authentication
+    check_rate_limit(db, email, ip_address)
 
     # Check super admin
     admin = db.query(SuperAdmin).filter(SuperAdmin.email == email).first()
@@ -40,15 +61,31 @@ async def login(request: LoginRequest, req: Request, db: Session = Depends(get_d
         admin.last_login_at = datetime.utcnow()
         db.commit()
 
+        # Log successful attempt
+        log_login_attempt(db, email, ip_address, success=True)
+
         # Notify product owner about super admin login
         from services.email_service import notify_super_admin_login
         notify_super_admin_login(ip_address=ip_address)
 
         # Super admin must set up 2FA if not enabled
+        # Create access token only (no refresh for super admin - security)
+        access_token = create_tokens_for_super_admin(admin)
+
+        # Set HttpOnly cookie
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=3600,  # 1 hour for super admin
+            path="/"
+        )
+
         return {
             "requires_2fa": False,
             "requires_2fa_setup": True,
-            "token": create_token({"user_id": admin.id, "type": "super_admin"}),
             "type": "super_admin",
             "user_id": admin.id,
             "company_id": None
@@ -85,26 +122,61 @@ async def login(request: LoginRequest, req: Request, db: Session = Depends(get_d
 
         company = db.query(Company).filter(Company.id == user.company_id).first() if user.company_id else None
         if not requires_2fa_setup and company:
-            company = db.query(Company).filter(Company.id == user.company_id).first()
             if getattr(company, 'require_2fa', False) and not getattr(user, 'totp_enabled', False):
                 requires_2fa_setup = True
         
         user.last_login_at = datetime.utcnow()
         db.commit()
-        
+
+        # Log successful attempt
+        log_login_attempt(db, email, ip_address, success=True)
+
+        # Create access and refresh tokens
+        access_token, refresh_token, session_id = create_tokens_for_user(
+            db=db,
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # Set HttpOnly cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            path="/"
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            path="/api/auth"  # Only sent to auth endpoints
+        )
+
         return {
             "requires_2fa": False,
             "requires_2fa_setup": requires_2fa_setup,
-            "token": create_token({"user_id": user.id, "type": user_type, "company_id": user.company_id}),
             "type": user_type,
             "user_id": user.id,
             "company_id": user.company_id,
             "onboarding_completed": getattr(company, 'onboarding_completed', True) if company else True
         }
-    
+
+    # Log failed attempt
+    log_login_attempt(db, email, ip_address, success=False)
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 def create_token(data: dict):
+    """
+    DEPRECATED: Use create_tokens_for_user or create_tokens_for_super_admin instead.
+    Kept for backward compatibility with 2FA flow (will be updated).
+    """
     to_encode = data.copy()
     if data.get("type") == "super_admin":
         expire = datetime.utcnow() + timedelta(hours=1)
@@ -114,6 +186,163 @@ def create_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
 
+
+# ========== SESSION MANAGEMENT ENDPOINTS ==========
+
+@router.post("/logout")
+async def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    """
+    Logout current session. Clears cookies and revokes session.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+
+    if refresh_token:
+        try:
+            from jose import jwt
+            payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=["HS256"])
+            session_id = payload.get("session_id")
+            user_id = payload.get("user_id")
+            if session_id and user_id:
+                revoke_session(db, session_id, user_id)
+        except:
+            pass  # Token invalid, just clear cookies
+
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/api/auth")
+
+    return {"success": True, "message": "Logged out successfully"}
+
+
+@router.post("/refresh")
+async def refresh_tokens(request: Request, response: Response, db: Session = Depends(get_db)):
+    """
+    Refresh access token using refresh token.
+    Also rotates refresh token for security.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    user_id, session_id, token_version, user_type, company_id = validate_refresh_token(db, refresh_token)
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("User-Agent")
+
+    new_session_id, _ = rotate_refresh_token(
+        db=db,
+        old_session_id=session_id,
+        user_id=user_id,
+        token_version=token_version,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    new_access_token = create_access_token(
+        user_id=user_id,
+        company_id=company_id,
+        user_type=user_type,
+        token_version=token_version
+    )
+
+    new_refresh_token = create_refresh_token(
+        user_id=user_id,
+        session_id=new_session_id,
+        token_version=token_version
+    )
+
+    db.commit()
+
+    response.set_cookie(
+        key="access_token",
+        value=new_access_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/api/auth"
+    )
+
+    return {"success": True, "message": "Tokens refreshed"}
+
+
+@router.get("/me")
+async def get_current_user_info(request: Request):
+    """
+    Get current user info from access token.
+    Used for auth check on page load.
+    """
+    current_user = get_current_user_from_request(request)
+    return {
+        "user_id": current_user["user_id"],
+        "company_id": current_user["company_id"],
+        "type": current_user["type"]
+    }
+
+
+@router.get("/sessions")
+async def get_sessions(request: Request, db: Session = Depends(get_db)):
+    """
+    Get all active sessions for current user.
+    """
+    current_user = get_current_user_from_request(request)
+
+    if current_user["type"] == "super_admin":
+        return {"sessions": []}
+
+    sessions = get_user_sessions(db, current_user["user_id"])
+    return {"sessions": sessions}
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_single_session(session_id: int, request: Request, db: Session = Depends(get_db)):
+    """
+    Revoke a specific session (logout from specific device).
+    """
+    current_user = get_current_user_from_request(request)
+
+    if current_user["type"] == "super_admin":
+        raise HTTPException(status_code=400, detail="Super admins don't have sessions")
+
+    success = revoke_session(db, session_id, current_user["user_id"])
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {"success": True, "message": "Session revoked"}
+
+
+@router.post("/logout-all")
+async def logout_all_devices(request: Request, response: Response, db: Session = Depends(get_db)):
+    """
+    Logout from all devices. Revokes all sessions and increments token version.
+    """
+    current_user = get_current_user_from_request(request)
+    user_id = current_user["user_id"]
+    is_super_admin = current_user["type"] == "super_admin"
+
+    if not is_super_admin:
+        revoke_all_sessions(db, user_id)
+
+    increment_token_version(db, user_id, is_super_admin)
+
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/api/auth")
+
+    return {"success": True, "message": "Logged out from all devices"}
 
 # ========== AGENT LOGIN ENDPOINT ==========
 

@@ -1,7 +1,8 @@
 # company_config.py
 # API routes for super admin to manage company Form Mapper configuration
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from utils.auth_helpers import get_current_user_from_request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -57,12 +58,17 @@ class CompanyUsageResponse(BaseModel):
 @router.get("/{company_id}/form-mapper-config", response_model=CompanyConfigResponse)
 def get_company_form_mapper_config(
     company_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get Form Mapper configuration for a company.
     Super admin only.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     company = db.query(Company).filter(Company.id == company_id).first()
     
     if not company:
@@ -84,12 +90,17 @@ def get_company_form_mapper_config(
 def update_company_form_mapper_config(
     company_id: int,
     config_update: FormMapperConfigUpdate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Update Form Mapper configuration for a company.
     Super admin only. Only provided fields are updated.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     company = db.query(Company).filter(Company.id == company_id).first()
     
     if not company:
@@ -116,12 +127,17 @@ def update_company_form_mapper_config(
 @router.post("/{company_id}/form-mapper-config/reset", response_model=CompanyConfigResponse)
 def reset_company_form_mapper_config(
     company_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Reset Form Mapper configuration to defaults for a company.
     Super admin only.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     company = db.query(Company).filter(Company.id == company_id).first()
     
     if not company:
@@ -143,6 +159,7 @@ def reset_company_form_mapper_config(
 
 @router.get("/", response_model=CompanyListResponse)
 def list_companies_with_config(
+    request: Request,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db)
@@ -151,6 +168,10 @@ def list_companies_with_config(
     List all companies with their Form Mapper configuration.
     Super admin only.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     total = db.query(Company).count()
     companies = db.query(Company).offset(skip).limit(limit).all()
     
@@ -185,7 +206,8 @@ def get_default_config():
 @router.get("/{company_id}/ai-usage", response_model=CompanyUsageResponse)
 def get_company_ai_usage(
     company_id: int,
-    product_id: int = 1,  # Default to form_mapper product
+    request: Request,
+    product_id: int = 1,
     db: Session = Depends(get_db)
 ):
     """
@@ -194,6 +216,10 @@ def get_company_ai_usage(
     
     Shows monthly budget, current usage, and breakdown by operation type.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     company = db.query(Company).filter(Company.id == company_id).first()
     
     if not company:
@@ -251,6 +277,7 @@ def get_company_ai_usage(
 
 @router.get("/ai-usage/all")
 def get_all_companies_ai_usage(
+    request: Request,
     product_id: int = 1,
     skip: int = 0,
     limit: int = 50,
@@ -262,6 +289,10 @@ def get_all_companies_ai_usage(
     
     Useful for monitoring system-wide AI costs.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] not in ["super_admin", "admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     from models.database import CompanyProductSubscription
     from sqlalchemy import func
     

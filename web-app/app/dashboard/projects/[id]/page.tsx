@@ -46,7 +46,6 @@ export default function ProjectDetailPage() {
   const params = useParams()
   const projectId = params.id as string
   
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   
   // Project data
@@ -87,30 +86,38 @@ export default function ProjectDetailPage() {
   const [deletingNetwork, setDeletingNetwork] = useState(false)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
     
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        setUserId(String(data.user_id))
+        loadProject(projectId)
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
     
     if (projectId) {
       loadProject(projectId, storedToken)
     }
   }, [projectId])
 
-  const loadProject = async (id: string, authToken: string) => {
+  const loadProject = async (id: string) => {
     setLoading(true)
     setError(null)
     
     try {
       const response = await fetch(
         `/api/projects/${id}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { credentials: 'include' }
       )
       
       if (response.ok) {
@@ -158,10 +165,8 @@ export default function ProjectDetailPage() {
         `/api/projects/${projectId}/networks?user_id=${userId}`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: newNetworkName.trim(),
             url: newNetworkUrl.trim(),
@@ -177,7 +182,7 @@ export default function ProjectDetailPage() {
         setShowAddNetworkModal(false)
         // Expand the section where network was added
         setCollapsedSections(prev => ({ ...prev, [addNetworkType]: false }))
-        loadProject(projectId, token!)
+        loadProject(projectId)
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to add network')
@@ -214,10 +219,8 @@ export default function ProjectDetailPage() {
         `/api/projects/${projectId}/networks/${editingNetwork.id}`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: editNetworkName.trim(),
             url: editNetworkUrl.trim(),
@@ -232,7 +235,7 @@ export default function ProjectDetailPage() {
         setMessage('Network updated successfully!')
         setShowEditNetworkModal(false)
         setEditingNetwork(null)
-        loadProject(projectId, token!)
+        loadProject(projectId)
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to update network')
@@ -260,7 +263,7 @@ export default function ProjectDetailPage() {
         `/api/projects/${projectId}/networks/${networkToDelete.id}`,
         {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         }
       )
       
@@ -269,7 +272,7 @@ export default function ProjectDetailPage() {
         setMessage(`Network deleted. ${data.deleted.form_pages_deleted} form page(s) removed.`)
         setShowDeleteNetworkModal(false)
         setNetworkToDelete(null)
-        loadProject(projectId, token!)
+        loadProject(projectId)
       } else {
         const errData = await response.json()
         setError(errData.detail || 'Failed to delete network')
@@ -285,7 +288,7 @@ export default function ProjectDetailPage() {
     router.push(`/dashboard/form-pages-discovery?project_id=${projectId}&network_id=${networkId}`)
   }
 
-  if (!token) return <p>Loading...</p>
+  if (loading) return <p>Loading...</p>
 
   return (
     <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>

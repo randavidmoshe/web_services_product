@@ -84,8 +84,7 @@ export interface FormPageEditPanelProps {
   formPages: FormPage[]
   completedPaths: CompletedPath[]
   loadingPaths: boolean
-  token: string
-  
+
   // Edit state
   editFormName: string
   setEditFormName: (name: string) => void
@@ -211,7 +210,6 @@ export default function FormPageEditPanel({
   formPages,
   completedPaths,
   loadingPaths,
-  token,
   editFormName,
   setEditFormName,
   editNavigationSteps,
@@ -644,10 +642,8 @@ export default function FormPageEditPanel({
         `/api/form-mapper/paths/${pathId}/steps`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ steps })
         }
       )
@@ -699,10 +695,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch('/api/form-mapper/pom/generate', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: editingFormPage.id,
           language: pomLanguage,
@@ -733,7 +727,7 @@ export default function FormPageEditPanel({
     const poll = async () => {
       try {
         const response = await fetch(`/api/form-mapper/pom/tasks/${taskId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
         
         if (!response.ok) {
@@ -796,7 +790,7 @@ export default function FormPageEditPanel({
   const loadSpecDocument = async () => {
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -828,10 +822,8 @@ export default function FormPageEditPanel({
       
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type || 'text/plain',
@@ -868,10 +860,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ content: specEditContent })
       })
 
@@ -898,7 +888,7 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -929,7 +919,7 @@ export default function FormPageEditPanel({
   const loadVerificationInstructions = async () => {
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       const data = await response.json()
       if (data.verification_file && data.content) {
@@ -958,10 +948,8 @@ export default function FormPageEditPanel({
       const content = await file.text()
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type || 'text/plain',
@@ -991,10 +979,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {
@@ -1017,7 +1003,7 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         setVerificationContent('')
@@ -1035,7 +1021,7 @@ export default function FormPageEditPanel({
     setTestScenariosLoading(true)
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       const data = await response.json()
       setTestScenarios(data.scenarios || [])
@@ -1056,10 +1042,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: newScenarioName.trim(),
           content: newScenarioContent.trim()
@@ -1086,10 +1070,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenario.id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: scenario.name,
           content: scenario.content
@@ -1115,7 +1097,7 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenarioId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         loadTestScenarios()
@@ -1137,10 +1119,8 @@ export default function FormPageEditPanel({
 
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, content })
       })
 
@@ -1170,10 +1150,8 @@ export default function FormPageEditPanel({
 
       const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${replacingScenarioId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, content })
       })
 
@@ -1207,10 +1185,8 @@ export default function FormPageEditPanel({
     try {
       const response = await fetch('/api/form-mapper/spec-compliance/generate', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: editingFormPage.id
         })
@@ -1238,7 +1214,7 @@ export default function FormPageEditPanel({
     const poll = async () => {
       try {
         const response = await fetch(`/api/form-mapper/spec-compliance/tasks/${taskId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         })
 
         if (!response.ok) {
@@ -2084,13 +2060,12 @@ export default function FormPageEditPanel({
             </div>
 
             {/* Two boxes side by side: User Provided Inputs & Spec Document - MOVED TO MORE DROPDOWN */}
-            {false && !isLoginLogout && token && (
+            {false && !isLoginLogout && (
               <div style={{ display: 'flex', gap: '16px', marginTop: '20px' }}>
                 {/* User Provided Inputs - Left Box */}
                 <div style={{ flex: 1 }}>
                   <UserProvidedInputsSection
                     formPageId={editingFormPage.id}
-                    token={token}
                     apiBase=""
                     isLightTheme={isLightTheme()}
                     themeColors={getTheme().colors}
@@ -4337,7 +4312,6 @@ export default function FormPageEditPanel({
 
             <UserProvidedInputsSection
               formPageId={editingFormPage.id}
-              token={token}
               apiBase=""
               isLightTheme={isLightTheme()}
               themeColors={getTheme().colors}

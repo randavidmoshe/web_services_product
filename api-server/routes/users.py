@@ -8,7 +8,7 @@ User Management Routes with Email Invitation System
 - Reset 2FA
 - Resend invitation
 """
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -75,33 +75,23 @@ class InviteInfoResponse(BaseModel):
 
 # ========== Helper Functions ==========
 
-def get_current_user_and_type(authorization: str = Header(None), db: Session = Depends(get_db)):
-    """Extract and validate user from JWT token, return user and type"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-    
-    token = authorization.replace("Bearer ", "")
-    
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        user_id = payload.get("user_id")
-        user_type = payload.get("type")
-        
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        if user_type == "super_admin":
-            user = db.query(SuperAdmin).filter(SuperAdmin.id == user_id).first()
-        else:
-            user = db.query(User).filter(User.id == user_id).first()
-        
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        
-        return user, user_type
-    
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+def get_current_user_and_type(request: Request, db: Session):
+    """Extract and validate user from cookie token, return user and type"""
+    from utils.auth_helpers import get_current_user_from_request
+
+    current_user = get_current_user_from_request(request)
+    user_id = current_user["user_id"]
+    user_type = current_user["type"]
+
+    if user_type == "super_admin":
+        user = db.query(SuperAdmin).filter(SuperAdmin.id == user_id).first()
+    else:
+        user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user, user_type
 
 
 def generate_invite_token() -> str:
@@ -121,8 +111,8 @@ def is_invite_expired(invite_sent_at: datetime) -> bool:
 
 @router.get("", response_model=List[UserResponse])
 async def list_users(
+    request: Request,
     company_id: Optional[int] = None,
-    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -131,7 +121,7 @@ async def list_users(
     - Company admin: sees only users in their company
     - Regular user: no access
     """
-    user, user_type = get_current_user_and_type(authorization, db)
+    user, user_type = get_current_user_and_type(request, db)
     
     if user_type == "super_admin":
         query = db.query(User)
@@ -169,7 +159,7 @@ async def list_users(
 @router.post("/invite", response_model=UserResponse)
 async def invite_user(
     user_data: UserInvite,
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -180,7 +170,7 @@ async def invite_user(
     - Company admin: invites users to their company
     - Regular user: no access
     """
-    current_user, user_type = get_current_user_and_type(authorization, db)
+    current_user, user_type = get_current_user_and_type(request, db)
     
     if user_type == "super_admin":
         raise HTTPException(status_code=400, detail="Super admin cannot invite company users. Use company admin account.")
@@ -340,13 +330,13 @@ async def accept_invite(
 @router.post("/{user_id}/resend-invite")
 async def resend_invite(
     user_id: int,
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Resend invitation email to a user who hasn't accepted yet.
     """
-    current_user, user_type = get_current_user_and_type(authorization, db)
+    current_user, user_type = get_current_user_and_type(request, db)
     
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
@@ -395,7 +385,7 @@ async def resend_invite(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -403,7 +393,7 @@ async def update_user(
     - Super admin: can update any user
     - Company admin: can update users in their company
     """
-    current_user, user_type = get_current_user_and_type(authorization, db)
+    current_user, user_type = get_current_user_and_type(request, db)
     
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
@@ -454,7 +444,7 @@ async def update_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int,
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -462,7 +452,7 @@ async def delete_user(
     - Super admin: can delete any user
     - Company admin: can delete users in their company (not themselves, not other admins)
     """
-    current_user, user_type = get_current_user_and_type(authorization, db)
+    current_user, user_type = get_current_user_and_type(request, db)
     
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
@@ -490,7 +480,7 @@ async def delete_user(
 @router.post("/{user_id}/reset-2fa")
 async def reset_user_2fa(
     user_id: int,
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -498,7 +488,7 @@ async def reset_user_2fa(
     - Super admin: can reset anyone's 2FA
     - Company admin: can reset users in their company (not other admins)
     """
-    current_user, user_type = get_current_user_and_type(authorization, db)
+    current_user, user_type = get_current_user_and_type(request, db)
     
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
@@ -524,13 +514,13 @@ async def reset_user_2fa(
 
 @router.get("/companies")
 async def list_companies(
-    authorization: str = Header(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     List all companies. Super admin only.
     """
-    user, user_type = get_current_user_and_type(authorization, db)
+    user, user_type = get_current_user_and_type(request, db)
     
     if user_type != "super_admin":
         raise HTTPException(status_code=403, detail="Super admin access required")

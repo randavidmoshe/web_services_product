@@ -4,9 +4,10 @@
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from utils.auth_helpers import get_current_user_from_request
 
 from models.database import get_db, FormPageRoute
 
@@ -26,6 +27,7 @@ class UserProvidedInputsResponse(BaseModel):
 @router.post("/{form_page_route_id}/user-inputs")
 async def upload_user_inputs(
         form_page_route_id: int,
+        request: Request,
         file: Optional[UploadFile] = File(None),
         content: Optional[str] = Form(None),
         db: Session = Depends(get_db)
@@ -41,6 +43,9 @@ async def upload_user_inputs(
 
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page route not found")
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     raw_content = ""
     file_type = "txt"
@@ -99,6 +104,7 @@ async def upload_user_inputs(
 @router.get("/{form_page_route_id}/user-inputs", response_model=UserProvidedInputsResponse)
 async def get_user_inputs(
         form_page_route_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -111,6 +117,9 @@ async def get_user_inputs(
 
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page route not found")
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     inputs = form_page.user_provided_inputs
 
@@ -153,6 +162,7 @@ async def get_user_inputs(
 @router.delete("/{form_page_route_id}/user-inputs")
 async def delete_user_inputs(
         form_page_route_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Clear user-provided inputs for a form page."""
@@ -162,6 +172,9 @@ async def delete_user_inputs(
 
     if not form_page:
         raise HTTPException(status_code=404, detail="Form page route not found")
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     form_page.user_provided_inputs = None
     form_page.user_provided_inputs_raw = None

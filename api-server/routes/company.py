@@ -1,15 +1,16 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from models.database import get_db
 import redis
 import os
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
 
 @router.get("/ai-usage")
 async def get_ai_usage(
-        company_id: int = Query(...),
+        request: Request,
         product_id: int = Query(default=1),
         db: Session = Depends(get_db)
 ):
@@ -17,6 +18,10 @@ async def get_ai_usage(
     Get AI usage for dashboard display.
     Returns used, budget, is_byok based on access model.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     from services.ai_budget_service import get_budget_service
 
     redis_client = redis.Redis(

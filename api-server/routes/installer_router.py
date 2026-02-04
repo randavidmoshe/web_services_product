@@ -1,8 +1,9 @@
 # Installer Download Endpoints
 # Location: api-server/routes/installer_router.py
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
+from utils.auth_helpers import get_current_user_from_request
 from sqlalchemy.orm import Session
 import os
 from pathlib import Path
@@ -28,7 +29,9 @@ PLATFORMS = {
 @router.get("/download/{platform}")
 async def download_installer(
     platform: str,
+    request: Request,
 ):
+    get_current_user_from_request(request)  # Verify authenticated
     """
     Download agent installer for specified platform
     
@@ -70,10 +73,11 @@ async def download_installer(
 
 
 @router.get("/available")
-async def list_available_installers():
+async def list_available_installers(request: Request):
     """
     Get list of available installer platforms
     """
+    get_current_user_from_request(request)  # Verify authenticated
     available = {}
     
     for platform, filename in PLATFORMS.items():
@@ -91,11 +95,13 @@ async def list_available_installers():
 
 
 @router.get("/latest-version")
-async def get_latest_version():
+async def get_latest_version(request: Request):
     """
     Get latest agent version info
     Used by agent for auto-update checks
     """
+    get_current_user_from_request(request)  # Verify authenticated
+
     return {
         "version": "2.0.0",
         "release_date": "2024-11-16",
@@ -111,15 +117,18 @@ async def get_latest_version():
 
 @router.post("/register-download")
 async def register_download(
-    download_data: dict,
-    db: Session = Depends(get_db)
+        download_data: dict,
+        request: Request,
+        db: Session = Depends(get_db)
 ):
     """
     Track installer downloads (optional)
     """
+    current_user = get_current_user_from_request(request)
+
     platform = download_data.get('platform')
-    user_id = download_data.get('user_id')
-    company_id = download_data.get('company_id')
+    user_id = current_user["user_id"]
+    company_id = current_user["company_id"]
     
     # Log to database
     # InstallerDownload.create(db, platform, user_id, company_id)

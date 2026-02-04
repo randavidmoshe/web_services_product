@@ -9,7 +9,7 @@ Includes screenshot management and download functionality.
 import json
 import io
 import zipfile
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -29,6 +29,7 @@ from services.s3_storage import (
 )
 
 from celery_app import celery
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter(prefix="/api/activity-logs", tags=["Activity Logs"])
 
@@ -270,31 +271,35 @@ async def request_log_upload_url(
 
 @router.post("/logs/confirm")
 async def confirm_log_upload(
-        request: LargeLogConfirmRequest,
+        body: LargeLogConfirmRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Confirm large log file was uploaded to S3.
     Queues Celery task to process and insert to DB.
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Queue Celery task to read from S3 and insert to DB
         celery.send_task(
             'tasks.process_activity_logs_from_s3',
             kwargs={
-                's3_key': request.s3_key,
-                'activity_type': request.activity_type,
-                'session_id': request.session_id,
-                'project_id': request.project_id,
-                'company_id': request.company_id,
-                'user_id': request.user_id
+                's3_key': body.s3_key,
+                'activity_type': body.activity_type,
+                'session_id': body.session_id,
+                'project_id': body.project_id,
+                'company_id': body.company_id,
+                'user_id': body.user_id
             }
         )
 
         return {
             "success": True,
             "queued": True,
-            "s3_key": request.s3_key
+            "s3_key": body.s3_key
         }
 
     except Exception as e:
@@ -384,7 +389,8 @@ async def confirm_screenshot_uploads(
 
 @router.post("/screenshots/confirm-zip")
 async def confirm_screenshot_zip_upload(
-        request: ScreenshotZipConfirmRequest,
+        body: ScreenshotZipConfirmRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -394,23 +400,27 @@ async def confirm_screenshot_zip_upload(
     Used by: Celery method (docker-compose development)
     Not used by: Lambda method (AWS production) - Lambda triggered by S3 event
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     try:
         # Queue Celery task to process zip
         celery.send_task(
             'tasks.process_screenshot_zip',
             kwargs={
-                's3_key': request.s3_key,
-                'activity_type': request.activity_type,
-                'session_id': request.session_id,
-                'project_id': request.project_id,
-                'company_id': request.company_id
+                's3_key': body.s3_key,
+                'activity_type': body.activity_type,
+                'session_id': body.session_id,
+                'project_id': body.project_id,
+                'company_id': body.company_id
             }
         )
 
         return {
             "success": True,
             "queued": True,
-            "s3_key": request.s3_key
+            "s3_key": body.s3_key
         }
 
     except Exception as e:
@@ -419,7 +429,8 @@ async def confirm_screenshot_zip_upload(
 
 @router.post("/form-files/confirm-zip")
 async def confirm_form_files_zip_upload(
-        request: FormFilesZipConfirmRequest,
+        body: FormFilesZipConfirmRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -429,24 +440,27 @@ async def confirm_form_files_zip_upload(
     Used by: Celery method (docker-compose development)
     Not used by: Lambda method (AWS production) - Lambda triggered by S3 event
     """
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Queue Celery task to process zip
         celery.send_task(
             'tasks.process_form_files_zip',
             kwargs={
-                's3_key': request.s3_key,
-                'activity_type': request.activity_type,
-                'session_id': request.session_id,
-                'project_id': request.project_id,
-                'company_id': request.company_id,
-                'form_page_route_id': request.form_page_route_id
+                's3_key': body.s3_key,
+                'activity_type': body.activity_type,
+                'session_id': body.session_id,
+                'project_id': body.project_id,
+                'company_id': body.company_id,
+                'form_page_route_id': body.form_page_route_id
             }
         )
 
         return {
             "success": True,
             "queued": True,
-            "s3_key": request.s3_key
+            "s3_key": body.s3_key
         }
 
     except Exception as e:
@@ -461,11 +475,15 @@ async def confirm_form_files_zip_upload(
 async def list_session_screenshots(
         activity_type: str,
         session_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     List all screenshots for a session.
     """
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     screenshots = db.query(ActivityScreenshot).filter(
         ActivityScreenshot.activity_type == activity_type,
         ActivityScreenshot.session_id == session_id
@@ -490,17 +508,23 @@ async def list_session_screenshots(
 @router.get("/screenshots/{screenshot_id}/url")
 async def get_screenshot_url(
         screenshot_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Get pre-signed URL to view/download a screenshot.
     """
+
+    current_user = get_current_user_from_request(request)
+
     screenshot = db.query(ActivityScreenshot).filter(
         ActivityScreenshot.id == screenshot_id
     ).first()
 
     if not screenshot:
         raise HTTPException(status_code=404, detail="Screenshot not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != screenshot.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     url = get_screenshot_presigned_url(screenshot.s3_key, expiration=3600)
 
@@ -517,12 +541,16 @@ async def get_screenshot_by_filename(
         activity_type: str,
         session_id: int,
         filename: str,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Get pre-signed URL for a screenshot by filename.
     Used by frontend to make [Screenshot: filename.png] clickable.
     """
+
+    current_user = get_current_user_from_request(request)
+
     screenshot = db.query(ActivityScreenshot).filter(
         ActivityScreenshot.activity_type == activity_type,
         ActivityScreenshot.session_id == session_id,
@@ -531,6 +559,8 @@ async def get_screenshot_by_filename(
 
     if not screenshot:
         raise HTTPException(status_code=404, detail="Screenshot not found")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != screenshot.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     url = get_screenshot_presigned_url(screenshot.s3_key, expiration=3600)
 
@@ -544,6 +574,7 @@ async def get_screenshot_by_filename(
 async def get_session_screenshot_url(
         activity_type: str,
         session_id: int,
+        request: Request,
         filename: str = Query(...),
         download: bool = Query(default=False),
         db: Session = Depends(get_db)
@@ -552,6 +583,9 @@ async def get_session_screenshot_url(
     Get pre-signed URL for a screenshot.
     If download=true, returns URL with Content-Disposition: attachment header.
     """
+
+    current_user = get_current_user_from_request(request)
+
     screenshot = db.query(ActivityScreenshot).filter(
         ActivityScreenshot.activity_type == activity_type,
         ActivityScreenshot.session_id == session_id,
@@ -560,6 +594,8 @@ async def get_session_screenshot_url(
 
     if not screenshot:
         raise HTTPException(status_code=404, detail=f"Screenshot '{filename}' not found for session {session_id}")
+    if current_user["type"] != "super_admin" and current_user["company_id"] != screenshot.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Generate URL with or without download disposition
     if download:
@@ -581,14 +617,20 @@ async def get_session_screenshot_url(
 async def download_session_screenshots(
         activity_type: str,
         session_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Download all screenshots for a session as a zip file.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     screenshots = db.query(ActivityScreenshot).filter(
         ActivityScreenshot.activity_type == activity_type,
-        ActivityScreenshot.session_id == session_id
+        ActivityScreenshot.session_id == session_id,
+        ActivityScreenshot.company_id == company_id
     ).all()
 
     if not screenshots:
@@ -620,11 +662,16 @@ async def download_session_screenshots(
 async def download_session_logs(
         activity_type: str,
         session_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Download all logs for a session as JSON file.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     # Build filter
     if activity_type == "discovery":
         session_filter = ActivityLogEntry.crawl_session_id == session_id
@@ -671,6 +718,7 @@ async def download_session_logs(
 @router.get("")
 async def list_activity_sessions(
         project_id: int,
+        request: Request,
         activity_type: Optional[str] = None,
         days: int = Query(default=7, le=90),
         has_errors: Optional[bool] = None,
@@ -681,6 +729,10 @@ async def list_activity_sessions(
     """
     List activity sessions for a project.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     sessions = []
 
@@ -787,11 +839,16 @@ async def list_activity_sessions(
 async def delete_session_logs(
         activity_type: str,
         session_id: int,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Delete all logs, screenshots, and the session record itself.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     try:
         # Delete log entries
         if activity_type == "discovery":
@@ -855,6 +912,7 @@ async def delete_session_logs(
 async def get_session_logs(
         session_type: str,
         session_id: int,
+        request: Request,
         level: Optional[str] = None,
         page: int = Query(default=1, ge=1),
         limit: int = Query(default=100, le=500),
@@ -863,6 +921,10 @@ async def get_session_logs(
     """
     Get log entries for a specific session.
     """
+
+    current_user = get_current_user_from_request(request)
+    company_id = current_user["company_id"]
+
     if session_type == "discovery":
         session_filter = ActivityLogEntry.crawl_session_id == session_id
         session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()

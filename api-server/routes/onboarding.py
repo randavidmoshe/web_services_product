@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from models.database import get_db, Company, User, CompanyProductSubscription
-from utils.auth_helpers import verify_user_access
+from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 
@@ -20,14 +20,12 @@ class SetAccessModelRequest(BaseModel):
 
 @router.get("/status")
 async def get_onboarding_status(
-        user_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Get current onboarding status for a user's company."""
-    user = verify_user_access(authorization, user_id, db)
-
-    company = db.query(Company).filter(Company.id == user.company_id).first()
+    current_user = get_current_user_from_request(request)
+    company = db.query(Company).filter(Company.id == current_user["company_id"]).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -44,22 +42,20 @@ async def get_onboarding_status(
 
 @router.post("/category")
 async def set_account_category(
-        request: SetCategoryRequest,
-        user_id: int,
-        authorization: str = Header(...),
+        body: SetCategoryRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Set account category (form_centric or dynamic)."""
-    if request.account_category not in ('form_centric', 'dynamic'):
+    if body.account_category not in ('form_centric', 'dynamic'):
         raise HTTPException(status_code=400, detail="Invalid category. Must be 'form_centric' or 'dynamic'")
 
-    user = verify_user_access(authorization, user_id, db)
-
-    company = db.query(Company).filter(Company.id == user.company_id).first()
+    current_user = get_current_user_from_request(request)
+    company = db.query(Company).filter(Company.id == current_user["company_id"]).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    company.account_category = request.account_category
+    company.account_category = body.account_category
     db.commit()
 
     return {
@@ -70,35 +66,33 @@ async def set_account_category(
 
 @router.post("/access-model")
 async def set_access_model(
-        request: SetAccessModelRequest,
-        user_id: int,
-        authorization: str = Header(...),
+        body: SetAccessModelRequest,
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Set access model (byok or early_access)."""
-    if request.access_model not in ('byok', 'early_access'):
+    if body.access_model not in ('byok', 'early_access'):
         raise HTTPException(status_code=400, detail="Invalid access model. Must be 'byok' or 'early_access'")
 
-    if request.access_model == 'byok' and not request.claude_api_key:
+    if body.access_model == 'byok' and not body.claude_api_key:
         raise HTTPException(status_code=400, detail="API key required for BYOK")
 
-    user = verify_user_access(authorization, user_id, db)
-
-    company = db.query(Company).filter(Company.id == user.company_id).first()
+    current_user = get_current_user_from_request(request)
+    company = db.query(Company).filter(Company.id == current_user["company_id"]).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Update company
-    company.access_model = request.access_model
+    company.access_model = body.access_model
 
-    if request.access_model == 'byok':
+    if body.access_model == 'byok':
         company.access_status = 'active'
         # Store API key in subscription
         subscription = db.query(CompanyProductSubscription).filter(
             CompanyProductSubscription.company_id == company.id
         ).first()
         if subscription:
-            subscription.customer_claude_api_key = request.claude_api_key
+            subscription.customer_claude_api_key = body.claude_api_key
     else:
         # Early Access - pending until super admin approves
         company.access_status = 'pending'
@@ -114,14 +108,12 @@ async def set_access_model(
 
 @router.post("/complete")
 async def complete_onboarding(
-        user_id: int,
-        authorization: str = Header(...),
+        request: Request,
         db: Session = Depends(get_db)
 ):
     """Mark onboarding as complete. Only succeeds if access is usable."""
-    user = verify_user_access(authorization, user_id, db)
-
-    company = db.query(Company).filter(Company.id == user.company_id).first()
+    current_user = get_current_user_from_request(request)
+    company = db.query(Company).filter(Company.id == current_user["company_id"]).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 

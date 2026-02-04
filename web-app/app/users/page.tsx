@@ -25,7 +25,6 @@ interface Company {
 
 export default function UsersPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userType, setUserType] = useState<string | null>(null)
   
   const [users, setUsers] = useState<User[]>([])
@@ -64,36 +63,42 @@ export default function UsersPage() {
   const [resendingInvite, setResendingInvite] = useState<number | null>(null)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserType = localStorage.getItem('userType')
     
-    if (!storedToken) {
-      router.push('/login')
-      return
-    }
-    
-    if (storedUserType !== 'admin' && storedUserType !== 'super_admin') {
-      router.push('/dashboard')
-      return
-    }
-    
-    setToken(storedToken)
-    setUserType(storedUserType)
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) {
+          router.push('/login')
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        if (data.type !== 'admin' && data.type !== 'super_admin') {
+          router.push('/dashboard')
+          return
+        }
+        setUserType(data.type)
+      })
+      .catch(() => {
+        router.push('/login')
+      })
   }, [router])
 
   useEffect(() => {
-    if (token && userType) {
+    if (userType) {
       if (userType === 'super_admin') {
         loadCompanies()
       }
       loadUsers()
     }
-  }, [token, userType, selectedCompanyId])
+  }, [userType, selectedCompanyId])
 
   const loadCompanies = async () => {
     try {
       const response = await fetch('/api/users/companies', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       if (response.ok) {
         const data = await response.json()
@@ -115,7 +120,7 @@ export default function UsersPage() {
       }
       
       const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
@@ -141,10 +146,8 @@ export default function UsersPage() {
     try {
       const response = await fetch('/api/users/invite', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: newUserName,
           email: newUserEmail,
@@ -178,7 +181,7 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/users/${userId}/resend-invite`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
@@ -205,10 +208,8 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/users/${editingUser.id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: editUserName,
           email: editUserEmail,
@@ -242,7 +243,7 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/users/${userToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
@@ -271,7 +272,7 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/users/${userToReset2FA.id}/reset-2fa`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       
       if (response.ok) {
@@ -310,7 +311,7 @@ export default function UsersPage() {
     })
   }
 
-  if (!token || !userType) {
+  if (!userType) {
     return null
   }
 
