@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
 import FormPageEditPanel from './FormPageEditPanel'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 interface Network {
   id: number
@@ -250,7 +251,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchTestTemplates = async () => {
       try {
-        const response = await fetch('/api/test-templates', { credentials: 'include' })
+        const response = await fetchWithAuth('/api/test-templates')
         if (response.ok) {
           const data = await response.json()
           setTestTemplates(data.templates || [])
@@ -286,7 +287,7 @@ export default function DashboardPage() {
     const storedProjectName = localStorage.getItem('active_project_name')
 
     // Verify auth via API (cookie sent automatically)
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetchWithAuth('/api/auth/me')
       .then(res => {
         if (!res.ok) {
           window.location.href = '/login'
@@ -315,9 +316,8 @@ export default function DashboardPage() {
   // Check for active/running sessions on page load
   const checkActiveSessions = async (projectId: string) => {
     try {
-      const response = await fetch(
-        `/api/form-pages/projects/${projectId}/active-sessions`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/form-pages/projects/${projectId}/active-sessions`
       )
       
       if (response.ok) {
@@ -389,9 +389,8 @@ export default function DashboardPage() {
   const loadNetworks = async (projectId: string) => {
     setLoadingNetworks(true)
     try {
-      const response = await fetch(
-          `/api/projects/${projectId}/networks`,
-          { credentials: 'include' }
+      const response = await fetchWithAuth(
+          `/api/projects/${projectId}/networks`
         )
       
       if (response.ok) {
@@ -419,9 +418,8 @@ export default function DashboardPage() {
   const loadFormPages = async (projectId: string) => {
     setLoadingFormPages(true)
     try {
-      const response = await fetch(
-        `/api/projects/${projectId}/form-pages`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/${projectId}/form-pages`
       )
 
       if (response.ok) {
@@ -430,9 +428,8 @@ export default function DashboardPage() {
         // Fetch paths counts for all form pages
         if (data.length > 0) {
           const ids = data.map((fp: any) => fp.id).join(',')
-          const countsResponse = await fetch(
-              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
-              { credentials: 'include' }
+          const countsResponse = await fetchWithAuth(
+              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`
           )
           if (countsResponse.ok) {
             const counts = await countsResponse.json()
@@ -466,9 +463,7 @@ export default function DashboardPage() {
   // Check for active mapping sessions and restore UI state
   const checkActiveMappingSessions = async () => {
     try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth('/api/form-mapper/active-sessions')
       
       if (response.ok) {
         const activeSessions = await response.json()
@@ -506,9 +501,8 @@ export default function DashboardPage() {
 
     for (const networkId of networkIds) {
       try {
-        const response = await fetch(
-          `/api/form-pages/networks/${networkId}/login-logout-stages`,
-          { credentials: 'include' }
+        const response = await fetchWithAuth(
+          `/api/form-pages/networks/${networkId}/login-logout-stages`
         )
         if (response.ok) {
           const data = await response.json()
@@ -576,10 +570,9 @@ export default function DashboardPage() {
         ? { login_stages: editNavigationSteps }
         : { logout_stages: editNavigationSteps }
 
-      const response = await fetch(endpoint, {
+      const response = await fetchWithAuth(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(body)
       })
       
@@ -616,9 +609,7 @@ export default function DashboardPage() {
 
     // Check if agent is online first
     try {
-      const agentResponse = await fetch('/api/agent/status', {
-        credentials: 'include'
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -639,10 +630,9 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: formPage.id,
           network_id: formPage.network_id,
@@ -697,9 +687,7 @@ export default function DashboardPage() {
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch('/api/agent/status', {
-        credentials: 'include'
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -721,10 +709,9 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: selectedFormForMapping.id,
           network_id: selectedFormForMapping.network_id,
@@ -776,9 +763,7 @@ export default function DashboardPage() {
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch('/api/agent/status', {
-        credentials: 'include'
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -808,12 +793,11 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
-          form_page_route_id: selectedFormForMapping.id,
+          form_page_route_id: editingFormPage.id,
           network_id: editingFormPage.network_id,
           test_cases: defaultTemplate.test_cases
         })
@@ -858,9 +842,7 @@ export default function DashboardPage() {
 
     // Check if agent is online first
     try {
-      const agentResponse = await fetch('/api/agent/status', {
-        credentials: 'include'
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -887,10 +869,9 @@ export default function DashboardPage() {
     }))
 
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: formPageId,
           network_id: editingFormPage.network_id,
@@ -940,9 +921,7 @@ export default function DashboardPage() {
 
     // Check if agent is online first
     try {
-      const agentResponse = await fetch('/api/agent/status', {
-        credentials: 'include'
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -972,10 +951,9 @@ export default function DashboardPage() {
     }))
 
     try {
-      const response = await fetch(`/api/form-mapper/routes/${formPageId}/continue-mapping`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${formPageId}/continue-mapping`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             network_id: editingFormPage.network_id,
             test_cases: defaultTemplate.test_cases
@@ -1035,9 +1013,7 @@ export default function DashboardPage() {
     
     const poll = async () => {
       try {
-        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/form-mapper/sessions/${sessionId}/status`)
         
         if (response.ok) {
           const data = await response.json()
@@ -1116,9 +1092,8 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
-          method: 'POST',
-          credentials: 'include'
+      const response = await fetchWithAuth(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
+          method: 'POST'
         })
       
       if (response.ok) {
@@ -1131,9 +1106,7 @@ export default function DashboardPage() {
         // Start polling until fully stopped (cancelled, failed, or completed)
         const pollUntilStopped = setInterval(async () => {
           try {
-            const statusResponse = await fetch(`/api/form-mapper/sessions/${cancelledSessionId}/status`, {
-              credentials: 'include'
-            })
+            const statusResponse = await fetchWithAuth(`/api/form-mapper/sessions/${cancelledSessionId}/status`)
             if (statusResponse.ok) {
               const data = await statusResponse.json()
               const sessionStatus = data.session?.status || data.status
@@ -1245,11 +1218,10 @@ export default function DashboardPage() {
     // Call backend to cancel running sessions
     if (currentSessionId) {
       try {
-        await fetch(
+        await fetchWithAuth(
           `/api/form-pages/sessions/${currentSessionId}/cancel`,
           {
-            method: 'POST',
-            credentials: 'include'
+            method: 'POST'
           }
         )
       } catch (err) {
@@ -1321,12 +1293,11 @@ export default function DashboardPage() {
         headless: headless.toString()
       })
       
-      const response = await fetch(
+      const response = await fetchWithAuth(
           `/api/form-pages/networks/${item.networkId}/locate?${params}`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
+            headers: { 'Content-Type': 'application/json' }
           }
         )
       
@@ -1383,9 +1354,8 @@ export default function DashboardPage() {
       }
       
       try {
-        const response = await fetch(
-          `/api/form-pages/sessions/${sessionId}/status`,
-          { credentials: 'include' }
+        const response = await fetchWithAuth(
+          `/api/form-pages/sessions/${sessionId}/status`
         )
         
         if (response.ok) {
@@ -1640,9 +1610,8 @@ export default function DashboardPage() {
   const fetchCompletedPaths = async (formPageRouteId: number) => {
   try {
     setLoadingPaths(true)
-    const response = await fetch(
-      `/api/form-mapper/routes/${formPageRouteId}/paths`,
-      { credentials: 'include' }
+    const response = await fetchWithAuth(
+      `/api/form-mapper/routes/${formPageRouteId}/paths`
     )
       if (response.ok) {
         const data = await response.json()
@@ -1676,12 +1645,11 @@ export default function DashboardPage() {
   const handleSavePathStep = async (pathId: number, stepIndex: number, stepData?: any) => {
       const dataToSave = stepData || editedPathStepData
       try {
-        const response = await fetch(
+        const response = await fetchWithAuth(
           `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
               body: JSON.stringify(dataToSave)
             }
           )
@@ -1740,12 +1708,11 @@ export default function DashboardPage() {
 
     setSavingFormPage(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${editingFormPage.id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             form_name: editFormName,
             navigation_steps: editNavigationSteps
@@ -1781,11 +1748,10 @@ export default function DashboardPage() {
     
     setDeletingFormPage(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${formPageToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -1812,11 +1778,10 @@ export default function DashboardPage() {
   const rediscoverFormPage = async (formPageId: number) => {
 
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${formPageId}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -1852,11 +1817,10 @@ export default function DashboardPage() {
     if (!confirmed) return
 
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-mapper/paths/${pathId}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
 

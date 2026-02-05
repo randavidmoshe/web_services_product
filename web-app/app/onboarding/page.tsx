@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { fetchWithAuth } from '@/services/authInterceptor'
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -39,9 +40,7 @@ export default function OnboardingPage() {
 
   const checkOnboardingStatus = async () => {
     try {
-      const response = await fetch(`/api/onboarding/status`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/onboarding/status`)
 
       if (response.ok) {
         const data = await response.json()
@@ -92,10 +91,9 @@ export default function OnboardingPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/onboarding/category`, {
+      const response = await fetchWithAuth(`/api/onboarding/category`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ account_category: category })
       })
 
@@ -130,10 +128,9 @@ export default function OnboardingPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/onboarding/access-model`, {
+      const response = await fetchWithAuth(`/api/onboarding/access-model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ access_model: model })
       })
 
@@ -173,10 +170,9 @@ export default function OnboardingPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/settings/api-key`, {
+      const response = await fetchWithAuth(`/api/settings/api-key`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ api_key: apiKey.trim() })
       })
 
@@ -195,9 +191,8 @@ export default function OnboardingPage() {
 
   const completeOnboarding = async () => {
     try {
-      const response = await fetch(`/api/onboarding/complete`, {
-        method: 'POST',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/onboarding/complete`, {
+        method: 'POST'
       })
 
       if (response.ok) {
@@ -506,7 +501,8 @@ export default function OnboardingPage() {
               </button>
             </div>
             <button
-              onClick={() => {
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
                 localStorage.clear()
                 window.location.href = '/login'
               }}

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter } from 'next/navigation'
 
 interface Project {
@@ -42,7 +43,7 @@ export default function ProjectsPage() {
     const storedUserRole = localStorage.getItem('userType')
     
     // Verify auth via API
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetchWithAuth('/api/auth/me')
       .then(res => {
         if (!res.ok) {
           window.location.href = '/login'
@@ -68,9 +69,8 @@ export default function ProjectsPage() {
     setError(null)
     
     try {
-      const response = await fetch(
-        `/api/projects/`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/`
       )
       
       if (response.ok) {
@@ -96,12 +96,11 @@ export default function ProjectsPage() {
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         '/api/projects/',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
@@ -140,11 +139,10 @@ export default function ProjectsPage() {
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${projectToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       

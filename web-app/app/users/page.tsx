@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { fetchWithAuth } from '@/services/authInterceptor'
 
 interface User {
   id: number
@@ -97,9 +98,7 @@ export default function UsersPage() {
 
   const loadCompanies = async () => {
     try {
-      const response = await fetch('/api/users/companies', {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth('/api/users/companies')
       if (response.ok) {
         const data = await response.json()
         setCompanies(data)
@@ -119,9 +118,7 @@ export default function UsersPage() {
         url += `?company_id=${selectedCompanyId}`
       }
       
-      const response = await fetch(url, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(url)
       
       if (response.ok) {
         const data = await response.json()
@@ -144,10 +141,9 @@ export default function UsersPage() {
     setError(null)
     
     try {
-      const response = await fetch('/api/users/invite', {
+      const response = await fetchWithAuth('/api/users/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: newUserName,
           email: newUserEmail,
@@ -179,9 +175,8 @@ export default function UsersPage() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/users/${userId}/resend-invite`, {
-        method: 'POST',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/users/${userId}/resend-invite`, {
+        method: 'POST'
       })
       
       if (response.ok) {
@@ -206,10 +201,9 @@ export default function UsersPage() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/users/${editingUser.id}`, {
+      const response = await fetchWithAuth(`/api/users/${editingUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: editUserName,
           email: editUserEmail,
@@ -241,9 +235,8 @@ export default function UsersPage() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/users/${userToDelete.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/users/${userToDelete.id}`, {
+        method: 'DELETE'
       })
       
       if (response.ok) {
@@ -270,9 +263,8 @@ export default function UsersPage() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/users/${userToReset2FA.id}/reset-2fa`, {
-        method: 'POST',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/users/${userToReset2FA.id}/reset-2fa`, {
+        method: 'POST'
       })
       
       if (response.ok) {

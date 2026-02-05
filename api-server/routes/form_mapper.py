@@ -40,8 +40,8 @@ class StartMappingRequest(BaseModel):
     """Request to start form mapping"""
     form_page_route_id: int
     test_cases: List[dict]  # [{test_id, test_name, description}, ...]
-    user_id: int
-    company_id: Optional[int] = None
+    user_id: Optional[int] = None  # Deprecated - now from token
+    company_id: Optional[int] = None  # Deprecated - now from token
     network_id: Optional[int] = None
     agent_id: Optional[str] = None
     config: Optional[dict] = None  # Optional config overrides

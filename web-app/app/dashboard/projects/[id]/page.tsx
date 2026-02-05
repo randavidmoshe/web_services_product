@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter, useParams } from 'next/navigation'
 
 interface Network {
@@ -88,7 +89,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     const storedUserId = localStorage.getItem('user_id')
     
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetchWithAuth('/api/auth/me')
       .then(res => {
         if (!res.ok) {
           window.location.href = '/login'
@@ -115,9 +116,8 @@ export default function ProjectDetailPage() {
     setError(null)
     
     try {
-      const response = await fetch(
-        `/api/projects/${id}`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/${id}`
       )
       
       if (response.ok) {
@@ -161,12 +161,11 @@ export default function ProjectDetailPage() {
     setError(null)
     
     try {
-      const response = await fetch(
-        `/api/projects/${projectId}/networks?user_id=${userId}`,
+      const response = await fetchWithAuth(
+        `/api/projects/${projectId}/networks`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             name: newNetworkName.trim(),
             url: newNetworkUrl.trim(),
@@ -215,12 +214,11 @@ export default function ProjectDetailPage() {
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${projectId}/networks/${editingNetwork.id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             name: editNetworkName.trim(),
             url: editNetworkUrl.trim(),
@@ -259,11 +257,10 @@ export default function ProjectDetailPage() {
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${projectId}/networks/${networkToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       

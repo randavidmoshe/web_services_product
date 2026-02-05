@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
 
 // ============ INTERFACES ============
@@ -638,12 +639,11 @@ export default function FormPageEditPanel({
     })
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-mapper/paths/${pathId}/steps`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ steps })
         }
       )
@@ -693,10 +693,9 @@ export default function FormPageEditPanel({
     setPomError(null)
     
     try {
-      const response = await fetch('/api/form-mapper/pom/generate', {
+      const response = await fetchWithAuth('/api/form-mapper/pom/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: editingFormPage.id,
           language: pomLanguage,
@@ -726,9 +725,7 @@ export default function FormPageEditPanel({
     
     const poll = async () => {
       try {
-        const response = await fetch(`/api/form-mapper/pom/tasks/${taskId}`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/form-mapper/pom/tasks/${taskId}`)
         
         if (!response.ok) {
           throw new Error('Failed to get task status')
@@ -789,9 +786,7 @@ export default function FormPageEditPanel({
   // Spec Compliance functions
   const loadSpecDocument = async () => {
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/spec`)
       if (response.ok) {
         const data = await response.json()
         if (data.spec_document && data.content) {
@@ -820,10 +815,9 @@ export default function FormPageEditPanel({
     try {
       const content = await file.text()
       
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type || 'text/plain',
@@ -858,10 +852,9 @@ export default function FormPageEditPanel({
   const handleSpecSave = async () => {
     setSpecLoading(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ content: specEditContent })
       })
 
@@ -886,9 +879,8 @@ export default function FormPageEditPanel({
 
     setSpecLoading(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/spec`, {
+        method: 'DELETE'
       })
 
       if (response.ok) {
@@ -918,9 +910,7 @@ export default function FormPageEditPanel({
   // Verification Instructions functions
   const loadVerificationInstructions = async () => {
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`)
       const data = await response.json()
       if (data.verification_file && data.content) {
         setVerificationContent(data.content)
@@ -946,10 +936,9 @@ export default function FormPageEditPanel({
     setVerificationLoading(true)
     try {
       const content = await file.text()
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type || 'text/plain',
@@ -977,10 +966,9 @@ export default function FormPageEditPanel({
   const handleVerificationSave = async () => {
     setVerificationLoading(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {
@@ -1001,9 +989,8 @@ export default function FormPageEditPanel({
   const handleVerificationDelete = async () => {
     if (!confirm('Delete verification instructions?')) return
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/verification-instructions`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         setVerificationContent('')
@@ -1020,9 +1007,7 @@ export default function FormPageEditPanel({
   const loadTestScenarios = async () => {
     setTestScenariosLoading(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`)
       const data = await response.json()
       setTestScenarios(data.scenarios || [])
     } catch (err) {
@@ -1040,10 +1025,9 @@ export default function FormPageEditPanel({
     if (!newScenarioName.trim() || !newScenarioContent.trim()) return
     setScenarioSaving(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: newScenarioName.trim(),
           content: newScenarioContent.trim()
@@ -1068,10 +1052,9 @@ export default function FormPageEditPanel({
   const handleUpdateScenario = async (scenario: TestScenario) => {
     setScenarioSaving(true)
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenario.id}`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenario.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: scenario.name,
           content: scenario.content
@@ -1095,9 +1078,8 @@ export default function FormPageEditPanel({
   const handleDeleteScenario = async (scenarioId: number) => {
     if (!confirm('Delete this test scenario?')) return
     try {
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenarioId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${scenarioId}`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         loadTestScenarios()
@@ -1117,10 +1099,9 @@ export default function FormPageEditPanel({
       const content = await file.text()
       const name = file.name.replace(/\.(txt|md|csv)$/, '')
 
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name, content })
       })
 
@@ -1148,10 +1129,9 @@ export default function FormPageEditPanel({
       const content = await file.text()
       const name = file.name.replace(/\.(txt|md|csv)$/, '')
 
-      const response = await fetch(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${replacingScenarioId}`, {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/test-scenarios/${replacingScenarioId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name, content })
       })
 
@@ -1183,10 +1163,9 @@ export default function FormPageEditPanel({
     setSpecComplianceError(null)
 
     try {
-      const response = await fetch('/api/form-mapper/spec-compliance/generate', {
+      const response = await fetchWithAuth('/api/form-mapper/spec-compliance/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           form_page_route_id: editingFormPage.id
         })
@@ -1213,9 +1192,7 @@ export default function FormPageEditPanel({
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/form-mapper/spec-compliance/tasks/${taskId}`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/form-mapper/spec-compliance/tasks/${taskId}`)
 
         if (!response.ok) {
           throw new Error('Failed to get task status')

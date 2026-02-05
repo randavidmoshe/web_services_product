@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { fetchWithAuth } from '@/services/authInterceptor'
 
 type SettingsTab = 'profile' | 'api-key' | 'notifications' | 'security' | 'billing'
 
@@ -51,15 +52,9 @@ export default function SettingsPage() {
 
   const fetchApiKeyStatus = async () => {
     try {
-      const res = await fetch(`/api/settings/api-key`, {
-        credentials: 'include'
-      })
+      const res = await fetchWithAuth(`/api/settings/api-key`)
 
       if (!res.ok) {
-        if (res.status === 401) {
-          window.location.href = '/login'
-          return
-        }
         throw new Error('Failed to fetch API key status')
       }
 
@@ -87,10 +82,9 @@ export default function SettingsPage() {
     setMessage(null)
 
     try {
-      const res = await fetch(`/api/settings/api-key`, {
+      const res = await fetchWithAuth(`/api/settings/api-key`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ api_key: newKey.trim() })
       })
 
@@ -118,9 +112,8 @@ export default function SettingsPage() {
     setSaving(true)
 
     try {
-      const res = await fetch(`/api/settings/api-key`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const res = await fetchWithAuth(`/api/settings/api-key`, {
+        method: 'DELETE'
       })
 
       if (!res.ok) {

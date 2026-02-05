@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter, usePathname } from 'next/navigation'
 
 interface Project {
@@ -148,9 +149,8 @@ export default function DashboardLayout({
     if (!activeProject) return
     setLoadingNetworks(true)
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       if (response.ok) {
         const data = await response.json()
@@ -168,9 +168,8 @@ export default function DashboardLayout({
     if (!userId) return
 
     try {
-      const response = await fetch(
-        `/api/agent/status`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/agent/status`
       )
       
       if (response.ok) {
@@ -205,9 +204,8 @@ export default function DashboardLayout({
     if (userRole !== 'admin') return
 
     try {
-      const response = await fetch(
-        `/api/company/ai-usage?product_id=1`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/company/ai-usage?product_id=1`
       )
       
       if (response.ok) {
@@ -246,7 +244,7 @@ export default function DashboardLayout({
     const storedUserRole = localStorage.getItem('userType')
 
     // Verify auth by calling API (cookie will be sent automatically)
-    fetch('/api/auth/me', { credentials: 'include' })
+    fetchWithAuth('/api/auth/me')
       .then(res => {
         if (!res.ok) {
           window.location.href = '/login'
@@ -264,7 +262,7 @@ export default function DashboardLayout({
 
         // Check onboarding status for regular users
         if (data.type !== 'super_admin') {
-          fetch('/api/onboarding/status', { credentials: 'include' })
+          fetchWithAuth('/api/onboarding/status')
             .then(res => res.ok ? res.json() : null)
             .then(onboardingData => {
               if (onboardingData && !onboardingData.onboarding_completed) {
@@ -299,9 +297,8 @@ export default function DashboardLayout({
   const loadProjects = async () => {
     setLoadingProjects(true)
     try {
-      const response = await fetch(
-        '/api/projects/',
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        '/api/projects/'
       )
       
       if (response.ok) {
@@ -358,12 +355,11 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         '/api/projects/',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
@@ -404,11 +400,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${projectToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -446,9 +441,8 @@ export default function DashboardLayout({
     setLoadingNetworks(true)
     
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       
       if (response.ok) {
@@ -502,10 +496,9 @@ export default function DashboardLayout({
         ? `/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
         : `/api/projects/${activeProject!.id}/networks`
 
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(url, {
         method: editingNetwork ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: networkName.trim(),
           url: networkUrl.trim(),
@@ -539,11 +532,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -565,9 +557,8 @@ export default function DashboardLayout({
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
+      await fetchWithAuth('/api/auth/logout', {
+        method: 'POST'
       })
     } catch (err) {
       console.error('Logout error:', err)

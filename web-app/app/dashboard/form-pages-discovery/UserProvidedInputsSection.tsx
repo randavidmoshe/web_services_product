@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 interface UserProvidedInputsProps {
   formPageId: number
@@ -57,9 +58,7 @@ export default function UserProvidedInputsSection({
 
   const fetchUserInputsData = async (): Promise<UserInputsData | null> => {
     try {
-      const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
-        credentials: 'include'
-      })
+      const res = await fetchWithAuth(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`)
       if (res.ok) {
         const data = await res.json()
         setUserInputs(data)
@@ -82,9 +81,8 @@ export default function UserProvidedInputsSection({
       const formData = new FormData()
       formData.append('content', content)
 
-      const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
+      const res = await fetchWithAuth(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
         method: 'POST',
-        credentials: 'include',
         body: formData
       })
 
@@ -112,9 +110,8 @@ export default function UserProvidedInputsSection({
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
+      const res = await fetchWithAuth(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
         method: 'POST',
-        credentials: 'include',
         body: formData
       })
 
@@ -138,9 +135,8 @@ export default function UserProvidedInputsSection({
   const clearUserInputs = async () => {
     if (!confirm('Are you sure you want to clear all field values?')) return
     try {
-      await fetch(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
-        method: 'DELETE',
-        credentials: 'include'
+      await fetchWithAuth(`${apiBase}/api/form-mapper/form-pages/${formPageId}/user-inputs`, {
+        method: 'DELETE'
       })
       setUserInputs(null)
       setInputText('')

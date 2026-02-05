@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 // ============ INTERFACES ============
 export interface TestPage {
@@ -242,9 +243,7 @@ export default function TestPageEditPanel({
   const fetchReferenceImages = async () => {
     setLoadingRefImages(true)
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images`)
       if (response.ok) {
         const data = await response.json()
         setReferenceImages(data.images || [])
@@ -274,9 +273,8 @@ export default function TestPageEditPanel({
         file_size_bytes: file.size.toString(),
         description: refImageDescription
       })
-      const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
-        method: 'POST',
-        credentials: 'include'
+      const requestRes = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
+        method: 'POST'
       })
       if (!requestRes.ok) {
         const err = await requestRes.json()
@@ -292,10 +290,9 @@ export default function TestPageEditPanel({
       })
 
       // 3. Confirm upload
-      await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
+      await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ file_size_bytes: file.size })
       })
 
@@ -313,9 +310,8 @@ export default function TestPageEditPanel({
 
   const handleDeleteRefImage = async (imageId: number) => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         setMessage('Reference image deleted')
@@ -328,10 +324,9 @@ export default function TestPageEditPanel({
 
   const handleUpdateRefImage = async (imageId: number) => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: editRefImageName,
           description: editRefImageDescription
@@ -359,9 +354,7 @@ export default function TestPageEditPanel({
   const fetchVerificationFile = async () => {
     setLoadingVerificationFile(true)
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`)
       if (response.ok) {
         const data = await response.json()
         setVerificationFile(data.verification_file)
@@ -381,10 +374,9 @@ export default function TestPageEditPanel({
     setUploadingVerificationFile(true)
     try {
       // 1. Request presigned URL
-      const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
+      const requestRes = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type,
@@ -405,9 +397,8 @@ export default function TestPageEditPanel({
       })
 
       // 3. Confirm upload (triggers text extraction)
-      await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
-        method: 'POST',
-        credentials: 'include'
+      await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
+        method: 'POST'
       })
 
       setMessage('Verification file uploaded - extracting text...')
@@ -425,9 +416,7 @@ export default function TestPageEditPanel({
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       try {
-        const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`)
         if (response.ok) {
           const data = await response.json()
           if (data.verification_file?.status === 'ready') {
@@ -452,9 +441,8 @@ export default function TestPageEditPanel({
 
   const handleDeleteVerificationFile = async () => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         setVerificationFile(null)
@@ -468,10 +456,9 @@ export default function TestPageEditPanel({
 
   const handleSaveVerificationContent = async () => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {

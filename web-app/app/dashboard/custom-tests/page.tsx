@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter } from 'next/navigation'
 import CustomTestEditPanel from './CustomTestEditPanel'
 
@@ -168,9 +169,8 @@ export default function CustomTestsPage() {
 
   const loadNetworks = async (projectId: string, authToken: string) => {
     try {
-      const response = await fetch(
-        `/api/projects/${projectId}/networks`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/projects/${projectId}/networks`
       )
       
       if (response.ok) {
@@ -186,9 +186,8 @@ export default function CustomTestsPage() {
   const loadTestPages = async (projectId: string, authToken: string) => {
     setLoading(true)
     try {
-      const response = await fetch(
-        `/api/test-pages?project_id=${projectId}`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/test-pages?project_id=${projectId}`
       )
       
       if (response.ok) {
@@ -209,9 +208,7 @@ export default function CustomTestsPage() {
   // Check for active mapping sessions and restore UI state
   const checkActiveMappingSessions = async (authToken: string) => {
     try {
-      const response = await fetch(`/api/form-mapper/active-sessions`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/form-mapper/active-sessions`)
 
       if (response.ok) {
         const activeSessions = await response.json()
@@ -303,10 +300,9 @@ export default function CustomTestsPage() {
         created_by: parseInt(userId!)
       }
       
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(body)
       })
       
@@ -330,11 +326,10 @@ export default function CustomTestsPage() {
     
     setDeleting(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/test-pages/${testPageToDelete.id}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -363,9 +358,8 @@ export default function CustomTestsPage() {
     // Load paths
     setLoadingPaths(true)
     try {
-      const response = await fetch(
-        `/api/test-pages/${testPage.id}/paths`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/test-pages/${testPage.id}/paths`
       )
       
       if (response.ok) {
@@ -384,12 +378,11 @@ export default function CustomTestsPage() {
     
     setSaving(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/test-pages/${selectedTestPage.id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({
             test_name: editTestName,
             url: editUrl,
@@ -438,12 +431,11 @@ export default function CustomTestsPage() {
     }))
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/test-pages/${testPage.id}/start-mapping`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ user_id: parseInt(userId!) })
         }
       )
@@ -483,11 +475,10 @@ export default function CustomTestsPage() {
     if (!status?.sessionId) return
     
     try {
-      await fetch(
+      await fetchWithAuth(
         `/api/form-mapper/sessions/${status.sessionId}/cancel`,
         {
-          method: 'POST',
-          credentials: 'include'
+          method: 'POST'
         }
       )
       
@@ -516,11 +507,10 @@ export default function CustomTestsPage() {
 
   const handleDeletePath = async (pathId: number) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-mapper/paths/${pathId}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -547,12 +537,11 @@ export default function CustomTestsPage() {
     updatedSteps[stepIndex] = dataToSave
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-mapper/paths/${pathId}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ steps: updatedSteps })
         }
       )
@@ -594,9 +583,8 @@ export default function CustomTestsPage() {
     
     setLoadingPaths(true)
     try {
-      const response = await fetch(
-        `/api/test-pages/${selectedTestPage.id}/paths`,
-        { credentials: 'include' }
+      const response = await fetchWithAuth(
+        `/api/test-pages/${selectedTestPage.id}/paths`
       )
       
       if (response.ok) {
@@ -612,11 +600,10 @@ export default function CustomTestsPage() {
 
   const handleDeleteTestPageFromPanel = async (testPageId: number) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/test-pages/${testPageId}`,
         {
-          method: 'DELETE',
-          credentials: 'include'
+          method: 'DELETE'
         }
       )
       
@@ -636,9 +623,7 @@ export default function CustomTestsPage() {
   const startMappingPolling = (testPageId: number, sessionId: number) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/form-mapper/sessions/${sessionId}/status`)
         
         if (response.ok) {
           const data = await response.json()

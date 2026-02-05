@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { fetchWithAuth } from '@/services/authInterceptor'
 
 interface PendingCompany {
   company_id: number
@@ -92,9 +93,7 @@ export default function SuperAdminDashboard() {
 
   const loadPendingCompanies = async () => {
     try {
-      const response = await fetch('/api/super-admin/pending-access', {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth('/api/super-admin/pending-access')
       if (response.ok) {
         const data = await response.json()
         setPendingCompanies(data.pending || [])
@@ -106,9 +105,7 @@ export default function SuperAdminDashboard() {
 
   const loadAllCompanies = async () => {
     try {
-      const response = await fetch('/api/super-admin/all-companies', {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth('/api/super-admin/all-companies')
       if (response.ok) {
         const data = await response.json()
         setAllCompanies(data.companies || [])
@@ -120,9 +117,7 @@ export default function SuperAdminDashboard() {
 
   const loadAuditLogs = async () => {
     try {
-      const response = await fetch('/api/super-admin/audit-logs?limit=50', {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth('/api/super-admin/audit-logs?limit=50')
       if (response.ok) {
         const data = await response.json()
         setAuditLogs(data.logs || [])
@@ -137,10 +132,9 @@ export default function SuperAdminDashboard() {
     setMessage(null)
 
     try {
-      const response = await fetch('/api/super-admin/approve-access', {
+      const response = await fetchWithAuth('/api/super-admin/approve-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ company_id: companyId })
       })
 
@@ -162,10 +156,9 @@ export default function SuperAdminDashboard() {
     setMessage(null)
 
     try {
-      const response = await fetch('/api/super-admin/reject-access', {
+      const response = await fetchWithAuth('/api/super-admin/reject-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ company_id: companyId })
       })
 
@@ -190,9 +183,8 @@ export default function SuperAdminDashboard() {
       : '/api/super-admin/enable-company'
 
     try {
-      const response = await fetch(`${endpoint}?company_id=${company.company_id}`, {
-        method: 'POST',
-        credentials: 'include'
+      const response = await fetchWithAuth(`${endpoint}?company_id=${company.company_id}`, {
+        method: 'POST'
       })
 
       if (response.ok) {
@@ -216,10 +208,9 @@ export default function SuperAdminDashboard() {
     setActionLoading(editingCompany.company_id)
 
     try {
-      const response = await fetch('/api/super-admin/company-limits', {
+      const response = await fetchWithAuth('/api/super-admin/company-limits', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           company_id: editingCompany.company_id,
           daily_ai_budget: parseFloat(editBudget),
@@ -238,7 +229,8 @@ export default function SuperAdminDashboard() {
     setActionLoading(null)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
     localStorage.clear()
     window.location.href = '/login'
   }

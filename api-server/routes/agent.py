@@ -13,7 +13,7 @@ HEARTBEAT_TIMEOUT_SECONDS = 60
 
 
 @router.get("/status")
-async def get_agent_status(user_id: int, request: Request, db: Session = Depends(get_db)):
+async def get_agent_status(request: Request, db: Session = Depends(get_db)):
     """
     Get agent status for a specific user.
     Scalable endpoint - returns only ONE agent's status.
@@ -21,6 +21,7 @@ async def get_agent_status(user_id: int, request: Request, db: Session = Depends
 
     current_user = get_current_user_from_request(request)
     company_id = current_user["company_id"]
+    user_id = current_user["user_id"]
 
     agent = db.query(Agent).filter(Agent.user_id == user_id).first()
 

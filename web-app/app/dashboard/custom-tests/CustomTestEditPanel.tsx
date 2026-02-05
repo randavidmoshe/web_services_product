@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 // ============ INTERFACES ============
 export interface TestPage {
@@ -238,9 +239,7 @@ export default function CustomTestEditPanel({
   const fetchReferenceImages = async () => {
     setLoadingRefImages(true)
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images`)
       if (response.ok) {
         const data = await response.json()
         setReferenceImages(data.images || [])
@@ -268,19 +267,17 @@ export default function CustomTestEditPanel({
         file_size_bytes: file.size.toString(),
         description: refImageDescription
       })
-      const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
-        method: 'POST',
-        credentials: 'include'
+      const requestRes = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/request-upload?${params}`, {
+        method: 'POST'
       })
       if (!requestRes.ok) throw new Error('Failed to get upload URL')
       const { id, presigned_url } = await requestRes.json()
 
       await fetch(presigned_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
 
-      await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
+      await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${id}/confirm-upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ file_size_bytes: file.size })
       })
 
@@ -298,9 +295,8 @@ export default function CustomTestEditPanel({
 
   const handleDeleteRefImage = async (imageId: number) => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         setMessage('Reference image deleted')
@@ -313,10 +309,9 @@ export default function CustomTestEditPanel({
 
   const handleUpdateRefImage = async (imageId: number) => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/reference-images/${imageId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name: editRefImageName, description: editRefImageDescription })
       })
       if (response.ok) {
@@ -339,9 +334,7 @@ export default function CustomTestEditPanel({
   const fetchVerificationFile = async () => {
     setLoadingVerificationFile(true)
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        credentials: 'include'
-      })
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`)
       if (response.ok) {
         const data = await response.json()
         setVerificationFile(data.verification_file)
@@ -359,10 +352,9 @@ export default function CustomTestEditPanel({
     if (!file) return
     setUploadingVerificationFile(true)
     try {
-      const requestRes = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
+      const requestRes = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/request-upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ filename: file.name, content_type: file.type, file_size_bytes: file.size })
       })
       if (!requestRes.ok) throw new Error('Failed to get upload URL')
@@ -370,9 +362,8 @@ export default function CustomTestEditPanel({
 
       await fetch(presigned_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
 
-      await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
-        method: 'POST',
-        credentials: 'include'
+      await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/confirm-upload`, {
+        method: 'POST'
       })
 
       setMessage('Verification file uploaded')
@@ -390,9 +381,7 @@ export default function CustomTestEditPanel({
     const poll = async () => {
       attempts++
       try {
-        const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-          credentials: 'include'
-        })
+        const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`)
         if (response.ok) {
           const data = await response.json()
           if (data.verification_file?.status === 'ready') {
@@ -412,9 +401,8 @@ export default function CustomTestEditPanel({
 
   const handleDeleteVerificationFile = async () => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file`, {
+        method: 'DELETE'
       })
       if (response.ok) {
         setMessage('Verification file deleted')
@@ -428,10 +416,9 @@ export default function CustomTestEditPanel({
 
   const handleSaveVerificationContent = async () => {
     try {
-      const response = await fetch(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
+      const response = await fetchWithAuth(`/api/test-pages/${editingTestPage.id}/verification-file/content`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ content: verificationEditContent })
       })
       if (response.ok) {
