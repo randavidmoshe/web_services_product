@@ -48,7 +48,6 @@ interface CompletedPath {
 export default function CustomTestsPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   
   const [networks, setNetworks] = useState<Network[]>([])
@@ -126,23 +125,22 @@ export default function CustomTestsPage() {
   }
 
   useEffect(() => {
-    const storedUserId = localStorage.getItem('user_id')
-    const storedProjectId = localStorage.getItem('active_project_id')
-    
-    if (!storedToken) {
-      router.push('/login')
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setActiveProjectId(storedProjectId)
-    
-    if (storedProjectId) {
-      loadNetworks(storedProjectId, storedToken)
-      loadTestPages(storedProjectId, storedToken)
-    }
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) { router.push('/login'); return null }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        setUserId(String(data.user_id))
+        const storedProjectId = localStorage.getItem('active_project_id')
+        setActiveProjectId(storedProjectId)
+        if (storedProjectId) {
+          loadNetworks(storedProjectId)
+          loadTestPages(storedProjectId)
+        }
+      })
+      .catch(() => router.push('/login'))
   }, [])
 
   // Listen for project changes
@@ -167,7 +165,7 @@ export default function CustomTestsPage() {
     }
   }, [activeProjectId])
 
-  const loadNetworks = async (projectId: string, authToken: string) => {
+  const loadNetworks = async (projectId: string) => {
     try {
       const response = await fetchWithAuth(
         `/api/projects/${projectId}/networks`
@@ -183,7 +181,7 @@ export default function CustomTestsPage() {
     }
   }
 
-  const loadTestPages = async (projectId: string, authToken: string) => {
+  const loadTestPages = async (projectId: string) => {
     setLoading(true)
     try {
       const response = await fetchWithAuth(
@@ -195,7 +193,7 @@ export default function CustomTestsPage() {
         setTestPages(data.test_pages || [])
 
         // Check for active mapping sessions and restore UI state
-        checkActiveMappingSessions(authToken)
+        checkActiveMappingSessions()
 
       }
     } catch (err) {
@@ -206,7 +204,7 @@ export default function CustomTestsPage() {
   }
 
   // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
+  const checkActiveMappingSessions = async () => {
     try {
       const response = await fetchWithAuth(`/api/form-mapper/active-sessions`)
 

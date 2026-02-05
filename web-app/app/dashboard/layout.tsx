@@ -384,7 +384,7 @@ export default function DashboardLayout({
         selectProject(newProject)
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to create project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to create project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -422,7 +422,7 @@ export default function DashboardLayout({
         loadProjects()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -516,7 +516,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to save network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to save network'))
       }
     } catch (err) {
       setError('Connection error')
@@ -546,7 +546,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete network'))
       }
     } catch (err) {
       setError('Connection error')

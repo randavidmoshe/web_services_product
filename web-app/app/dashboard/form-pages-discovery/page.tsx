@@ -404,8 +404,9 @@ export default function DashboardPage() {
       } else if (response.status === 401 || response.status === 403) {
         const errData = await response.json().catch(() => ({}))
         console.error('Auth error:', errData.detail)
-        if (errData.detail && errData.detail.toLowerCase().includes('token')) {
-          setError(errData.detail)
+        const detailStr = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail)
+        if (detailStr && detailStr.toLowerCase().includes('token')) {
+          setError(detailStr)
         }
       }
     } catch (err) {
@@ -449,8 +450,9 @@ export default function DashboardPage() {
       } else if (response.status === 401 || response.status === 403) {
         const errData = await response.json().catch(() => ({}))
         console.error('Auth error:', errData.detail)
-        if (errData.detail && errData.detail.toLowerCase().includes('token')) {
-          setError(errData.detail)
+        const detailStr = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail)
+        if (detailStr && detailStr.toLowerCase().includes('token')) {
+          setError(detailStr)
         }
       }
     } catch (err) {
@@ -1320,7 +1322,7 @@ export default function DashboardPage() {
         
         // Mark as failed and move to next
         const failedQueue = updatedQueue.map((q, i) => 
-          i === index ? { ...q, status: 'failed' as const, errorMessage: errData.detail } : q
+          i === index ? { ...q, status: 'failed' as const, errorMessage: typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Discovery failed') } : q
         )
         setDiscoveryQueue(failedQueue)
         
@@ -1832,7 +1834,7 @@ export default function DashboardPage() {
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete path')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete path'))
       }
     } catch (err) {
       console.error('Connection error')

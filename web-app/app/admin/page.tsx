@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '@/services/authInterceptor'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 interface PendingCompany {
   company_id: number

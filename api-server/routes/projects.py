@@ -17,7 +17,6 @@ class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
     product_id: int
-    user_id: int
     project_type: Optional[str] = 'enterprise'
 
 
@@ -104,7 +103,7 @@ async def create_project(project_data: ProjectCreate, request: Request, db: Sess
         description=project_data.description,
         company_id=company_id,
         product_id=project_data.product_id,
-        created_by_user_id=project_data.user_id,
+        created_by_user_id=current_user["user_id"],
         project_type=project_data.project_type
     )
     db.add(project)
@@ -208,7 +207,6 @@ async def update_project(
 async def delete_project(
     project_id: int,
     request: Request,
-    user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -269,7 +267,6 @@ async def create_network(
     project_id: int,
     network_data: NetworkCreate,
     request: Request,
-    user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -314,7 +311,7 @@ async def create_network(
         network_type=network_data.network_type,
         login_username=network_data.login_username,
         login_password=network_data.login_password,
-        created_by_user_id=user_id
+        created_by_user_id=current_user["user_id"]
     )
     
     db.add(network)

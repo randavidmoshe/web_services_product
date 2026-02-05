@@ -272,16 +272,13 @@ async def request_log_upload_url(
 @router.post("/logs/confirm")
 async def confirm_log_upload(
         body: LargeLogConfirmRequest,
-        request: Request,
         db: Session = Depends(get_db)
 ):
     """
     Confirm large log file was uploaded to S3.
     Queues Celery task to process and insert to DB.
+    Called by: orchestrator/agent (internal)
     """
-    current_user = get_current_user_from_request(request)
-    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Queue Celery task to read from S3 and insert to DB
         celery.send_task(
@@ -390,7 +387,6 @@ async def confirm_screenshot_uploads(
 @router.post("/screenshots/confirm-zip")
 async def confirm_screenshot_zip_upload(
         body: ScreenshotZipConfirmRequest,
-        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -399,10 +395,8 @@ async def confirm_screenshot_zip_upload(
 
     Used by: Celery method (docker-compose development)
     Not used by: Lambda method (AWS production) - Lambda triggered by S3 event
+    Called by: orchestrator/agent (internal)
     """
-    current_user = get_current_user_from_request(request)
-    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
-        raise HTTPException(status_code=403, detail="Access denied")
 
     try:
         # Queue Celery task to process zip
@@ -430,7 +424,6 @@ async def confirm_screenshot_zip_upload(
 @router.post("/form-files/confirm-zip")
 async def confirm_form_files_zip_upload(
         body: FormFilesZipConfirmRequest,
-        request: Request,
         db: Session = Depends(get_db)
 ):
     """
@@ -439,10 +432,8 @@ async def confirm_form_files_zip_upload(
 
     Used by: Celery method (docker-compose development)
     Not used by: Lambda method (AWS production) - Lambda triggered by S3 event
+    Called by: orchestrator/agent (internal)
     """
-    current_user = get_current_user_from_request(request)
-    if current_user["type"] != "super_admin" and current_user["company_id"] != body.company_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Queue Celery task to process zip
         celery.send_task(
