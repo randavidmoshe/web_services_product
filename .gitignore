@@ -35,3 +35,20 @@ Thumbs.db
 
 # Agent
 agent/agent_config.json
+
+# Docker overrides (often contain secrets)
+docker-compose.override.yml
+
+# Private keys & certs
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# Secrets / credentials
+*.env.*
+.env.production
+.env.staging
+
+# Python virtualenv variants
+.venv/
