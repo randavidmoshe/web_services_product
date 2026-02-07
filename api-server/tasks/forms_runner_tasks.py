@@ -3,6 +3,7 @@
 # FULLY SCALABLE: All orchestration via Celery, no blocking API workers
 
 import os
+from services.encryption_service import get_decrypted_api_key
 import json
 import logging
 import time
@@ -176,10 +177,11 @@ def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
         CompanyProductSubscription.company_id == company_id,
         CompanyProductSubscription.product_id == product_id
     ).first()
-    
+
     if subscription and subscription.customer_claude_api_key:
-        return subscription.customer_claude_api_key
-    
+        # Decrypt the API key (uses Redis cache for performance)
+        return get_decrypted_api_key(company_id, subscription.customer_claude_api_key)
+
     return os.getenv("ANTHROPIC_API_KEY")
 
 

@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+from services.encryption_service import get_decrypted_api_key
 import re
 from typing import Dict, Any
 from celery import shared_task
@@ -49,8 +50,8 @@ def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
     ).first()
 
     if subscription and subscription.customer_claude_api_key:
-        return subscription.customer_claude_api_key
-
+        # Decrypt the API key (uses Redis cache for performance)
+        return get_decrypted_api_key(company_id, subscription.customer_claude_api_key)
     return os.getenv("ANTHROPIC_API_KEY")
 
 
@@ -218,7 +219,8 @@ def _parse_with_ai(content: str, file_type: str, api_key: str) -> tuple:
         logger.info("[UserInputs] Calling Claude API...")
 
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            #model="claude-haiku-4-5-20251001",
+            model = "claude-sonnet-4-5-20250929",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )

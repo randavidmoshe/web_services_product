@@ -601,8 +601,7 @@ def notify_product_owner(
             </div>
             <div style="padding: 32px;">
                 <p style="color: #64748b; font-size: 14px; margin: 0 0 8px;"><strong>Time:</strong> {timestamp}</p>
-                <p style="color: #64748b; font-size: 14px; margin: 0 0 8px;"><strong>Action:</strong> {action}</p>
-                <p style="color: #64748b; font-size: 14px; margin: 0 0 16px;"><strong>IP Address:</strong> {ip_address or 'Unknown'}</p>
+                <p style="color: #64748b; font-size: 14px; margin: 0 0 16px;"><strong>Action:</strong> {action}</p>
                 {f'<div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-top: 16px;"><p style="color: #1e293b; margin: 0 0 8px; font-weight: 600;">Details:</p>{details_html}</div>' if details else ''}
             </div>
             <div style="padding: 20px 32px; background: #f8fafc; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -613,7 +612,7 @@ def notify_product_owner(
     </html>
     """
 
-    text_body = f"[Quattera Admin] {style['label']}\n\nTime: {timestamp}\nAction: {action}\nIP: {ip_address or 'Unknown'}\n\nDetails:\n{details_text}"
+    text_body = f"[Quattera Admin] {style['label']}\n\nTime: {timestamp}\nAction: {action}\n\nDetails:\n{details_text}"
 
     return send_email(PRODUCT_OWNER_EMAIL, subject, html_body, text_body)
 

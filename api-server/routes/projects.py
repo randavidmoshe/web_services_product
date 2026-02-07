@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 from models.database import get_db, Project, Network, FormPageRoute, User, Company
 from utils.auth_helpers import get_current_user_from_request
+from services.encryption_service import encrypt_credential, mask_credential, invalidate_credential_cache
 
 router = APIRouter()
 
@@ -137,8 +138,8 @@ async def get_project(project_id: int, request: Request, db: Session = Depends(g
             "name": network.name,
             "url": network.url,
             "network_type": network.network_type,
-            "login_username": network.login_username,
-            "login_password": network.login_password,
+            "login_username": mask_credential(network.login_username, "username") if network.login_username else None,
+            "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,
             "updated_at": network.updated_at
@@ -223,12 +224,12 @@ async def delete_project(
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Check permissions
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Admin can delete any project, regular user only their own
-    if user.role != "admin" and project.created_by_user_id != user_id:
+    if user.role != "admin" and project.created_by_user_id != current_user["user_id"]:
         raise HTTPException(
             status_code=403,
             detail="You can only delete projects you created"
@@ -309,8 +310,8 @@ async def create_network(
         name=network_data.name,
         url=network_data.url,
         network_type=network_data.network_type,
-        login_username=network_data.login_username,
-        login_password=network_data.login_password,
+        login_username=encrypt_credential(network_data.login_username, project.company_id) if network_data.login_username else None,
+        login_password=encrypt_credential(network_data.login_password, project.company_id) if network_data.login_password else None,
         created_by_user_id=current_user["user_id"]
     )
     
@@ -368,9 +369,14 @@ async def update_network(
     if network_data.name is not None:
         network.name = network_data.name
     if network_data.login_username is not None:
-        network.login_username = network_data.login_username
+        network.login_username = encrypt_credential(network_data.login_username,
+                                                    network.company_id) if network_data.login_username else None
     if network_data.login_password is not None:
-        network.login_password = network_data.login_password
+        network.login_password = encrypt_credential(network_data.login_password,
+                                                    network.company_id) if network_data.login_password else None
+    # Invalidate credential cache if credentials changed
+    if network_data.login_username is not None or network_data.login_password is not None:
+        invalidate_credential_cache(network.company_id, network.id)
     
     network.updated_at = datetime.utcnow()
     db.commit()
@@ -442,8 +448,8 @@ async def list_networks(project_id: int, request: Request, db: Session = Depends
             "name": network.name,
             "url": network.url,
             "network_type": network.network_type,
-            "login_username": network.login_username,
-            "login_password": network.login_password,
+            "login_username": mask_credential(network.login_username, "username") if network.login_username else None,
+            "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,
             "updated_at": network.updated_at

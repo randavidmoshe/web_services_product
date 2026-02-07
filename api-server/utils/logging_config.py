@@ -25,13 +25,17 @@ def configure_logging():
     """
     Configure logging for the application.
     Call once at application startup (e.g., in main.py or app initialization).
-    
+
     Usage:
         from config.logging_config import configure_logging
         configure_logging()
     """
     # Setup JSON logging to stdout
     setup_json_logging()
+
+    # Apply log sanitization (scrubs API keys, passwords from logs)
+    from utils.log_sanitizer import setup_sanitized_logging
+    setup_sanitized_logging()
     
     # Set root log level from environment
     level = LOG_LEVEL_MAP.get(LOG_LEVEL, logging.INFO)

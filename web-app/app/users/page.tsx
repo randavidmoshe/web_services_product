@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { fetchWithAuth } from '@/services/authInterceptor'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 interface User {
   id: number

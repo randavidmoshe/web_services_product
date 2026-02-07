@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from services.session_logger import get_session_logger, ActivityType
+from services.encryption_service import get_decrypted_api_key, decrypt_credential
 
 from services.s3_storage import generate_presigned_put_url
 
@@ -130,13 +131,23 @@ class FormPagesLocatorService:
         Raises:
             AIBudgetExceededError if budget exceeded (only for non-BYOK)
         """
-        # Check budget first (will set self.subscription and self.is_byok)
+
+        # Check budget first
         self._check_budget(company_id, product_id)
-        
-        # Try to get API key from subscription first (BYOK mode)
-        if not self.api_key and self.subscription:
-            if self.subscription.customer_claude_api_key:
-                self.api_key = self.subscription.customer_claude_api_key
+
+        # Load subscription to check for BYOK key
+        if not self.api_key:
+            self.subscription = self.db.query(CompanyProductSubscription).filter(
+                CompanyProductSubscription.company_id == company_id,
+                CompanyProductSubscription.product_id == product_id
+            ).first()
+
+            if self.subscription and self.subscription.customer_claude_api_key:
+                # Decrypt the API key (uses Redis cache for performance)
+                self.api_key = get_decrypted_api_key(
+                    company_id,
+                    self.subscription.customer_claude_api_key
+                )
                 self.is_byok = True
         
         # Fall back to environment variable (our key)
@@ -711,8 +722,8 @@ class FormPagesLocatorService:
             "network_id": network.id,
             "network_name": network.name,
             "url": network.url,
-            "login_username": network.login_username,
-            "login_password": network.login_password,
+            "login_username": decrypt_credential(network.login_username, network.company_id, network.id, "username") if network.login_username else None,
+            "login_password": decrypt_credential(network.login_password, network.company_id, network.id, "password") if network.login_password else None,
             "project_id": network.project_id,
             "project_name": project.name if project else None,
             "company_id": network.company_id,

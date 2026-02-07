@@ -1279,7 +1279,9 @@ async def start_pom_generation(
             'paths_data': paths_data,
             'language': language,
             'framework': framework,
-            'style': style
+            'style': style,
+            'company_id': current_user["company_id"],
+            'product_id': 1
         }
     )
 
@@ -1511,7 +1513,9 @@ async def start_spec_compliance_generation(
         kwargs={
             'form_page_data': form_page_data,
             'paths_data': paths_data,
-            'spec_data': spec_data
+            'spec_data': spec_data,
+            'company_id': current_user["company_id"],
+            'product_id': 1
         }
     )
 

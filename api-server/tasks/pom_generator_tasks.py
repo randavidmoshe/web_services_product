@@ -6,10 +6,46 @@ Generates Page Object Model code using AI
 import os
 import json
 import logging
+import redis
 from celery import shared_task
 from anthropic import Anthropic
+from models.database import SessionLocal, CompanyProductSubscription
+from services.encryption_service import get_decrypted_api_key
+from services.ai_budget_service import get_budget_service, BudgetExceededError
 
 logger = logging.getLogger(__name__)
+
+
+def _get_redis_client():
+    return redis.Redis(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        db=0
+    )
+
+
+def _get_api_key(company_id: int, product_id: int = 1) -> str:
+    """Get API key - BYOK if available, otherwise system key"""
+    db = SessionLocal()
+    try:
+        redis_client = _get_redis_client()
+        budget_service = get_budget_service(redis_client)
+
+        has_budget, remaining, total = budget_service.check_budget(db, company_id, product_id)
+        if not has_budget:
+            raise BudgetExceededError(company_id, total, total - remaining)
+
+        subscription = db.query(CompanyProductSubscription).filter(
+            CompanyProductSubscription.company_id == company_id,
+            CompanyProductSubscription.product_id == product_id
+        ).first()
+
+        if subscription and subscription.customer_claude_api_key:
+            return get_decrypted_api_key(company_id, subscription.customer_claude_api_key)
+
+        return os.getenv("ANTHROPIC_API_KEY")
+    finally:
+        db.close()
 
 
 @shared_task(name='tasks.generate_pom', bind=True)
@@ -19,7 +55,9 @@ def generate_pom(
         paths_data: list,
         language: str,
         framework: str,
-        style: str = 'basic'
+        style: str = 'basic',
+        company_id: int = None,
+        product_id: int = 1
 ):
     """
     Generate POM code using Claude AI
@@ -35,11 +73,17 @@ def generate_pom(
         # Update progress
         self.update_state(state='PROCESSING', meta={'progress': 30, 'message': 'Calling AI...'})
 
-        # Call Claude API
-        client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        # Get API key (BYOK or system)
+        if company_id:
+            api_key = _get_api_key(company_id, product_id)
+        else:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        client = Anthropic(api_key=api_key)
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            #model="claude-sonnet-4-20250514",
+            model = "claude-sonnet-4-5-20250929",
             max_tokens=8000,
             messages=[
                 {"role": "user", "content": prompt}

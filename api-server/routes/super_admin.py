@@ -179,7 +179,7 @@ async def approve_access(
         action="approve_access",
         details={
             "company": company.name,
-            "company_id": company.id,
+            "admin_name": admin_user.name if admin_user else "Unknown",
             "daily_budget": f"${company.daily_ai_budget:.2f}",
             "trial_days": company.trial_days_total
         },
@@ -224,12 +224,17 @@ async def reject_access(
         ip_address=request.client.host if request.client else None
     )
 
+    admin_user = db.query(User).filter(
+        User.company_id == company.id,
+        User.role == 'admin'
+    ).first()
+
     # Notify product owner
     notify_product_owner(
         action="reject_access",
         details={
             "company": company.name,
-            "company_id": company.id,
+            "admin_name": admin_user.name if admin_user else "Unknown",
             "reason": data.reason or "No reason provided"
         },
         ip_address=request.client.host if request.client else None
@@ -285,12 +290,17 @@ async def update_company_limits(
         ip_address=request.client.host if request.client else None
     )
 
+    admin_user = db.query(User).filter(
+        User.company_id == company.id,
+        User.role == 'admin'
+    ).first()
+
     # Notify product owner
     notify_product_owner(
         action="update_limits",
         details={
             "company": company.name,
-            "company_id": company.id,
+            "admin_name": admin_user.name if admin_user else "Unknown",
             "old_budget": f"${old_values['daily_ai_budget']:.2f}" if old_values['daily_ai_budget'] else "N/A",
             "new_budget": f"${company.daily_ai_budget:.2f}" if company.daily_ai_budget else "N/A",
             "old_trial_days": old_values['trial_days_total'],
@@ -334,10 +344,15 @@ async def disable_company(
         ip_address=request.client.host if request.client else None
     )
 
+    admin_user = db.query(User).filter(
+        User.company_id == company.id,
+        User.role == 'admin'
+    ).first()
+
     # Notify product owner
     notify_product_owner(
         action="disable_company",
-        details={"company": company.name, "company_id": company.id},
+        details={"company": company.name, "admin_name": admin_user.name if admin_user else "Unknown"},
         ip_address=request.client.host if request.client else None
     )
 
@@ -396,10 +411,15 @@ async def enable_company(
         ip_address=request.client.host if request.client else None
     )
 
+    admin_user_notify = db.query(User).filter(
+        User.company_id == company.id,
+        User.role == 'admin'
+    ).first()
+
     # Notify product owner
     notify_product_owner(
         action="enable_company",
-        details={"company": company.name, "company_id": company.id},
+        details={"company": company.name, "admin_name": admin_user_notify.name if admin_user_notify else "Unknown"},
         ip_address=request.client.host if request.client else None
     )
 

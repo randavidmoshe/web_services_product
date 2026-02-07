@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.database import get_db, User, Company, CompanyProductSubscription
 import logging
+from services.encryption_service import encrypt_secret, decrypt_secret, invalidate_cached_secret, mask_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,13 @@ async def get_api_key_status(
     if not subscription or not subscription.customer_claude_api_key:
         return ApiKeyResponse(has_key=False, masked_key=None)
 
-    key = subscription.customer_claude_api_key
-    if len(key) > 12:
-        masked = f"{key[:8]}...{key[-4:]}"
-    else:
+    # Decrypt to create masked version (never return full key)
+    try:
+        encrypted_key = subscription.customer_claude_api_key
+        decrypted_key = decrypt_secret(encrypted_key, company_id)
+        masked = mask_api_key(decrypted_key)
+    except Exception as e:
+        logger.warning(f"[Settings] Could not decrypt API key for company {company_id}: {e}")
         masked = "****"
 
     return ApiKeyResponse(has_key=True, masked_key=masked)
@@ -79,16 +83,26 @@ async def update_api_key(
         CompanyProductSubscription.company_id == company_id
     ).first()
 
+    # Encrypt the API key before storing
+    try:
+        encrypted_key = encrypt_secret(api_key, company_id)
+    except Exception as e:
+        logger.error(f"[Settings] Failed to encrypt API key for company {company_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to encrypt API key")
+
     if not subscription:
         subscription = CompanyProductSubscription(
             company_id=company_id,
             product_id=1,
             status="active",
-            customer_claude_api_key=api_key
+            customer_claude_api_key=encrypted_key
         )
         db.add(subscription)
     else:
-        subscription.customer_claude_api_key = api_key
+        subscription.customer_claude_api_key = encrypted_key
+
+    # Invalidate cache so next read gets fresh decrypted value
+    invalidate_cached_secret(company_id, "api_key")
 
     company = db.query(Company).filter(Company.id == company_id).first()
     if company:
@@ -121,6 +135,8 @@ async def delete_api_key(
     if subscription:
         subscription.customer_claude_api_key = None
         db.commit()
+        # Invalidate cache
+        invalidate_cached_secret(company_id, "api_key")
 
     logger.info(f"[Settings] API key deleted for company {company_id}")
 

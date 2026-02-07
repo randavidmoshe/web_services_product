@@ -14,9 +14,35 @@ import json
 import uuid
 import os
 
+from services.encryption_service import mask_credential
+
 from models.database import get_db, FormPageRoute, CrawlSession, Network
 from models.agent_models import Agent, AgentTask
 from utils.auth_helpers import get_current_user_from_request
+
+
+def mask_login_stages(stages: list) -> list:
+    """
+    Mask credential values in login stages for frontend display.
+    """
+    if not stages:
+        return []
+
+    masked = []
+    for step in stages:
+        step_copy = step.copy()
+        action = step_copy.get("action", "")
+        selector = step_copy.get("selector", "").lower()
+
+        # Mask fill actions for credential fields
+        if action == "fill" and step_copy.get("value"):
+            if any(kw in selector for kw in ["password", "pass", "pwd", "secret"]):
+                step_copy["value"] = "********"
+            elif any(kw in selector for kw in ["username", "user", "email", "login"]):
+                step_copy["value"] = mask_credential(step_copy["value"], "username")
+
+        masked.append(step_copy)
+    return masked
 
 router = APIRouter()
 
@@ -443,7 +469,7 @@ async def get_login_logout_stages(network_id: int, request: Request, db: Session
         "network_id": network.id,
         "network_name": network.name,
         "url": network.url,
-        "login_stages": network.login_stages or [],
+        "login_stages": mask_login_stages(network.login_stages) if network.login_stages else [],
         "logout_stages": network.logout_stages or [],
         "updated_at": network.updated_at.isoformat() if network.updated_at else None
     }
@@ -467,7 +493,7 @@ async def update_login_stages(
     network.login_stages = data.get("login_stages", [])
     db.commit()
 
-    return {"success": True, "login_stages": network.login_stages}
+    return {"success": True, "login_stages": mask_login_stages(network.login_stages)}
 
 
 @router.put("/networks/{network_id}/logout-stages")

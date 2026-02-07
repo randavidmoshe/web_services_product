@@ -7,6 +7,7 @@
 
 import os
 import json
+from services.encryption_service import get_decrypted_api_key
 import logging
 from celery_app import celery
 from celery import shared_task
@@ -50,15 +51,16 @@ def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
 
     # Note: AccessDeniedError is raised automatically by check_budget()
     # for pending access, expired trial, missing API key, etc.
-    
+
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id,
         CompanyProductSubscription.product_id == product_id
     ).first()
-    
+
     if subscription and subscription.customer_claude_api_key:
-        return subscription.customer_claude_api_key
-    
+        # Decrypt the API key (uses Redis cache for performance)
+        return get_decrypted_api_key(company_id, subscription.customer_claude_api_key)
+
     return os.getenv("ANTHROPIC_API_KEY")
 
 

@@ -4,6 +4,7 @@
 # Location: web_services_product/api-server/services/session_logger.py
 
 import json
+from utils.log_sanitizer import sanitize
 import logging
 import traceback
 import sys
@@ -48,7 +49,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": sanitize(record.getMessage()),
         }
         
         # Add extra fields if present
