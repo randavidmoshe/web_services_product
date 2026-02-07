@@ -32,6 +32,7 @@ class NetworkCreate(BaseModel):
     network_type: str  # "qa", "staging", or "production"
     login_username: Optional[str] = None
     login_password: Optional[str] = None
+    totp_secret: Optional[str] = None  # TOTP secret for 2FA
 
 
 class NetworkUpdate(BaseModel):
@@ -40,6 +41,7 @@ class NetworkUpdate(BaseModel):
     network_type: Optional[str] = None
     login_username: Optional[str] = None
     login_password: Optional[str] = None
+    totp_secret: Optional[str] = None  # TOTP secret for 2FA
 
 
 # =============================================================================
@@ -140,6 +142,8 @@ async def get_project(project_id: int, request: Request, db: Session = Depends(g
             "network_type": network.network_type,
             "login_username": mask_credential(network.login_username, "username") if network.login_username else None,
             "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
+            "totp_secret": mask_credential(network.totp_secret, "totp_secret") if network.totp_secret else None,
+            "has_totp": bool(network.totp_secret),
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,
             "updated_at": network.updated_at
@@ -312,6 +316,7 @@ async def create_network(
         network_type=network_data.network_type,
         login_username=encrypt_credential(network_data.login_username, project.company_id) if network_data.login_username else None,
         login_password=encrypt_credential(network_data.login_password, project.company_id) if network_data.login_password else None,
+        totp_secret=encrypt_credential(network_data.totp_secret, project.company_id) if network_data.totp_secret else None,
         created_by_user_id=current_user["user_id"]
     )
     
@@ -374,8 +379,11 @@ async def update_network(
     if network_data.login_password is not None:
         network.login_password = encrypt_credential(network_data.login_password,
                                                     network.company_id) if network_data.login_password else None
+    if network_data.totp_secret is not None:
+        network.totp_secret = encrypt_credential(network_data.totp_secret,
+                                                 network.company_id) if network_data.totp_secret else None
     # Invalidate credential cache if credentials changed
-    if network_data.login_username is not None or network_data.login_password is not None:
+    if network_data.login_username is not None or network_data.login_password is not None or network_data.totp_secret is not None:
         invalidate_credential_cache(network.company_id, network.id)
     
     network.updated_at = datetime.utcnow()
@@ -450,6 +458,8 @@ async def list_networks(project_id: int, request: Request, db: Session = Depends
             "network_type": network.network_type,
             "login_username": mask_credential(network.login_username, "username") if network.login_username else None,
             "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
+            "totp_secret": mask_credential(network.totp_secret, "totp_secret") if network.totp_secret else None,
+            "has_totp": bool(network.totp_secret),
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,
             "updated_at": network.updated_at

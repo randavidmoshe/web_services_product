@@ -12,12 +12,27 @@ SCRUB_PATTERNS: List[Tuple[str, str]] = [
     (r'sk-ant-api\d{2}-[A-Za-z0-9\-_]{20,}', 'sk-ant-***REDACTED***'),
     # Generic API keys
     (r'api[_-]?key["\s:=]+["\']?[A-Za-z0-9\-_]{20,}["\']?', 'api_key=***REDACTED***'),
-    # Passwords in various formats
+    # JWT tokens
+    (r'eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+', '***JWT_REDACTED***'),
+    # Bearer tokens
+    (r'[Bb]earer\s+[A-Za-z0-9\-_\.]+', 'Bearer ***REDACTED***'),
+    # Passwords
     (r'password["\s:=]+["\']?[^"\'\s,}\]]{3,}["\']?', 'password=***REDACTED***'),
     (r'"password"\s*:\s*"[^"]{3,}"', '"password": "***REDACTED***"'),
+    (r'"login_password"\s*:\s*"[^"]{3,}"', '"login_password": "***REDACTED***"'),
+    # Usernames
+    (r'"login_username"\s*:\s*"[^"]{3,}"', '"login_username": "***REDACTED***"'),
+    # TOTP
+    (r'"totp_secret"\s*:\s*"[^"]{3,}"', '"totp_secret": "***REDACTED***"'),
+    (r'"totp_code"\s*:\s*"\d{6}"', '"totp_code": "***REDACTED***"'),
+    (r'totp_code["\s:=]+\d{6}', 'totp_code=***REDACTED***'),
+    # KMS encrypted blobs
+    (r'AQICA[A-Za-z0-9+/=]{50,}', '***ENCRYPTED_BLOB***'),
     # AWS keys
     (r'AKIA[A-Z0-9]{16}', 'AKIA***REDACTED***'),
     (r'aws[_-]?secret[_-]?access[_-]?key["\s:=]+["\']?[A-Za-z0-9/+=]{20,}["\']?', 'aws_secret=***REDACTED***'),
+    # X-API-Key
+    (r'x-api-key["\s:=]+["\']?[A-Za-z0-9\-_]{20,}["\']?', 'x-api-key=***REDACTED***'),
 ]
 
 # Compile patterns for performance

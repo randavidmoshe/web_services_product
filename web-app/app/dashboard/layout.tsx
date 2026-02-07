@@ -20,6 +20,8 @@ interface Network {
   network_type: string
   login_username: string | null
   login_password: string | null
+  totp_secret: string | null
+  has_totp: boolean
   created_at: string
 }
 
@@ -75,6 +77,13 @@ export default function DashboardLayout({
   const [networkUsername, setNetworkUsername] = useState('')
   const [networkPassword, setNetworkPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [totpSecret, setTotpSecret] = useState('')
+  const [showTotpSecret, setShowTotpSecret] = useState(false)
+  const [credentialsChanged, setCredentialsChanged] = useState({
+    username: false,
+    password: false,
+    totp: false
+  })
   const [savingNetwork, setSavingNetwork] = useState(false)
   const [editingNetwork, setEditingNetwork] = useState<Network | null>(null)
   
@@ -464,9 +473,12 @@ export default function DashboardLayout({
     setAddNetworkType(type)
     setNetworkName('')
     setNetworkUrl('')
-    setNetworkUsername('')
-    setNetworkPassword('')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setEditingNetwork(null)
     setShowAddNetworkModal(true)
   }
@@ -476,9 +488,12 @@ export default function DashboardLayout({
     setAddNetworkType(network.network_type as 'qa' | 'staging' | 'production')
     setNetworkName(network.name)
     setNetworkUrl(network.url)
-    setNetworkUsername(network.login_username || '')
-    setNetworkPassword(network.login_password || '')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setShowAddNetworkModal(true)
   }
 
@@ -503,8 +518,9 @@ export default function DashboardLayout({
           name: networkName.trim(),
           url: networkUrl.trim(),
           network_type: addNetworkType,
-          login_username: networkUsername.trim() || null,
-          login_password: networkPassword.trim() || null
+          ...(credentialsChanged.username && { login_username: networkUsername.trim() || null }),
+          ...(credentialsChanged.password && { login_password: networkPassword.trim() || null }),
+          ...(credentialsChanged.totp && { totp_secret: totpSecret.trim() || null })
         })
       })
       
@@ -1468,8 +1484,11 @@ export default function DashboardLayout({
                 <input
                   type="text"
                   value={networkUsername}
-                  onChange={(e) => setNetworkUsername(e.target.value)}
-                  placeholder="Username for auto-login"
+                  onChange={(e) => {
+                    setNetworkUsername(e.target.value)
+                    setCredentialsChanged(prev => ({...prev, username: true}))
+                  }}
+                  placeholder={editingNetwork?.login_username ? "Configured ✓ (enter new to change)" : "Username for auto-login"}
                   style={inputStyle}
                 />
               </div>
@@ -1480,13 +1499,18 @@ export default function DashboardLayout({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={networkPassword}
-                    onChange={(e) => setNetworkPassword(e.target.value)}
-                    placeholder="Password for auto-login"
+                    onChange={(e) => {
+                      setNetworkPassword(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, password: true}))
+                    }}
+                    placeholder={editingNetwork?.login_password ? "Configured ✓ (enter new to change)" : "Password for auto-login"}
                     style={{ ...inputStyle, paddingRight: '50px' }}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => {
+                      if (networkPassword !== '********') setShowPassword(!showPassword)
+                    }}
                     style={{
                       position: 'absolute',
                       right: '12px',
@@ -1496,12 +1520,52 @@ export default function DashboardLayout({
                       border: 'none',
                       color: '#64748b',
                       cursor: 'pointer',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      display: networkPassword === '********' ? 'none' : 'block'
                     }}
                   >
                     {showPassword ? '🙈' : '👁️'}
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>TOTP Secret (optional - for 2FA)</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTotpSecret ? 'text' : 'password'}
+                    value={totpSecret}
+                    onChange={(e) => {
+                      setTotpSecret(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, totp: true}))
+                    }}
+                    placeholder={editingNetwork?.totp_secret ? "Configured ✓ (enter new to change)" : "TOTP secret for 2FA"}
+                    style={{ ...inputStyle, paddingRight: '50px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (totpSecret !== '********') setShowTotpSecret(!showTotpSecret)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      display: totpSecret === '********' ? 'none' : 'block'
+                    }}
+                  >
+                    {showTotpSecret ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  Enter the TOTP secret key (not the QR code) for automated 2FA login
+                </p>
               </div>
             </div>
             

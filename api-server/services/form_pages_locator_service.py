@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from services.session_logger import get_session_logger, ActivityType
-from services.encryption_service import get_decrypted_api_key, decrypt_credential
+from services.encryption_service import get_decrypted_api_key, decrypt_credential, generate_totp_code
 
 from services.s3_storage import generate_presigned_put_url
 
@@ -724,6 +724,8 @@ class FormPagesLocatorService:
             "url": network.url,
             "login_username": decrypt_credential(network.login_username, network.company_id, network.id, "username") if network.login_username else None,
             "login_password": decrypt_credential(network.login_password, network.company_id, network.id, "password") if network.login_password else None,
+            "totp_secret": network.totp_secret,  # Keep encrypted, will generate code on demand
+            "has_totp": bool(network.totp_secret),
             "project_id": network.project_id,
             "project_name": project.name if project else None,
             "company_id": network.company_id,
@@ -793,6 +795,11 @@ class FormPagesLocatorService:
             "login_url": config["url"],  # Assume same as network URL initially
             "login_username": config["login_username"],
             "login_password": config["login_password"],
+            "totp_code": generate_totp_code(
+                config["totp_secret"],
+                config["company_id"],
+                network_id
+            ) if config.get("has_totp") else None,
             "project_name": config["project_name"],
             "company_id": config["company_id"],
             "product_id": config["product_id"],

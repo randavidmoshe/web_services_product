@@ -5,6 +5,7 @@ from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 import os
 
+
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@db:5432/formfinder")
 
 engine = create_engine(DATABASE_URL)
@@ -157,8 +158,9 @@ class Network(Base):
     url = Column(String)
     network_type = Column(String, nullable=False)  # "qa", "staging", or "production"
     # Login credentials for test user (used by crawler)
-    login_username = Column(String, nullable=True)
-    login_password = Column(String, nullable=True)  # Should be encrypted in production
+    login_username = Column(Text, nullable=True)  # Encrypted
+    login_password = Column(Text, nullable=True)  # Encrypted
+    totp_secret = Column(Text, nullable=True)  # Encrypted TOTP secret for 2FA
     login_stages = Column(JSON, default=list)  # Login steps for Form Mapper
     logout_stages = Column(JSON, default=list)  # Logout steps for Form Mapper
     form_pages_use_screenshot_for_button_check = Column(Boolean, default=True)

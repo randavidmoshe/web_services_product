@@ -17,11 +17,6 @@ from services.path_evaluation_service import (
 from services.session_logger import SessionLogger, get_session_logger, ActivityType, LogCategory
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
 
 class MapperState(str, Enum):
     """States in the form mapper state machine"""

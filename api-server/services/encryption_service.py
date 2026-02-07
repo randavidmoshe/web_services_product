@@ -293,3 +293,33 @@ def invalidate_credential_cache(company_id: int, network_id: int) -> None:
         logger.info(f"[EncryptionService] Invalidated credential cache for network {network_id}")
     except Exception as e:
         logger.warning(f"[EncryptionService] Cache invalidation failed: {e}")
+
+
+def generate_totp_code(encrypted_secret: str, company_id: int, network_id: int) -> str:
+    """
+    Generate current TOTP code from encrypted secret.
+
+    Args:
+        encrypted_secret: KMS-encrypted TOTP secret
+        company_id: Company ID for decryption
+        network_id: Network ID for cache key
+
+    Returns:
+        6-digit TOTP code, or empty string if no secret
+    """
+    if not encrypted_secret:
+        return ""
+
+    try:
+        import pyotp
+        # Decrypt the secret
+        secret = decrypt_credential(encrypted_secret, company_id, network_id, "totp_secret")
+        if not secret:
+            return ""
+
+        # Generate current code
+        totp = pyotp.TOTP(secret)
+        return totp.now()
+    except Exception as e:
+        logger.error(f"[EncryptionService] TOTP generation failed: {e}")
+        return ""
