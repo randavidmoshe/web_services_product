@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import os
-import uuid
 import redis as redis_lib
 from models.database import ActivityLogEntry
 from services.s3_storage import generate_presigned_put_url
@@ -85,15 +84,6 @@ class SessionStatus:
 class FormMapperOrchestrator:
     """Distributed Form Mapper Orchestrator - scalable for 100K+ users"""
 
-    # Lua script for atomic compare-and-delete (safe lock release)
-    _release_lock_script = """
-        if redis.call("get", KEYS[1]) == ARGV[1] then
-            return redis.call("del", KEYS[1])
-        else
-            return 0
-        end
-        """
-
     def __init__(self, redis_client_or_db, db_session=None):
         if hasattr(redis_client_or_db, 'query'):
             self.db = redis_client_or_db
@@ -107,26 +97,6 @@ class FormMapperOrchestrator:
 
         # Cache TTL for company config (5 minutes)
         COMPANY_CONFIG_CACHE_TTL = 300
-
-    def _acquire_session_lock(self, session_id: str, timeout: int = 15, retries: int = 20, retry_delay: float = 0.25) -> \
-    Optional[str]:
-        """
-        Acquire distributed lock for session state transitions.
-        Returns lock_id if acquired, None if failed after retries.
-        """
-        lock_key = f"mapper_lock:{session_id}"
-        lock_id = str(uuid.uuid4())
-        for attempt in range(retries):
-            if self.redis.set(lock_key, lock_id, nx=True, ex=timeout):
-                return lock_id
-            time.sleep(retry_delay)
-        logger.warning(f"[Orchestrator] Failed to acquire lock for {session_id} after {retries} retries")
-        return None
-
-    def _release_session_lock(self, session_id: str, lock_id: str):
-        """Release lock only if we still own it (atomic compare-and-delete)."""
-        lock_key = f"mapper_lock:{session_id}"
-        self.redis.eval(self._release_lock_script, 1, lock_key, lock_id)
 
     def _get_logger(self, session_id: str) -> SessionLogger:
         """Get or create session logger with context from session data"""
@@ -385,8 +355,8 @@ class FormMapperOrchestrator:
             "critical_fields_checklist": "{}", "field_requirements_for_recovery": "",
             "user_provided_inputs": json.dumps(user_provided_inputs) if user_provided_inputs else "{}",
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
-            "pending_new_steps": "[]",
-            "junction_pending_step_result": "{}",
+            "pending_screenshot_base64": "", "pending_new_steps": "[]",
+            "junction_before_screenshot": "", "junction_pending_step_result": "{}",
             "visual_verify_results": "[]", "visual_verify_total_wait_seconds": 0, "visual_verify_failed_fields": "[]",
             "final_steps": "[]", "last_error": "",
             "upload_urls": json.dumps(
@@ -692,14 +662,14 @@ class FormMapperOrchestrator:
             return {"success": True, "phase": "getting_screenshot", "agent_task": task}
 
         # Skip screenshot, go directly to generate steps
-        return self._trigger_generate_initial_steps(session_id)
+        return self._trigger_generate_initial_steps(session_id, "")
 
     def handle_initial_screenshot_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
 
         screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.update_session(session_id, {"pending_screenshot_base64": screenshot_base64 or ""})
 
         config = session.get("config", {})
 
@@ -708,11 +678,11 @@ class FormMapperOrchestrator:
             self.transition_to(session_id, MapperState.INITIAL_UI_VERIFICATION)
             test_context = session.get("test_context", {})
             return {"success": True, "trigger_celery": True, "celery_task": "verify_ui_visual",
-                    "celery_args": {"session_id": session_id,
+                    "celery_args": {"session_id": session_id, "screenshot_base64": screenshot_base64,
                                     "previously_reported_issues": test_context.get("reported_ui_issues", [])}}
 
         # No screenshot, skip to generate steps
-        return self._trigger_generate_initial_steps(session_id)
+        return self._trigger_generate_initial_steps(session_id, screenshot_base64)
 
     def handle_initial_ui_verification_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
@@ -743,16 +713,16 @@ class FormMapperOrchestrator:
             #    "screenshot": True,
             #    "bug_type": "ui_issue"
             #})
-        return self._trigger_generate_initial_steps(session_id)
+        return self._trigger_generate_initial_steps(session_id, session.get("pending_screenshot_base64", ""))
     
-    def _trigger_generate_initial_steps(self, session_id: str) -> Dict:
+    def _trigger_generate_initial_steps(self, session_id: str, screenshot_base64: str) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         config = session.get("config", {})
         self.transition_to(session_id, MapperState.GENERATING_INITIAL_STEPS)
         return {"success": True, "trigger_celery": True, "celery_task": "analyze_form_page",
                 "celery_args": {
-                    "session_id": session_id,
+                    "session_id": session_id, "screenshot_base64": screenshot_base64,
                     "test_cases": session.get("test_cases", []),
                     "current_path": session.get("current_path", 1),
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
@@ -868,7 +838,7 @@ class FormMapperOrchestrator:
             return {"success": True, "state": "dynamic_verify_getting_screenshot", "agent_task": task}
 
         # If junction step, capture "before" screenshot first (unless already captured from before failure/recovery)
-        if step.get("is_junction") and not self.redis.get(f"mapper_screenshot_before:{session_id}"):
+        if step.get("is_junction") and not session.get("junction_before_screenshot"):
             logger.info(f"[Orchestrator] Junction step detected, capturing before screenshot")
             log = self._get_logger(session_id)
             log.debug("Junction step - capturing before screenshot", category="junction")
@@ -895,7 +865,7 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
 
         screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
-        self.redis.setex(f"mapper_screenshot_before:{session_id}", 3600, screenshot_base64 or "")
+        self.update_session(session_id, {"junction_before_screenshot": screenshot_base64})
 
         logger.info(f"[Orchestrator] Junction before screenshot captured, executing step")
         log = self._get_logger(session_id)
@@ -921,8 +891,7 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
 
         after_screenshot = result.get("screenshot_base64", "") if result.get("success") else ""
-        before_raw = self.redis.get(f"mapper_screenshot_before:{session_id}")
-        before_screenshot = before_raw.decode() if isinstance(before_raw, bytes) else (before_raw or "")
+        before_screenshot = session.get("junction_before_screenshot", "")
 
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
@@ -934,8 +903,6 @@ class FormMapperOrchestrator:
                   has_before=bool(before_screenshot), has_after=bool(after_screenshot))
 
         # Trigger Celery task for AI verification
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, after_screenshot or "")
-
         self.transition_to(session_id, MapperState.JUNCTION_VERIFYING)
         return {
             "success": True,
@@ -943,6 +910,8 @@ class FormMapperOrchestrator:
             "celery_task": "verify_junction_visual",
             "celery_args": {
                 "session_id": session_id,
+                "before_screenshot": before_screenshot,
+                "after_screenshot": after_screenshot,
                 "step_info": {
                     "action": step.get("action"),
                     "selector": step.get("selector"),
@@ -1016,9 +985,8 @@ class FormMapperOrchestrator:
         step = all_steps[current_index] if current_index < len(all_steps) else {}
 
         # Clear junction state so recovery step captures fresh before screenshot
-        if self.redis.get(f"mapper_screenshot_before:{session_id}"):
-            self.redis.delete(f"mapper_screenshot_before:{session_id}")
-            self.update_session(session_id, {"junction_pending_step_result": "{}"})
+        if session.get("junction_before_screenshot"):
+            self.update_session(session_id, {"junction_before_screenshot": "", "junction_pending_step_result": "{}"})
 
         # Verification failure handling
         if step.get("action") == "verify":
@@ -1103,14 +1071,13 @@ class FormMapperOrchestrator:
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
         failed_step = all_steps[current_index] if current_index < len(all_steps) else {}
-
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        
         self.transition_to(session_id, MapperState.STEP_FAILED_AI_RECOVERY)
         return {"success": True, "trigger_celery": True, "celery_task": "analyze_failure_and_recover",
                 "celery_args": {
                     "session_id": session_id, "failed_step": failed_step,
                     "executed_steps": session.get("executed_steps", []),
-                    "test_cases": session.get("test_cases", []),
+                    "screenshot_base64": screenshot_base64, "test_cases": session.get("test_cases", []),
                     "test_context": session.get("test_context", {}),
                     "attempt_number": session.get("consecutive_failures", 1),
                     "recovery_failure_history": session.get("recovery_failure_history", [])}}
@@ -1249,15 +1216,13 @@ class FormMapperOrchestrator:
         # Check for alert
         if result.get("alert_present") or result.get("alert_detected"):
             # Clean up junction state if we were in junction flow
-            if self.redis.get(f"mapper_screenshot_before:{session_id}"):
-                self.redis.delete(f"mapper_screenshot_before:{session_id}")
-                self.update_session(session_id, {"junction_pending_step_result": "{}"})
+            if session.get("junction_before_screenshot"):
+                self.update_session(session_id,
+                                    {"junction_before_screenshot": "", "junction_pending_step_result": "{}"})
             return self._handle_alert(session_id, result)
 
         # Check for junction verification needed
-        junction_before_raw = self.redis.get(f"mapper_screenshot_before:{session_id}")
-        junction_before = junction_before_raw.decode() if isinstance(junction_before_raw, bytes) else (
-                    junction_before_raw or "")
+        junction_before = session.get("junction_before_screenshot", "")
         if step.get("is_junction") and junction_before:
             logger.info(f"[Orchestrator] Junction step completed, triggering visual verification")
             log = self._get_logger(session_id)
@@ -1330,8 +1295,8 @@ class FormMapperOrchestrator:
                               "selector": "", "value": "",
                               "description": f"Accept {alert_type}: {alert_text[:50]}..."})
         self.update_session(session_id, {"executed_steps": executed_steps,
-                                         "pending_alert_info": {"alert_type": alert_type, "alert_text": alert_text}})
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, alert_screenshot or "")
+                                         "pending_alert_info": {"alert_type": alert_type, "alert_text": alert_text,
+                                                               "alert_screenshot_base64": alert_screenshot}})
         self.transition_to(session_id, MapperState.ALERT_EXTRACTING_DOM)
         task = self._push_agent_task(session_id, "form_mapper_extract_dom_for_alert",
                                     {"alert_type": alert_type, "alert_text": alert_text})
@@ -1348,14 +1313,12 @@ class FormMapperOrchestrator:
         alert_info = {"success": True, "alert_present": True,
                      "alert_type": pending.get("alert_type", "alert"),
                      "alert_text": pending.get("alert_text", "")}
-
-        if result.get("screenshot_base64"):
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, result.get("screenshot_base64"))
         self.transition_to(session_id, MapperState.ALERT_AI_RECOVERY)
         return {"success": True, "trigger_celery": True, "celery_task": "handle_alert_recovery",
                 "celery_args": {
                     "session_id": session_id, "alert_info": alert_info,
                     "executed_steps": session.get("executed_steps", []),
+                    "screenshot_base64": pending.get("alert_screenshot_base64") or result.get("screenshot_base64"),
                 "test_cases": session.get("test_cases", []),
                     "test_context": session.get("test_context", {}),
                     "step_where_alert_appeared": len(session.get("executed_steps", [])),
@@ -1427,9 +1390,9 @@ class FormMapperOrchestrator:
                 # Structured logging
                 log = self._get_logger(session_id)
                 log.warning("Alert recovery: no form URL, using steps directly", category="recovery")
-                self.redis.delete(f"mapper_screenshot_before:{session_id}")
                 self.update_session(session_id, {"all_steps": alert_steps, "executed_steps": [],
                                                  "current_step_index": 0,
+                                                 "junction_before_screenshot": "",
                                                  "junction_pending_step_result": "{}"})
                 return self._execute_next_step(session_id)
 
@@ -1497,10 +1460,9 @@ class FormMapperOrchestrator:
             return self._fail_session(session_id, f"Failed to navigate back: {result.get('error', '')}")
 
         # Clear old steps and pending_new_steps - we'll generate fresh with critical_fields_checklist
-        self.redis.delete(f"mapper_screenshot_before:{session_id}")
         self.update_session(session_id, {"all_steps": [], "executed_steps": [],
                                          "current_step_index": 0, "pending_new_steps": [],
-                                         "junction_pending_step_result": "{}"})
+                                         "junction_before_screenshot": "", "junction_pending_step_result": "{}"})
         logger.info(f"[Orchestrator] Navigated back, extracting DOM for fresh step generation")
         # Structured logging
         log = self._get_logger(session_id)
@@ -1722,12 +1684,12 @@ class FormMapperOrchestrator:
             # Structured logging
             log = self._get_logger(session_id)
             log.warning("Screenshot failed, skipping UI verification", category="milestone")
-            return self._trigger_regenerate_steps(session_id)
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+            return self._trigger_regenerate_steps(session_id, None)
+        self.update_session(session_id, {"pending_screenshot_base64": screenshot_base64})
         self.transition_to(session_id, MapperState.DOM_CHANGE_UI_VERIFICATION)
         test_context = session.get("test_context", {})
         return {"success": True, "trigger_celery": True, "celery_task": "verify_ui_visual",
-                "celery_args": {"session_id": session_id,
+                "celery_args": {"session_id": session_id, "screenshot_base64": screenshot_base64,
                                "previously_reported_issues": test_context.get("reported_ui_issues", [])}}
     
     def handle_dom_change_ui_verification_result(self, session_id: str, result: Dict) -> Dict:
@@ -1763,8 +1725,7 @@ class FormMapperOrchestrator:
         step = all_steps[current_index] if current_index < len(all_steps) else {}
 
         if step.get("force_regenerate_verify"):
-            ss_raw = self.redis.get(f"mapper_screenshot:{session_id}")
-            screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+            screenshot_base64 = session.get("pending_screenshot_base64", "")
             if screenshot_base64:
                 logger.info(
                     f"[Orchestrator] force_regenerate_verify step - triggering visual page verification")
@@ -1787,6 +1748,7 @@ class FormMapperOrchestrator:
                     "celery_task": "verify_page_visual",
                     "celery_args": {
                         "session_id": session_id,
+                        "screenshot_base64": screenshot_base64,
                         "executed_steps": executed_steps,
                         "already_verified_fields": [],
                         "retry_count": 0,
@@ -1816,12 +1778,12 @@ class FormMapperOrchestrator:
         step = all_steps[current_index] if current_index < len(all_steps) else {}
 
         if step.get("force_regenerate_verify"):
-            return self._trigger_regenerate_verify_steps(session_id)
+            return self._trigger_regenerate_verify_steps(session_id, session.get("pending_screenshot_base64", ""))
 
-        return self._trigger_regenerate_steps(session_id)
+        return self._trigger_regenerate_steps(session_id, session.get("pending_screenshot_base64", ""))
 
 
-    def _trigger_regenerate_steps(self, session_id: str) -> Dict:
+    def _trigger_regenerate_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         self.transition_to(session_id, MapperState.DOM_CHANGE_REGENERATING_STEPS)
@@ -1832,6 +1794,7 @@ class FormMapperOrchestrator:
                     "executed_steps": session.get("executed_steps", []),
                     "test_cases": session.get("test_cases", []),
                     "test_context": session.get("test_context", {}),
+                    "screenshot_base64": screenshot_base64,
                     "critical_fields_checklist": session.get("critical_fields_checklist", {}),
                     "field_requirements": session.get("field_requirements_for_recovery", ""),
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
@@ -1839,7 +1802,7 @@ class FormMapperOrchestrator:
                     "user_provided_inputs": session.get("user_provided_inputs", {}),
                     "regenerate_retry_message": session.get("regenerate_retry_message", "")}}
 
-    def _trigger_regenerate_verify_steps(self, session_id: str) -> Dict:
+    def _trigger_regenerate_verify_steps(self, session_id: str, screenshot_base64: Optional[str]) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
         self.transition_to(session_id, MapperState.DOM_CHANGE_REGENERATING_VERIFY_STEPS)
@@ -1848,7 +1811,8 @@ class FormMapperOrchestrator:
                     "session_id": session_id,
                     "executed_steps": session.get("executed_steps", []),
                     "test_cases": session.get("test_cases", []),
-                    "test_context": session.get("test_context", {})}}
+                    "test_context": session.get("test_context", {}),
+                    "screenshot_base64": screenshot_base64}}
 
     def handle_regenerate_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
@@ -2022,9 +1986,6 @@ class FormMapperOrchestrator:
         if dom_html:
             self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
 
-        if screenshot_base64:
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64)
-
         self.transition_to(session_id, MapperState.VALIDATION_ERROR_RECOVERY)
         return {
             "success": True,
@@ -2033,6 +1994,7 @@ class FormMapperOrchestrator:
             "celery_args": {
                 "session_id": session_id,
                 "executed_steps": session.get("executed_steps", []),
+                "screenshot_base64": screenshot_base64,
                 "test_cases": session.get("test_cases", []),
                 "test_context": session.get("test_context", {})
             }
@@ -2064,16 +2026,12 @@ class FormMapperOrchestrator:
                          "alert_text": f"Validation errors: {', '.join(validation_errors.get('error_messages', [])[:3])}"}
         gathered = {"error_fields": validation_errors.get("error_fields", []),
                    "error_messages": validation_errors.get("error_messages", [])}
-
-        if screenshot_base64:
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64)
-
         self.transition_to(session_id, MapperState.HANDLING_VALIDATION_ERROR)
         return {"success": True, "trigger_celery": True, "celery_task": "handle_alert_recovery",
                 "celery_args": {
                     "session_id": session_id, "alert_info": validation_info,
                     "executed_steps": session.get("executed_steps", []),
-                    "test_cases": session.get("test_cases", []),
+                    "screenshot_base64": screenshot_base64, "test_cases": session.get("test_cases", []),
                     "test_context": session.get("test_context", {}),
                     "step_where_alert_appeared": len(session.get("executed_steps", [])),
                     "include_accept_step": False, "gathered_error_info": gathered}}
@@ -2323,11 +2281,11 @@ class FormMapperOrchestrator:
             log.info("Path saved, starting next path", category="milestone")
             current_path = session.get("current_path", 1)
             # Reset for next path
-            self.redis.delete(f"mapper_screenshot_before:{session_id}")
             self.update_session(session_id, {
                 "executed_steps": "[]",
                 "all_steps": "[]",
                 "current_step_index": 0,
+                "junction_before_screenshot": "",
                 "junction_pending_step_result": "{}",
             })
             # Start new AI analysis with junction instructions
@@ -2377,7 +2335,7 @@ class FormMapperOrchestrator:
                 self.update_session(session_id, {"executed_steps": executed_steps})
 
         # Clean up junction screenshots
-        self.redis.delete(f"mapper_screenshot_before:{session_id}")
+        self.update_session(session_id, {"junction_before_screenshot": ""})
 
         # Restore pending step result and continue normal flow
         pending_result_json = session.get("junction_pending_step_result", "{}")
@@ -2609,7 +2567,7 @@ class FormMapperOrchestrator:
             return self._fail_session(session_id, "No screenshot in agent result")
 
         # Update session with fresh screenshot
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.update_session(session_id, {"pending_screenshot_base64": screenshot_base64})
 
         # Retrieve retry state from Redis session (stateless)
         retry_count = session.get("visual_verify_retry_count", 0)
@@ -2632,6 +2590,7 @@ class FormMapperOrchestrator:
             "celery_task": "verify_page_visual",
             "celery_args": {
                 "session_id": session_id,
+                "screenshot_base64": screenshot_base64,
                 "executed_steps": executed_steps,
                 "already_verified_fields": already_verified,
                 "retry_count": retry_count,
@@ -2666,7 +2625,6 @@ class FormMapperOrchestrator:
         log.debug("Dynamic verify screenshot captured - triggering AI verification", category="milestone")
 
         # Trigger Celery task for AI verification
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
         self.transition_to(session_id, MapperState.DYNAMIC_VERIFY_VISUAL)
         return {
             "success": True,
@@ -2674,6 +2632,7 @@ class FormMapperOrchestrator:
             "celery_task": "verify_dynamic_step_visual",
             "celery_args": {
                 "session_id": session_id,
+                "screenshot_base64": screenshot_base64,
                 "step_description": step_description,
                 "test_case_description": session.get("test_case_description", ""),
                 "test_page_route_id": session.get("test_page_route_id", 0)
@@ -3002,18 +2961,7 @@ class FormMapperOrchestrator:
     # ============================================================
     
     def process_agent_result(self, session_id: str, result: Dict) -> Dict:
-        """Main router for agent results — distributed lock prevents race conditions"""
-        lock_id = self._acquire_session_lock(session_id)
-        if not lock_id:
-            logger.error(f"[process_agent_result] Could not acquire lock for {session_id}")
-            return {"status": "error", "error": "Session busy, try again"}
-        try:
-            return self._process_agent_result_locked(session_id, result)
-        finally:
-            self._release_session_lock(session_id, lock_id)
-
-    def _process_agent_result_locked(self, session_id: str, result: Dict) -> Dict:
-        """Agent result processing (must be called while holding session lock)"""
+        """Main router for agent results"""
         logger.info(
             f"[process_agent_result] session_id={session_id}, task_type={result.get('task_type')}, success={result.get('success')}")
         session = self.get_session(session_id)
@@ -3063,18 +3011,7 @@ class FormMapperOrchestrator:
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
     
     def process_celery_result(self, session_id: str, task_name: str, result: Dict) -> Dict:
-        """Router for Celery task results — distributed lock prevents race conditions"""
-        lock_id = self._acquire_session_lock(session_id)
-        if not lock_id:
-            logger.error(f"[process_celery_result] Could not acquire lock for {session_id}, task={task_name}")
-            return {"status": "error", "error": "Session busy"}
-        try:
-            return self._process_celery_result_locked(session_id, task_name, result)
-        finally:
-            self._release_session_lock(session_id, lock_id)
-
-    def _process_celery_result_locked(self, session_id: str, task_name: str, result: Dict) -> Dict:
-        """Celery result processing (must be called while holding session lock)"""
+        """Router for Celery task results"""
         session = self.get_session(session_id)
         if not session: return {"status": "error", "error": "Session not found"}
         state = session.get("state", "")
@@ -3140,22 +3077,16 @@ class FormMapperOrchestrator:
         """
         Check for pending Celery task results and process them.
         Called by status endpoint to advance state machine.
-        Non-blocking: if lock unavailable, skip processing (status endpoint will retry).
         """
-        lock_id = self._acquire_session_lock(session_id, retries=1, retry_delay=0.1)
-        if not lock_id:
-            return None  # Status endpoint will poll again shortly
-        try:
-            # Check runner phase completion (login/navigate)
-            completion = self.check_runner_phase_complete(session_id)
-            if completion:
-                phase = completion.get("phase")
-                if phase == "login":
-                    return self.handle_login_phase_complete(session_id, completion)
-                elif phase == "navigate":
-                    return {"status": "complete", "phase": phase}
-                return completion
+        # Check runner phase completion (login/navigate)
+        completion = self.check_runner_phase_complete(session_id)
+        if completion:
+            phase = completion.get("phase")
+            if phase == "login":
+                return self.handle_login_phase_complete(session_id, completion)
+            elif phase == "navigate":
+                # Navigation completion handled by trigger_mapping_phase Celery task
+                return {"status": "complete", "phase": phase}
+            return completion
 
-            return None
-        finally:
-            self._release_session_lock(session_id, lock_id)
+        return None

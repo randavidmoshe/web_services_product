@@ -250,6 +250,8 @@ def _build_junction_instructions_text(junction_instructions) -> str:
 def analyze_form_page(
     self,
     session_id: str,
+    dom_html: str,
+    screenshot_base64: str,
     test_cases: list,
     current_path: int = 1,
     enable_junction_discovery: bool = True,
@@ -269,14 +271,6 @@ def analyze_form_page(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -422,6 +416,8 @@ def analyze_failure_and_recover(
     session_id: str,
     failed_step: Dict,
     executed_steps: List[Dict],
+    fresh_dom: str,
+    screenshot_base64: str,
     test_cases: List[Dict],
     test_context: Dict,
     attempt_number: int = 1,
@@ -434,14 +430,6 @@ def analyze_failure_and_recover(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    fresh_dom = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -625,6 +613,8 @@ def handle_alert_recovery(
     session_id: str,
     alert_info: Dict,
     executed_steps: List[Dict],
+    dom_html: str,
+    screenshot_base64: Optional[str],
     test_cases: List[Dict],
     test_context: Dict,
     step_where_alert_appeared: int,
@@ -638,14 +628,6 @@ def handle_alert_recovery(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -760,6 +742,8 @@ def handle_validation_error_recovery(
         self,
         session_id: str,
         executed_steps: List[Dict],
+        dom_html: str,
+        screenshot_base64: Optional[str],
         test_cases: List[Dict],
         test_context: Dict
 ):
@@ -770,14 +754,6 @@ def handle_validation_error_recovery(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -871,6 +847,7 @@ def handle_validation_error_recovery(
 def verify_ui_visual(
     self,
     session_id: str,
+    screenshot_base64: str,
     previously_reported_issues: Optional[List[str]] = None
 ) -> Dict:
     """Celery task: Visual UI verification with AI."""
@@ -881,10 +858,6 @@ def verify_ui_visual(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -964,9 +937,11 @@ def verify_ui_visual(
 def regenerate_steps(
     self,
     session_id: str,
+    dom_html: str,
     executed_steps: List[Dict],
     test_cases: List[Dict],
     test_context: Dict,
+    screenshot_base64: Optional[str] = None,
     critical_fields_checklist: Optional[Dict] = None,
     field_requirements: Optional[str] = None,
     enable_junction_discovery: bool = True,
@@ -981,14 +956,6 @@ def regenerate_steps(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1145,9 +1112,11 @@ def regenerate_steps(
 def regenerate_verify_steps(
         self,
         session_id: str,
+        dom_html: str,
         executed_steps: List[Dict],
         test_cases: List[Dict],
         test_context: Dict,
+        screenshot_base64: Optional[str] = None
 ) -> Dict:
     """Celery task: Regenerate verification steps after Save/Submit."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -1156,14 +1125,6 @@ def regenerate_verify_steps(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
-
-    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
-    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
-    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1289,6 +1250,8 @@ def regenerate_verify_steps(
 def verify_junction_visual(
         self,
         session_id: str,
+        before_screenshot: str,
+        after_screenshot: str,
         step_info: Dict
 ) -> Dict:
     """Celery task: Use AI vision to verify if junction revealed new fields."""
@@ -1296,12 +1259,6 @@ def verify_junction_visual(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch junction screenshots from Redis (removed from Celery kwargs — P0 scalability fix)
-    before_raw = redis_client.get(f"mapper_screenshot_before:{session_id}")
-    before_screenshot = before_raw.decode() if isinstance(before_raw, bytes) else (before_raw or "")
-    after_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    after_screenshot = after_raw.decode() if isinstance(after_raw, bytes) else (after_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1391,6 +1348,7 @@ def verify_junction_visual(
 def verify_page_visual(
         self,
         session_id: str,
+        screenshot_base64: str,
         executed_steps: List[Dict],
         already_verified_fields: List[Dict],
         retry_count: int = 0,
@@ -1401,10 +1359,6 @@ def verify_page_visual(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1509,6 +1463,7 @@ def verify_page_visual(
 def verify_dynamic_step_visual(
         self,
         session_id: str,
+        screenshot_base64: str,
         step_description: str,
         test_case_description: str = "",
         test_page_route_id: int = 0
@@ -1518,10 +1473,6 @@ def verify_dynamic_step_visual(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
-
-    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
-    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
-    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)

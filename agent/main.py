@@ -537,11 +537,7 @@ class FormDiscovererAgent:
                 "error": result.get("error")
             }
             
-            # Use API key header for agent endpoint
-            headers = {
-                "Content-Type": "application/json",
-                "X-API-Key": self.api_key
-            }
+            headers = self._get_headers()
             
             response = requests.post(
                 url, 

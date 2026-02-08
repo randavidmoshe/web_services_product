@@ -20,7 +20,8 @@ class PageVisualVerifier:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5-20251001"
+        #self.model = "claude-haiku-4-5-20251001"
+        self.model = "claude-sonnet-4-5-20250929"
         self.session_logger = session_logger
 
     def _call_api_with_retry_multimodal(self, content: list, max_tokens: int = 2048, max_retries: int = 3) -> Optional[
@@ -291,7 +292,7 @@ For "list_page" (table/grid):
 
         # Log raw AI response
         if response:
-            msg = f"!!!! 👁️ Page Visual Verify RAW AI Response: {response[:500]}..."
+            msg = f"!!!! 👁️ Page Visual Verify RAW AI Response: {response}..."
             print(msg)
             if self.session_logger:
                 self.session_logger.debug(msg, category="debug_trace")
@@ -348,7 +349,7 @@ For "list_page" (table/grid):
             }
         except json.JSONDecodeError as e:
             logger.error(f"[PageVisualVerifier] Failed to parse response: {e}")
-            logger.error(f"[PageVisualVerifier] Response was: {response[:500]}")
+            logger.error(f"[PageVisualVerifier] Response was: {response}")
             # Default to page ready if parsing fails
             return {
                 "page_ready": True,

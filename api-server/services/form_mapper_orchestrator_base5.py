@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import os
-import uuid
 import redis as redis_lib
 from models.database import ActivityLogEntry
 from services.s3_storage import generate_presigned_put_url
@@ -85,15 +84,6 @@ class SessionStatus:
 class FormMapperOrchestrator:
     """Distributed Form Mapper Orchestrator - scalable for 100K+ users"""
 
-    # Lua script for atomic compare-and-delete (safe lock release)
-    _release_lock_script = """
-        if redis.call("get", KEYS[1]) == ARGV[1] then
-            return redis.call("del", KEYS[1])
-        else
-            return 0
-        end
-        """
-
     def __init__(self, redis_client_or_db, db_session=None):
         if hasattr(redis_client_or_db, 'query'):
             self.db = redis_client_or_db
@@ -107,26 +97,6 @@ class FormMapperOrchestrator:
 
         # Cache TTL for company config (5 minutes)
         COMPANY_CONFIG_CACHE_TTL = 300
-
-    def _acquire_session_lock(self, session_id: str, timeout: int = 15, retries: int = 20, retry_delay: float = 0.25) -> \
-    Optional[str]:
-        """
-        Acquire distributed lock for session state transitions.
-        Returns lock_id if acquired, None if failed after retries.
-        """
-        lock_key = f"mapper_lock:{session_id}"
-        lock_id = str(uuid.uuid4())
-        for attempt in range(retries):
-            if self.redis.set(lock_key, lock_id, nx=True, ex=timeout):
-                return lock_id
-            time.sleep(retry_delay)
-        logger.warning(f"[Orchestrator] Failed to acquire lock for {session_id} after {retries} retries")
-        return None
-
-    def _release_session_lock(self, session_id: str, lock_id: str):
-        """Release lock only if we still own it (atomic compare-and-delete)."""
-        lock_key = f"mapper_lock:{session_id}"
-        self.redis.eval(self._release_lock_script, 1, lock_key, lock_id)
 
     def _get_logger(self, session_id: str) -> SessionLogger:
         """Get or create session logger with context from session data"""
@@ -3002,18 +2972,7 @@ class FormMapperOrchestrator:
     # ============================================================
     
     def process_agent_result(self, session_id: str, result: Dict) -> Dict:
-        """Main router for agent results — distributed lock prevents race conditions"""
-        lock_id = self._acquire_session_lock(session_id)
-        if not lock_id:
-            logger.error(f"[process_agent_result] Could not acquire lock for {session_id}")
-            return {"status": "error", "error": "Session busy, try again"}
-        try:
-            return self._process_agent_result_locked(session_id, result)
-        finally:
-            self._release_session_lock(session_id, lock_id)
-
-    def _process_agent_result_locked(self, session_id: str, result: Dict) -> Dict:
-        """Agent result processing (must be called while holding session lock)"""
+        """Main router for agent results"""
         logger.info(
             f"[process_agent_result] session_id={session_id}, task_type={result.get('task_type')}, success={result.get('success')}")
         session = self.get_session(session_id)
@@ -3063,18 +3022,7 @@ class FormMapperOrchestrator:
             return {"status": "ok", "message": f"Unhandled: {state}/{task_type}"}
     
     def process_celery_result(self, session_id: str, task_name: str, result: Dict) -> Dict:
-        """Router for Celery task results — distributed lock prevents race conditions"""
-        lock_id = self._acquire_session_lock(session_id)
-        if not lock_id:
-            logger.error(f"[process_celery_result] Could not acquire lock for {session_id}, task={task_name}")
-            return {"status": "error", "error": "Session busy"}
-        try:
-            return self._process_celery_result_locked(session_id, task_name, result)
-        finally:
-            self._release_session_lock(session_id, lock_id)
-
-    def _process_celery_result_locked(self, session_id: str, task_name: str, result: Dict) -> Dict:
-        """Celery result processing (must be called while holding session lock)"""
+        """Router for Celery task results"""
         session = self.get_session(session_id)
         if not session: return {"status": "error", "error": "Session not found"}
         state = session.get("state", "")
@@ -3140,22 +3088,16 @@ class FormMapperOrchestrator:
         """
         Check for pending Celery task results and process them.
         Called by status endpoint to advance state machine.
-        Non-blocking: if lock unavailable, skip processing (status endpoint will retry).
         """
-        lock_id = self._acquire_session_lock(session_id, retries=1, retry_delay=0.1)
-        if not lock_id:
-            return None  # Status endpoint will poll again shortly
-        try:
-            # Check runner phase completion (login/navigate)
-            completion = self.check_runner_phase_complete(session_id)
-            if completion:
-                phase = completion.get("phase")
-                if phase == "login":
-                    return self.handle_login_phase_complete(session_id, completion)
-                elif phase == "navigate":
-                    return {"status": "complete", "phase": phase}
-                return completion
+        # Check runner phase completion (login/navigate)
+        completion = self.check_runner_phase_complete(session_id)
+        if completion:
+            phase = completion.get("phase")
+            if phase == "login":
+                return self.handle_login_phase_complete(session_id, completion)
+            elif phase == "navigate":
+                # Navigation completion handled by trigger_mapping_phase Celery task
+                return {"status": "complete", "phase": phase}
+            return completion
 
-            return None
-        finally:
-            self._release_session_lock(session_id, lock_id)
+        return None

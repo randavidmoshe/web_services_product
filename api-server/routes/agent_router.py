@@ -30,9 +30,10 @@ from utils.auth_helpers import get_current_user_from_request
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
-# Redis connection
+# Redis connection with explicit pool
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
-redis_client = redis.from_url(REDIS_URL)
+_agent_router_redis_pool = redis.ConnectionPool.from_url(REDIS_URL, max_connections=20)
+redis_client = redis.Redis(connection_pool=_agent_router_redis_pool)
 
 
 # ============================================================================

@@ -22,10 +22,24 @@ from services.form_mapper_orchestrator import FormMapperOrchestrator, SessionSta
 from celery.result import AsyncResult
 from celery_app import celery
 import os
+
+import redis as redis_lib
+import json as json_lib
+
+# Module-level shared connection pool for API endpoints
+_api_redis_pool = redis_lib.ConnectionPool(
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    db=0,
+    max_connections=20
+)
+
 from sqlalchemy.orm.attributes import flag_modified
 from celery_app import celery
 from utils.auth_helpers import get_current_user_from_request
 
+from routes.agent_router import validate_jwt_and_session
+from models.agent_models import Agent
 
 logger = logging.getLogger(__name__)
 
@@ -676,8 +690,8 @@ async def list_results(
 
 @router.post("/agent/task-result", response_model=AgentTaskResultResponse)
 async def agent_task_result(
-    request: AgentTaskResultRequest,
-    x_api_key: Optional[str] = Header(None),
+    body: AgentTaskResultRequest,
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """
@@ -687,10 +701,8 @@ async def agent_task_result(
     a task. The orchestrator processes the result and determines
     the next action.
     """
-    # TODO: Add API key validation if needed
-    # For now, just process the result
-    
-    session_id = request.session_id
+
+    session_id = body.session_id
     
     # Verify session exists
     session = db.query(FormMapperSession).filter(
@@ -699,24 +711,26 @@ async def agent_task_result(
     
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
+    # Verify this agent's user owns this session
+    if session.user_id != agent.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Build result dict for orchestrator
     result = {
-        "task_type": request.task_type,
-        "success": request.success,
-        "error": request.error,
-        **request.payload
+        "task_type": body.task_type,
+        "success": body.success,
+        "error": body.error,
+        **body.payload
     }
     logger.info(
-        f"[API] AGENT_TASK_RESULT: session={session_id}, task_type={request.task_type}, success={request.success}, payload_keys={list(request.payload.keys())}")
+        f"[API] AGENT_TASK_RESULT: session={session_id}, task_type={body.task_type}, success={body.success}, payload_keys={list(body.payload.keys())}")
     orchestrator = FormMapperOrchestrator(db)
-    
-    # Write result to Redis for Celery worker
-    import redis
-    import json
-    redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+
+    # Write result to Redis for Celery worker (using shared pool)
+    api_redis = redis_lib.Redis(connection_pool=_api_redis_pool, decode_responses=True)
     result_key = f"runner_step_result:{session_id}"
-    redis_client.setex(result_key, 300, json.dumps(result))
+    api_redis.setex(result_key, 300, json_lib.dumps(result))
     logger.info(f"[API] Wrote result to Redis: {result_key}")
     
     try:
