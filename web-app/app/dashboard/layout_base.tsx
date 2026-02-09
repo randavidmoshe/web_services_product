@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter, usePathname } from 'next/navigation'
 
 interface Project {
@@ -9,6 +10,7 @@ interface Project {
   network_count: number
   form_page_count: number
   created_by_user_id: number
+  project_type: 'enterprise' | 'dynamic_content'
 }
 
 interface Network {
@@ -18,6 +20,8 @@ interface Network {
   network_type: string
   login_username: string | null
   login_password: string | null
+  totp_secret: string | null
+  has_totp: boolean
   created_at: string
 }
 
@@ -34,9 +38,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   
   // Active project
@@ -46,12 +48,16 @@ export default function DashboardLayout({
   
   // Project dropdown
   const [showProjectDropdown, setShowProjectDropdown] = useState(false)
+
+  // User dropdown
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
   
   // Projects modal (for managing projects)
   const [showProjectsModal, setShowProjectsModal] = useState(false)
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
+  const [newProjectType, setNewProjectType] = useState<'enterprise' | 'dynamic_content'>('enterprise')
   const [addingProject, setAddingProject] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
@@ -71,6 +77,13 @@ export default function DashboardLayout({
   const [networkUsername, setNetworkUsername] = useState('')
   const [networkPassword, setNetworkPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [totpSecret, setTotpSecret] = useState('')
+  const [showTotpSecret, setShowTotpSecret] = useState(false)
+  const [credentialsChanged, setCredentialsChanged] = useState({
+    username: false,
+    password: false,
+    totp: false
+  })
   const [savingNetwork, setSavingNetwork] = useState(false)
   const [editingNetwork, setEditingNetwork] = useState<Network | null>(null)
   
@@ -94,6 +107,8 @@ export default function DashboardLayout({
   const [aiUsed, setAiUsed] = useState<number | null>(null)
   const [aiBudget, setAiBudget] = useState<number | null>(null)
   const [isByok, setIsByok] = useState<boolean>(false)
+
+  const [accountCategory, setAccountCategory] = useState<string | null>(null)
 
   // Theme configuration - Pearl White only (fixed theme)
   const theme = {
@@ -134,18 +149,17 @@ export default function DashboardLayout({
 
   // Load networks when Test Sites tab is selected
   useEffect(() => {
-    if (pathname?.includes('test-sites') && activeProject && token) {
+    if (pathname?.includes('test-sites') && activeProject) {
       loadNetworksForTab()
     }
   }, [pathname, activeProject])
 
   const loadNetworksForTab = async () => {
-    if (!activeProject || !token) return
+    if (!activeProject) return
     setLoadingNetworks(true)
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       if (response.ok) {
         const data = await response.json()
@@ -160,12 +174,11 @@ export default function DashboardLayout({
 
   // Check agent status
   const checkAgentStatus = async () => {
-    if (!userId || !token) return
-    
+    if (!userId) return
+
     try {
-      const response = await fetch(
-        `/api/agent/status?user_id=${userId}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/agent/status`
       )
       
       if (response.ok) {
@@ -188,21 +201,20 @@ export default function DashboardLayout({
 
   // Poll agent status every 30 seconds
   useEffect(() => {
-    if (userId && token) {
+    if (userId) {
       checkAgentStatus()
       const interval = setInterval(checkAgentStatus, 30000)
       return () => clearInterval(interval)
     }
-  }, [userId, token, companyId])
+  }, [userId])
 
   // Check AI usage (for admin only)
   const checkAiUsage = async () => {
-    if (!companyId || !token || userRole !== 'admin') return
-    
+    if (userRole !== 'admin') return
+
     try {
-      const response = await fetch(
-        `/api/form-pages/ai-usage?company_id=${companyId}&product_id=1`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/company/ai-usage?product_id=1`
       )
       
       if (response.ok) {
@@ -221,59 +233,62 @@ export default function DashboardLayout({
 
   // Fetch AI usage on load and every 60 seconds (for admin only)
   useEffect(() => {
-    if (userRole === 'admin' && companyId && token) {
+    if (userRole === 'admin') {
       checkAiUsage()
       const interval = setInterval(checkAiUsage, 60000)
       return () => clearInterval(interval)
     }
-  }, [userRole, companyId, token])
+  }, [userRole])
 
   useEffect(() => {
-    // Check URL params first (coming from marketing site login)
+    // URL params no longer used - auth is via HttpOnly cookies
+    // Clean any legacy URL params
     const urlParams = new URLSearchParams(window.location.search)
-    const urlToken = urlParams.get('token')
-    const urlUserId = urlParams.get('user_id')
-    const urlCompanyId = urlParams.get('company_id')
-    const urlUserType = urlParams.get('type')
-    
-    // If token in URL, store it and clean URL
-    if (urlToken && urlUserId && urlCompanyId) {
-      localStorage.setItem('token', urlToken)
-      localStorage.setItem('user_id', urlUserId)
-      localStorage.setItem('company_id', urlCompanyId)
-      localStorage.setItem('userType', urlUserType || 'user')
-      
-      // Clean URL (remove params)
+    if (urlParams.has('token')) {
       window.history.replaceState({}, '', '/dashboard')
-      
-      setToken(urlToken)
-      setUserId(urlUserId)
-      setCompanyId(urlCompanyId)
-      setUserRole(urlUserType || 'user')
-      
-      loadProjects(urlCompanyId, urlToken)
-      return
     }
     
-    // Otherwise check localStorage
-    const storedToken = localStorage.getItem('token')
+    // Check localStorage for UI display data
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedUserRole = localStorage.getItem('userType')
-    
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setUserRole(storedUserRole)
-    
-    if (storedCompanyId) {
-      loadProjects(storedCompanyId, storedToken)
-    }
+
+    // Verify auth by calling API (cookie will be sent automatically)
+    fetchWithAuth('/api/auth/me')
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+
+        setUserId(String(data.user_id))
+        setUserRole(data.type)
+        localStorage.setItem('user_id', String(data.user_id))
+        localStorage.setItem('userType', data.type)
+
+        // Check onboarding status for regular users
+        if (data.type !== 'super_admin') {
+          fetchWithAuth('/api/onboarding/status')
+            .then(res => res.ok ? res.json() : null)
+            .then(onboardingData => {
+              if (onboardingData && !onboardingData.onboarding_completed) {
+                window.location.href = '/onboarding'
+              }
+              if (onboardingData && onboardingData.account_category) {
+                setAccountCategory(onboardingData.account_category)
+              }
+            })
+            .catch(err => console.error('Failed to check onboarding:', err))
+        }
+
+        loadProjects()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
   // Close dropdowns when clicking outside
@@ -288,12 +303,11 @@ export default function DashboardLayout({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const loadProjects = async (companyId: string, authToken: string) => {
+  const loadProjects = async () => {
     setLoadingProjects(true)
     try {
-      const response = await fetch(
-        `/api/projects/?company_id=${companyId}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      const response = await fetchWithAuth(
+        '/api/projects/'
       )
       
       if (response.ok) {
@@ -331,6 +345,13 @@ export default function DashboardLayout({
     setShowProjectDropdown(false)
     // Trigger page refresh to load new project data
     window.dispatchEvent(new CustomEvent('activeProjectChanged', { detail: project }))
+
+    // Auto-redirect based on project type
+    if (project.project_type === 'dynamic_content' && pathname?.includes('form-pages-discovery')) {
+      router.push('/dashboard/test-pages')
+    } else if (project.project_type === 'enterprise' && pathname?.includes('test-pages')) {
+      router.push('/dashboard/form-pages-discovery')
+    }
   }
 
   const handleAddProject = async () => {
@@ -343,21 +364,20 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         '/api/projects/',
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
-            company_id: parseInt(companyId!),
             product_id: 1,
-            user_id: parseInt(userId!)
+            project_type: accountCategory === 'form_centric' ? 'enterprise'
+                        : accountCategory === 'dynamic' ? 'dynamic_content'
+                        : newProjectType
           })
+
         }
       )
       
@@ -367,12 +387,13 @@ export default function DashboardLayout({
         setShowAddProjectModal(false)
         setNewProjectName('')
         setNewProjectDescription('')
-        loadProjects(companyId!, token!)
+        setNewProjectType('enterprise')
+        loadProjects()
         // Auto-select the new project
         selectProject(newProject)
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to create project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to create project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -388,11 +409,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
-        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
+      const response = await fetchWithAuth(
+        `/api/projects/${projectToDelete.id}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -408,10 +428,10 @@ export default function DashboardLayout({
           localStorage.removeItem('active_project_name')
         }
         
-        loadProjects(companyId!, token!)
+        loadProjects()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -430,9 +450,8 @@ export default function DashboardLayout({
     setLoadingNetworks(true)
     
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       
       if (response.ok) {
@@ -454,9 +473,12 @@ export default function DashboardLayout({
     setAddNetworkType(type)
     setNetworkName('')
     setNetworkUrl('')
-    setNetworkUsername('')
-    setNetworkPassword('')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setEditingNetwork(null)
     setShowAddNetworkModal(true)
   }
@@ -466,9 +488,12 @@ export default function DashboardLayout({
     setAddNetworkType(network.network_type as 'qa' | 'staging' | 'production')
     setNetworkName(network.name)
     setNetworkUrl(network.url)
-    setNetworkUsername(network.login_username || '')
-    setNetworkPassword(network.login_password || '')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setShowAddNetworkModal(true)
   }
 
@@ -484,20 +509,18 @@ export default function DashboardLayout({
     try {
       const url = editingNetwork
         ? `/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
-        : `/api/projects/${activeProject!.id}/networks?user_id=${userId}`
-      
-      const response = await fetch(url, {
+        : `/api/projects/${activeProject!.id}/networks`
+
+      const response = await fetchWithAuth(url, {
         method: editingNetwork ? 'PUT' : 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: networkName.trim(),
           url: networkUrl.trim(),
           network_type: addNetworkType,
-          login_username: networkUsername.trim() || null,
-          login_password: networkPassword.trim() || null
+          ...(credentialsChanged.username && { login_username: networkUsername.trim() || null }),
+          ...(credentialsChanged.password && { login_password: networkPassword.trim() || null }),
+          ...(credentialsChanged.totp && { totp_secret: totpSecret.trim() || null })
         })
       })
       
@@ -509,7 +532,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to save network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to save network'))
       }
     } catch (err) {
       setError('Connection error')
@@ -525,11 +548,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -540,7 +562,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete network'))
       }
     } catch (err) {
       setError('Connection error')
@@ -549,7 +571,14 @@ export default function DashboardLayout({
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetchWithAuth('/api/auth/logout', {
+        method: 'POST'
+      })
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
     localStorage.clear()
     window.location.href = '/login'
   }
@@ -581,7 +610,7 @@ export default function DashboardLayout({
     </div>
   )
 
-  if (!token) return (
+  if (!userId) return (
     <div style={{ 
       minHeight: '100vh', 
       background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
@@ -740,28 +769,32 @@ export default function DashboardLayout({
           
           <div style={{ width: '1px', height: '40px', background: isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' }} />
           
-          {/* AI Usage Indicator */}
+          {/* AI Usage Indicator - Only for Early Access (not BYOK) */}
           {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
-            <div 
+            <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '15px'
-              }} 
-              title={`AI Usage: $${aiUsed} / $${aiBudget}`}
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                padding: '8px 16px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '10px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`
+              }}
+              title={`AI Usage: ${Math.round(aiUsed)} / ${aiBudget} actions`}
             >
-              <span style={{ 
-                fontSize: '16px',
+              <span style={{
+                fontSize: '12px',
                 color: getTheme().colors.textSecondary,
-                fontWeight: 600
-              }}>AI:</span>
-              <span style={{ 
+                fontWeight: 600,
+                marginBottom: '2px'
+              }}>AI Trial Usage</span>
+              <span style={{
                 color: aiUsed >= aiBudget ? '#ef4444' : aiUsed >= aiBudget * 0.8 ? '#f59e0b' : '#10b981',
                 fontWeight: 700,
-                fontSize: '16px'
+                fontSize: '14px'
               }}>
-                {Math.round(aiUsed)} / {aiBudget}
+                Used: {Math.round(aiUsed)} of {aiBudget} actions
               </span>
             </div>
           )}
@@ -825,27 +858,93 @@ export default function DashboardLayout({
             <span>⬇️</span> Download Agent
           </button>
           
-          {/* Logout */}
-          <button 
-            onClick={handleLogout} 
-            className="top-btn" 
-            style={{
-              background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
-              borderRadius: '12px',
-              padding: '12px 22px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: getTheme().colors.textPrimary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Logout
-          </button>
+          {/* User Menu Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
+              className="top-btn"
+              style={{
+                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '12px',
+                padding: '12px 22px',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: getTheme().colors.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>👤</span>
+              <span>Account</span>
+              <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
+            </button>
+
+            {showUserDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '8px',
+                background: isLightTheme() ? 'rgba(255,255,255,0.98)' : 'rgba(30,41,59,0.98)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '12px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                minWidth: '180px',
+                overflow: 'hidden',
+                zIndex: 1000
+              }}>
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    router.push('/settings')
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: getTheme().colors.textPrimary,
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>⚙️</span> Settings
+                </div>
+                <div style={{ height: '1px', background: isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }} />
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    handleLogout()
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: '#ef4444',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>🚪</span> Logout
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -921,7 +1020,13 @@ export default function DashboardLayout({
             {/* Project-specific tabs */}
             {[
               { id: 'project-dashboard', path: '/dashboard/project-dashboard', icon: '📊', label: 'Dashboard' },
-              { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+              ...(activeProject?.project_type === 'dynamic_content'
+                ? [{ id: 'test-pages', path: '/dashboard/test-pages', icon: '🧪', label: 'Test Pages' }]
+                : [
+    { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+    { id: 'custom-tests', path: '/dashboard/custom-tests', icon: '🧪', label: 'Custom Tests' }
+  ]
+              ),
               { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
               { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },
               { id: 'test-sites', path: '/dashboard/test-sites', icon: '🌐', label: 'Test Sites' },
@@ -1155,11 +1260,68 @@ export default function DashboardLayout({
                   style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
                 />
               </div>
+
+              {/* Only show project type selection if accountCategory is null (legacy users) */}
+              {accountCategory === null && (
+              <div style={{ marginBottom: '8px' }}>
+                <label style={labelStyle}>Project Type *</label>
+                <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'enterprise' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'enterprise' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="enterprise"
+                      checked={newProjectType === 'enterprise'}
+                      onChange={() => setNewProjectType('enterprise')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🏢 Enterprise Forms</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Auto-discover forms, multi-path mapping</div>
+                    </div>
+                  </label>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'dynamic_content' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'dynamic_content' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="dynamic_content"
+                      checked={newProjectType === 'dynamic_content'}
+                      onChange={() => setNewProjectType('dynamic_content')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🧪 Dynamic Content</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Manual test pages, natural language tests</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              )}
             </div>
             
             <div style={modalFooterStyle}>
               <button
-                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription('') }}
+                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription(''); setNewProjectType('enterprise') }}
                 style={secondaryButtonStyle}
               >
                 Cancel
@@ -1322,8 +1484,11 @@ export default function DashboardLayout({
                 <input
                   type="text"
                   value={networkUsername}
-                  onChange={(e) => setNetworkUsername(e.target.value)}
-                  placeholder="Username for auto-login"
+                  onChange={(e) => {
+                    setNetworkUsername(e.target.value)
+                    setCredentialsChanged(prev => ({...prev, username: true}))
+                  }}
+                  placeholder={editingNetwork?.login_username ? "Configured ✓ (enter new to change)" : "Username for auto-login"}
                   style={inputStyle}
                 />
               </div>
@@ -1334,13 +1499,18 @@ export default function DashboardLayout({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={networkPassword}
-                    onChange={(e) => setNetworkPassword(e.target.value)}
-                    placeholder="Password for auto-login"
+                    onChange={(e) => {
+                      setNetworkPassword(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, password: true}))
+                    }}
+                    placeholder={editingNetwork?.login_password ? "Configured ✓ (enter new to change)" : "Password for auto-login"}
                     style={{ ...inputStyle, paddingRight: '50px' }}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => {
+                      if (networkPassword !== '********') setShowPassword(!showPassword)
+                    }}
                     style={{
                       position: 'absolute',
                       right: '12px',
@@ -1350,12 +1520,52 @@ export default function DashboardLayout({
                       border: 'none',
                       color: '#64748b',
                       cursor: 'pointer',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      display: networkPassword === '********' ? 'none' : 'block'
                     }}
                   >
                     {showPassword ? '🙈' : '👁️'}
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>TOTP Secret (optional - for 2FA)</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTotpSecret ? 'text' : 'password'}
+                    value={totpSecret}
+                    onChange={(e) => {
+                      setTotpSecret(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, totp: true}))
+                    }}
+                    placeholder={editingNetwork?.totp_secret ? "Configured ✓ (enter new to change)" : "TOTP secret for 2FA"}
+                    style={{ ...inputStyle, paddingRight: '50px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (totpSecret !== '********') setShowTotpSecret(!showTotpSecret)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      display: totpSecret === '********' ? 'none' : 'block'
+                    }}
+                  >
+                    {showTotpSecret ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  Enter the TOTP secret key (not the QR code) for automated 2FA login
+                </p>
               </div>
             </div>
             

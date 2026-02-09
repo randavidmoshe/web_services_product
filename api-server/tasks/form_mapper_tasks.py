@@ -148,6 +148,20 @@ def _continue_orchestrator_chain(session_id: str, task_name: str, result: Dict):
             logger.info(f"[FormMapperTask] Session {session_id} was cancelled, skipping {task_name} result")
             return {"success": False, "cancelled": True}
 
+        # Version check — discard stale task results
+        try:
+            dispatched_version_raw = redis_client.get(f"mapper_task_version:{session_id}")
+            current_version_raw = redis_client.hget(f"mapper_session:{session_id}", "session_version")
+            dispatched_version = int(dispatched_version_raw) if dispatched_version_raw else 0
+            current_version = int(current_version_raw) if current_version_raw else 0
+            if dispatched_version < current_version:
+                logger.warning(
+                    f"[FormMapperTask] Discarding stale {task_name} result for session {session_id} "
+                    f"(task version {dispatched_version} < current {current_version})")
+                return {"success": False, "stale": True}
+        except Exception as e:
+            logger.debug(f"[FormMapperTask] Version check skipped: {e}")
+
         orchestrator = FormMapperOrchestrator(redis_client, db)
         response = orchestrator.process_celery_result(session_id, task_name, result)
         
@@ -192,9 +206,19 @@ def _trigger_celery_task(task_name: str, celery_args: dict, countdown: int = Non
         "verify_dynamic_step_visual": verify_dynamic_step_visual,
         "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
     }
-    
+
     task = task_map.get(task_name)
     if task:
+        # Snapshot session version before dispatch (stale result detection)
+        session_id = celery_args.get("session_id")
+        if session_id:
+            try:
+                redis_client = _get_redis_client()
+                version_raw = redis_client.hget(f"mapper_session:{session_id}", "session_version")
+                version = int(version_raw) if version_raw else 0
+                redis_client.set(f"mapper_task_version:{session_id}", version, ex=3600)
+            except Exception:
+                pass  # Non-critical — version check is defense-in-depth
         if countdown:
             task.apply_async(kwargs=celery_args, countdown=countdown)
         else:
@@ -2217,10 +2241,25 @@ def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
         ).all()
 
         count = len(stale_sessions)
+        redis_client = _get_redis_client()
         for session in stale_sessions:
             session.status = "failed"
             session.last_error = f"Session timed out after {timeout_hours} hours"
             session.completed_at = datetime.utcnow()
+
+            # Clean up Redis keys for this session
+            sid = str(session.id)
+            redis_client.delete(
+                f"mapper_session:{sid}",
+                f"mapper_dom:{sid}",
+                f"mapper_screenshot:{sid}",
+                f"mapper_screenshot_before:{sid}",
+                f"mapper_lock:{sid}",
+            )
+            # Clean up agent queue if user_id available
+            if session.user_id:
+                redis_client.delete(f"agent:{session.user_id}")
+            logger.info(f"[MapperTasks] Cleaned Redis keys for stale session {sid}")
 
         db.commit()
         logger.info(f"[MapperTasks] Cleaned up {count} stale sessions")
@@ -2232,6 +2271,78 @@ def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
     finally:
         db.close()
 
+@shared_task(name="tasks.detect_stuck_mapper_sessions")
+def detect_stuck_mapper_sessions():
+    """
+    Periodic task: detect sessions stuck waiting for agent response.
+    If mapper_agent_active:{session_id} expired (agent hasn't responded in 3 min),
+    fail the session. Runs every 60 seconds via Celery beat.
+    """
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    try:
+        from models.form_mapper_models import FormMapperSession
+        from datetime import datetime
+
+        # Agent-waiting states — session expects an agent response
+        agent_waiting_states = {
+            "extracting_initial_dom", "getting_initial_screenshot",
+            "executing_step", "step_failed_extracting_dom",
+            "alert_extracting_dom", "alert_navigating_back",
+            "dom_change_navigating_back", "dom_change_getting_screenshot",
+            "dom_change_getting_dom", "validation_error_getting_dom",
+            "next_path_navigating",
+            "junction_getting_before_screenshot", "junction_getting_after_screenshot",
+            "visual_page_getting_screenshot", "dynamic_verify_getting_screenshot",
+        }
+
+        # Get all running sessions from DB
+        running_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.status.in_(["running", "initializing", "pending"])
+        ).all()
+
+        failed_count = 0
+        for session in running_sessions:
+            sid = str(session.id)
+            # Check Redis session state
+            state_raw = redis_client.hget(f"mapper_session:{sid}", "state")
+            if not state_raw:
+                continue
+            state = state_raw.decode() if isinstance(state_raw, bytes) else state_raw
+
+            if state not in agent_waiting_states:
+                continue  # Session is waiting for Celery (AI), not agent
+
+            # Check if agent heartbeat key exists
+            if not redis_client.exists(f"mapper_agent_active:{sid}"):
+                # Agent hasn't responded in 3+ minutes — fail session via orchestrator
+                from services.form_mapper_orchestrator import FormMapperOrchestrator
+                orchestrator = FormMapperOrchestrator(redis_client, db)
+                orchestrator._fail_session(sid, "Agent unresponsive — no response for 3+ minutes")
+                failed_count += 1
+
+                # Clean up Redis keys immediately
+                redis_client.delete(
+                    f"mapper_session:{sid}",
+                    f"mapper_dom:{sid}",
+                    f"mapper_screenshot:{sid}",
+                    f"mapper_screenshot_before:{sid}",
+                    f"mapper_lock:{sid}",
+                    f"mapper_agent_active:{sid}",
+                )
+
+
+        if failed_count:
+            db.commit()
+            logger.info(f"[MapperTasks] Failed {failed_count} stuck sessions (agent unresponsive)")
+        return {"failed": failed_count, "checked": len(running_sessions)}
+
+    except Exception as e:
+        logger.error(f"[MapperTasks] Stuck session detection failed: {e}", exc_info=True)
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
 
 def _cleanup_previous_mapping_results(db, form_page_route_id: int) -> int:
     """

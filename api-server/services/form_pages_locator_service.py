@@ -27,6 +27,16 @@ from models.database import (
 from services.form_pages_ai_helper import FormPagesAIHelper
 from services.ai_budget_service import get_budget_service, BudgetExceededError, AccessDeniedError
 
+import os
+import redis as redis_lib
+
+_locator_redis_pool = redis_lib.ConnectionPool(
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    db=0,
+    max_connections=20
+)
+
 
 
 
@@ -87,17 +97,7 @@ class FormPagesLocatorService:
             BudgetExceededError if budget exceeded
             AccessDeniedError if access denied (pending, expired, etc.)
         """
-        redis_client = None
-        try:
-            import redis
-            import os
-            redis_client = redis.Redis(
-                host=os.getenv("REDIS_HOST", "redis"),
-                port=int(os.getenv("REDIS_PORT", 6379)),
-                db=0
-            )
-        except:
-            pass
+        redis_client = redis_lib.Redis(connection_pool=_locator_redis_pool)
 
         budget_service = get_budget_service(redis_client)
         has_budget, remaining, total = budget_service.check_budget(

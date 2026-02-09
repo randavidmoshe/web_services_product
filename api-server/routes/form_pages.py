@@ -19,7 +19,7 @@ from services.encryption_service import mask_credential
 from models.database import get_db, FormPageRoute, CrawlSession, Network
 from models.agent_models import Agent, AgentTask
 from utils.auth_helpers import get_current_user_from_request
-
+from routes.agent_router import validate_jwt_and_session
 
 def mask_login_stages(stages: list) -> list:
     """
@@ -187,6 +187,7 @@ async def locate_form_pages(
         'user_id': user_id
     })
     redis_client.rpush(queue_name, redis_message)
+    redis_client.ltrim(queue_name, 0, 49)
     
     return {
         "crawl_session_id": task_params["crawl_session_id"],
@@ -227,6 +228,7 @@ async def get_crawl_session(session_id: int, request: Request, db: Session = Dep
 async def update_crawl_session(
     session_id: int,
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Update crawl session status (called by agent)"""
@@ -520,6 +522,7 @@ async def update_logout_stages(
 @router.post("/routes")
 async def create_form_route(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Create a new form route (called by agent)"""
@@ -637,6 +640,7 @@ async def build_hierarchy(
 @router.post("/ai/login-steps")
 async def generate_login_steps(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Generate login automation steps using AI"""
@@ -695,6 +699,7 @@ async def generate_login_steps(
 @router.post("/ai/logout-steps")
 async def generate_logout_steps(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Generate logout automation steps using AI"""
@@ -740,6 +745,7 @@ async def generate_logout_steps(
 @router.post("/ai/form-name")
 async def extract_form_name(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Extract semantic form name using AI"""
@@ -784,6 +790,7 @@ async def extract_form_name(
 @router.post("/ai/parent-fields")
 async def extract_parent_fields(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Extract parent reference fields using AI"""
@@ -821,6 +828,7 @@ async def extract_parent_fields(
 @router.post("/ai/ui-defects")
 async def verify_ui_defects(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Check for UI defects using AI Vision"""
@@ -857,6 +865,7 @@ async def verify_ui_defects(
 @router.post("/ai/is-submission-button")
 async def is_submission_button(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Determine if button is a form submission button"""
@@ -898,6 +907,7 @@ async def is_submission_button(
 @router.post("/ai/navigation-clickables")
 async def get_navigation_clickables(
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Ask AI to identify navigation clickables from screenshot"""
@@ -934,6 +944,7 @@ async def get_navigation_clickables(
 async def save_api_usage(
     session_id: int,
     data: Dict[str, Any] = Body(...),
+    agent: Agent = Depends(validate_jwt_and_session),
     db: Session = Depends(get_db)
 ):
     """Save API usage for a crawl session"""

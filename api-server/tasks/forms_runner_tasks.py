@@ -356,6 +356,7 @@ def _execute_step_via_agent(session_id: str, stage: Dict, user_id: int, log_mess
     agent_queue_key = f"agent:{user_id}"
     logger.info(f"[FormsRunner] DEBUG: Pushing to queue {agent_queue_key}")
     result = redis_client.lpush(agent_queue_key, json.dumps(task))
+    redis_client.ltrim(agent_queue_key, 0, 49)  # Cap queue at 50 tasks
     logger.info(f"[FormsRunner] DEBUG: lpush result: {result}")
     
     # Wait for result (with timeout)
@@ -433,13 +434,17 @@ def _handle_step_failure(redis_client, session_id: str, state: Dict, result: Dic
         "status": "recovering",
         "last_error": error
     })
-    
-    # Trigger AI recovery
+
+    # Store large data in Redis (not Celery kwargs — SQS 256KB limit)
+    if result.get("dom_html"):
+        redis_client.setex(f"runner_dom:{session_id}", 7200, result.get("dom_html", ""))
+    if result.get("screenshot_base64"):
+        redis_client.setex(f"runner_screenshot:{session_id}", 7200, result.get("screenshot_base64", ""))
+
+    # Trigger AI recovery (lightweight kwargs only)
     analyze_runner_error.delay(
         session_id=session_id,
         failed_stage=current_stage,
-        dom_html=result.get("dom_html", ""),
-        screenshot_base64=result.get("screenshot_base64", ""),
         all_stages=stages,
         error_message=error
     )
@@ -498,8 +503,6 @@ def analyze_runner_error(
     self,
     session_id: str,
     failed_stage: Dict,
-    dom_html: str,
-    screenshot_base64: str,
     all_stages: List[Dict],
     error_message: str
 ) -> Dict:
@@ -511,6 +514,13 @@ def analyze_runner_error(
     logger.info(f"[FormsRunner] AI analyzing error for session {session_id}")
     
     redis_client = _get_redis_client()
+
+    # Read large data from Redis (stored by _handle_step_failure)
+    dom_raw = redis_client.get(f"runner_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
+    screenshot_raw = redis_client.get(f"runner_screenshot:{session_id}")
+    screenshot_base64 = screenshot_raw.decode() if isinstance(screenshot_raw, bytes) else (screenshot_raw or "")
+
     db = _get_db_session()
 
     # Structured logging

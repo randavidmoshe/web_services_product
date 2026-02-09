@@ -5,27 +5,42 @@
 # IMPORTANT: Each task calls orchestrator.process_celery_result() after completion
 # to continue the state machine chain.
 
+import redis
 import os
 import json
+from services.encryption_service import get_decrypted_api_key
 import logging
 from celery_app import celery
 from celery import shared_task
 from typing import Dict, Optional, List
 from services.ai_form_mapper_main_prompter import AIParseError
 from services.session_logger import SessionLogger, get_session_logger, ActivityType
+from services.ai_budget_service import BudgetExceededError, AccessDeniedError
 logger = logging.getLogger(__name__)
 
 
+#def _get_redis_client():
+#    """Get Redis client with connection pooling"""
+#    import redis
+#    pool = redis.ConnectionPool(
+#        host=os.getenv("REDIS_HOST", "redis"),
+#        port=int(os.getenv("REDIS_PORT", 6379)),
+#        db=0,
+#        max_connections=50
+#    )
+#    return redis.Redis(connection_pool=pool)
+
+# Module-level shared connection pool — created ONCE per worker process, reused by all tasks
+_redis_pool = redis.ConnectionPool(
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    db=0,
+    max_connections=50
+)
+
 def _get_redis_client():
-    """Get Redis client with connection pooling"""
-    import redis
-    pool = redis.ConnectionPool(
-        host=os.getenv("REDIS_HOST", "redis"),
-        port=int(os.getenv("REDIS_PORT", 6379)),
-        db=0,
-        max_connections=50
-    )
-    return redis.Redis(connection_pool=pool)
+    """Get Redis client from shared connection pool"""
+    return redis.Redis(connection_pool=_redis_pool)
 
 
 def _get_db_session():
@@ -36,7 +51,7 @@ def _get_db_session():
 
 def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
     """Check budget and get API key."""
-    from services.ai_budget_service import get_budget_service, BudgetExceededError
+    from services.ai_budget_service import get_budget_service, BudgetExceededError, AccessDeniedError
     from models.database import CompanyProductSubscription
     
     redis_client = _get_redis_client()
@@ -46,15 +61,19 @@ def _check_budget_and_get_api_key(db, company_id: int, product_id: int) -> str:
     
     if not has_budget:
         raise BudgetExceededError(company_id, total, total - remaining)
-    
+
+    # Note: AccessDeniedError is raised automatically by check_budget()
+    # for pending access, expired trial, missing API key, etc.
+
     subscription = db.query(CompanyProductSubscription).filter(
         CompanyProductSubscription.company_id == company_id,
         CompanyProductSubscription.product_id == product_id
     ).first()
-    
+
     if subscription and subscription.customer_claude_api_key:
-        return subscription.customer_claude_api_key
-    
+        # Decrypt the API key (uses Redis cache for performance)
+        return get_decrypted_api_key(company_id, subscription.customer_claude_api_key)
+
     return os.getenv("ANTHROPIC_API_KEY")
 
 
@@ -106,7 +125,8 @@ def _get_session_context(redis_client, session_id: str) -> Dict:
         "company_name": company_name,
         "mapping_type": decoded.get("mapping_type", "form"),
         "test_case_description": decoded.get("test_case_description", ""),
-        "test_page_route_id": int(decoded.get("test_page_route_id", 0))
+        "test_page_route_id": int(decoded.get("test_page_route_id", 0)),
+        "test_scenario_id": int(decoded.get("test_scenario_id", 0)) or None
     }
 
 
@@ -169,6 +189,7 @@ def _trigger_celery_task(task_name: str, celery_args: dict, countdown: int = Non
         "save_mapping_result": save_mapping_result,
         "verify_junction_visual": verify_junction_visual,
         "verify_page_visual": verify_page_visual,
+        "verify_dynamic_step_visual": verify_dynamic_step_visual,
         "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
     }
     
@@ -229,8 +250,6 @@ def _build_junction_instructions_text(junction_instructions) -> str:
 def analyze_form_page(
     self,
     session_id: str,
-    dom_html: str,
-    screenshot_base64: str,
     test_cases: list,
     current_path: int = 1,
     enable_junction_discovery: bool = True,
@@ -250,6 +269,14 @@ def analyze_form_page(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -275,14 +302,6 @@ def analyze_form_page(
         #helpers = create_ai_helpers(api_key, session_logger=log)
         
         #ai_helper = helpers["form_mapper"]
-
-        # Select AI helper based on mapping type
-        #if ctx.get("mapping_type") == "dynamic_content":
-        #    from services.ai_dynamic_content_prompter import DynamicContentAIHelper
-        #    ai_helper = DynamicContentAIHelper(api_key, session_logger=log)
-        #else:
-        #    ai_helper = helpers["form_mapper"]
-
         logger.info(f"[FormMapperTask] Screenshot size: {len(screenshot_base64) if screenshot_base64 else 0}")
         msg = f"!!!! 🤖 Entering AI for Generating steps ..."
         print(msg)
@@ -304,37 +323,21 @@ def analyze_form_page(
         msg = f"!!!! Generating steps: test_cases: {test_cases}"
         print(msg)
         log.debug(msg, category="debug_trace")
-        #ai_result = ai_helper.generate_test_steps(
-        #    dom_html=dom_html,
-        #    test_cases=test_cases,
-        #    screenshot_base64=screenshot_base64,
-        #    critical_fields_checklist=critical_fields_checklist or {},
-        #   field_requirements=field_requirements or "",
-        #    junction_instructions=_build_junction_instructions_text(
-        #        junction_instructions) if junction_instructions else None,
-        #    user_provided_inputs=user_provided_inputs or {},
-        #    is_first_iteration=True
-        #)
-
-        # Call appropriate AI based on mapping type
-        if ctx.get("mapping_type") == "dynamic_content":
-            ai_result = ai_helper.generate_test_steps(
-                dom_html=dom_html,
-                screenshot_base64=screenshot_base64,
-                test_case_description=ctx.get("test_case_description", "")
-            )
-        else:
-            ai_result = ai_helper.generate_test_steps(
-                dom_html=dom_html,
-                test_cases=test_cases,
-                screenshot_base64=screenshot_base64,
-                critical_fields_checklist=critical_fields_checklist or {},
-                field_requirements=field_requirements or "",
-                junction_instructions=_build_junction_instructions_text(
-                    junction_instructions) if junction_instructions else None,
-                user_provided_inputs=user_provided_inputs or {},
-                is_first_iteration=True
-            )
+        ai_result = generate_steps_for_mapping(
+            mapping_type=ctx.get("mapping_type", "form"),
+            api_key=api_key,
+            session_logger=log,
+            dom_html=dom_html,
+            test_cases=test_cases,
+            screenshot_base64=screenshot_base64,
+            critical_fields_checklist=critical_fields_checklist or {},
+            field_requirements=field_requirements or "",
+            junction_instructions=_build_junction_instructions_text(
+                junction_instructions) if junction_instructions else None,
+            user_provided_inputs=user_provided_inputs or {},
+            is_first_iteration=True,
+            test_case_description=ctx.get("test_case_description", "")
+        )
 
         #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:"
@@ -383,6 +386,11 @@ def analyze_form_page(
         _continue_orchestrator_chain(session_id, "analyze_form_page", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "analyze_form_page", result)
+        return result
+
     except AIParseError as e:
         msg = f"!!!! ❌ AI parse failed: {e}"
         print(msg)
@@ -414,8 +422,6 @@ def analyze_failure_and_recover(
     session_id: str,
     failed_step: Dict,
     executed_steps: List[Dict],
-    fresh_dom: str,
-    screenshot_base64: str,
     test_cases: List[Dict],
     test_context: Dict,
     attempt_number: int = 1,
@@ -428,6 +434,14 @@ def analyze_failure_and_recover(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    fresh_dom = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -447,11 +461,12 @@ def analyze_failure_and_recover(
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
             return result
-        
-        from services.form_mapper_ai_helpers import create_ai_helpers
-        helpers = create_ai_helpers(api_key, session_logger=log)
-        
-        ai_helper = helpers["form_mapper"]
+
+        from services.ai_helper_factory import recover_from_failure_for_mapping
+        #from services.form_mapper_ai_helpers import create_ai_helpers
+        #helpers = create_ai_helpers(api_key, session_logger=log)
+
+        #ai_helper = helpers["form_mapper"]
         
         recovery_context = {
             "failed_step": failed_step,
@@ -498,7 +513,10 @@ def analyze_failure_and_recover(
         if recovery_failure_history:
             error_message = recovery_failure_history[-1].get('error', '')
 
-        recovery_result = ai_helper.analyze_failure_and_recover(
+        recovery_result = recover_from_failure_for_mapping(
+            mapping_type=ctx.get("mapping_type", "form"),
+            api_key=api_key,
+            session_logger=log,
             failed_step=failed_step,
             executed_steps=executed_steps,
             fresh_dom=fresh_dom,
@@ -507,7 +525,8 @@ def analyze_failure_and_recover(
             test_context=test_context,
             attempt_number=attempt_number,
             recovery_failure_history=recovery_failure_history,
-            error_message=error_message
+            error_message=error_message,
+            test_case_description=ctx.get("test_case_description", "")
         )
 
         # Check if validation errors were detected
@@ -543,7 +562,7 @@ def analyze_failure_and_recover(
         log.debug(f"!!! Recovery generated {len(ai_result.get('steps', []))} steps", category="ai_response",
                   steps_count=len(ai_result.get('steps', [])))
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -579,6 +598,11 @@ def analyze_failure_and_recover(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
         return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "analyze_failure_and_recover", result)
+        return result
         
     except Exception as e:
         msg = f"!!!! ❌ Failure analysis failed: {e}"
@@ -601,8 +625,6 @@ def handle_alert_recovery(
     session_id: str,
     alert_info: Dict,
     executed_steps: List[Dict],
-    dom_html: str,
-    screenshot_base64: Optional[str],
     test_cases: List[Dict],
     test_context: Dict,
     step_where_alert_appeared: int,
@@ -616,6 +638,14 @@ def handle_alert_recovery(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -704,6 +734,11 @@ def handle_alert_recovery(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
         return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "handle_alert_recovery", result)
+        return result
         
     except Exception as e:
         msg = f"!!!! ❌ Alert recovery failed: {e}"
@@ -725,8 +760,6 @@ def handle_validation_error_recovery(
         self,
         session_id: str,
         executed_steps: List[Dict],
-        dom_html: str,
-        screenshot_base64: Optional[str],
         test_cases: List[Dict],
         test_context: Dict
 ):
@@ -737,6 +770,14 @@ def handle_validation_error_recovery(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -805,6 +846,11 @@ def handle_validation_error_recovery(
         _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "handle_validation_error_recovery", result)
+        return result
+
     except Exception as e:
         msg = f"!!!! ❌ Validation error recovery failed: {e}"
         print(msg)
@@ -825,7 +871,6 @@ def handle_validation_error_recovery(
 def verify_ui_visual(
     self,
     session_id: str,
-    screenshot_base64: str,
     previously_reported_issues: Optional[List[str]] = None
 ) -> Dict:
     """Celery task: Visual UI verification with AI."""
@@ -836,6 +881,10 @@ def verify_ui_visual(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -855,29 +904,19 @@ def verify_ui_visual(
             _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
             return result
         
-        from services.form_mapper_ai_helpers import create_ai_helpers
-        helpers = create_ai_helpers(api_key, session_logger=log)
+        #from services.form_mapper_ai_helpers import create_ai_helpers
+        from services.ai_helper_factory import verify_visual_for_mapping
+        #helpers = create_ai_helpers(api_key, session_logger=log)
         
         #ai_verifier = helpers["ui_verifier"]
-        #ui_issue = ai_verifier.verify_visual_ui(
-        #    screenshot_base64=screenshot_base64,
-        #    previously_reported_issues=previously_reported_issues
-        #)
-
-        # Select verifier based on mapping type
-        if ctx.get("mapping_type") == "dynamic_content":
-            from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
-            ai_verifier = DynamicContentVerifyHelper(api_key, session_logger=log)
-            ui_issue = ai_verifier.verify_visual(
-                screenshot_base64=screenshot_base64,
-                test_case_description=ctx.get("test_case_description", "")
-            )
-        else:
-            ai_verifier = helpers["ui_verifier"]
-            ui_issue = ai_verifier.verify_visual_ui(
-                screenshot_base64=screenshot_base64,
-                previously_reported_issues=previously_reported_issues
-            )
+        ui_issue = verify_visual_for_mapping(
+            mapping_type=ctx.get("mapping_type", "form"),
+            api_key=api_key,
+            session_logger=log,
+            screenshot_base64=screenshot_base64,
+            previously_reported_issues=previously_reported_issues,
+            test_case_description=ctx.get("test_case_description", "")
+        )
         
         input_tokens = len(screenshot_base64) // 100 + 500
         output_tokens = len(ui_issue) // 4 if ui_issue else 0
@@ -900,6 +939,11 @@ def verify_ui_visual(
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
         _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
         return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "verify_ui_visual", result)
+        return result
         
     except Exception as e:
         msg = f"!!!! ❌ UI verification failed: {e}"
@@ -920,11 +964,9 @@ def verify_ui_visual(
 def regenerate_steps(
     self,
     session_id: str,
-    dom_html: str,
     executed_steps: List[Dict],
     test_cases: List[Dict],
     test_context: Dict,
-    screenshot_base64: Optional[str] = None,
     critical_fields_checklist: Optional[Dict] = None,
     field_requirements: Optional[str] = None,
     enable_junction_discovery: bool = True,
@@ -939,6 +981,14 @@ def regenerate_steps(
     
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
     
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -958,11 +1008,11 @@ def regenerate_steps(
             result = {"success": False, "error": "No API key available"}
             _continue_orchestrator_chain(session_id, "regenerate_steps", result)
             return result
+        from services.ai_helper_factory import regenerate_steps_for_mapping
+        #from services.form_mapper_ai_helpers import create_ai_helpers
+        #helpers = create_ai_helpers(api_key, session_logger=log)
         
-        from services.form_mapper_ai_helpers import create_ai_helpers
-        helpers = create_ai_helpers(api_key, session_logger=log)
-        
-        ai_helper = helpers["form_mapper"]
+        #ai_helper = helpers["form_mapper"]
         #print(f"!!!! 🤖 Regen remain steps(regular)...")
         msg = f"!!!! 🤖 Regen remain steps(regular)..."
         print(msg)
@@ -1003,17 +1053,21 @@ def regenerate_steps(
         print(msg)
         log.debug(msg, category="debug_trace")
 
-        ai_result = ai_helper.regenerate_steps(
+        ai_result = regenerate_steps_for_mapping(
+            mapping_type=ctx.get("mapping_type", "form"),
+            api_key=api_key,
+            session_logger=log,
             dom_html=dom_html,
             executed_steps=executed_steps,
+            screenshot_base64=screenshot_base64,
             test_cases=test_cases,
             test_context=test_context,
-            screenshot_base64=screenshot_base64,
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
             junction_instructions=_build_junction_instructions_text(junction_instructions),
             user_provided_inputs=user_provided_inputs or {},
-            retry_message=regenerate_retry_message
+            retry_message=regenerate_retry_message,
+            test_case_description=ctx.get("test_case_description", "")
         )
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
@@ -1022,7 +1076,7 @@ def regenerate_steps(
         log.ai_response("regenerate_steps", success=True)
 
         for s in ai_result.get('steps', []):
-            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')[:40]} | field_name: {s.get('field_name', '')}"
+            msg = f"    !!!! New Step {s.get('step_number', '?')}: {s.get('action', '?')} | {(s.get('selector') or '')[:50]} | {s.get('description', '')} | field_name: {s.get('field_name', '')}"
             print(msg)
             log.debug(msg, category="debug_trace")
             if s.get('is_junction') or s.get('junction_info'):
@@ -1057,6 +1111,11 @@ def regenerate_steps(
         _continue_orchestrator_chain(session_id, "regenerate_steps", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "regenerate_steps", result)
+        return result
+
     except AIParseError as e:
         msg = f"!!!! ❌ AI parse failed (regenerate): {e}"
         print(msg)
@@ -1086,11 +1145,9 @@ def regenerate_steps(
 def regenerate_verify_steps(
         self,
         session_id: str,
-        dom_html: str,
         executed_steps: List[Dict],
         test_cases: List[Dict],
         test_context: Dict,
-        screenshot_base64: Optional[str] = None
 ) -> Dict:
     """Celery task: Regenerate verification steps after Save/Submit."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -1099,6 +1156,14 @@ def regenerate_verify_steps(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    # Fetch DOM from Redis (removed from Celery kwargs — P0 scalability fix)
+    dom_raw = redis_client.get(f"mapper_dom:{session_id}")
+    dom_html = dom_raw.decode() if isinstance(dom_raw, bytes) else (dom_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1190,6 +1255,11 @@ def regenerate_verify_steps(
         _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
         return result
 
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
+        _continue_orchestrator_chain(session_id, "regenerate_verify_steps", result)
+        return result
+
     except AIParseError as e:
         msg = f"!!!! ❌ AI parse failed (verify regenerate): {e}"
         print(msg)
@@ -1219,8 +1289,6 @@ def regenerate_verify_steps(
 def verify_junction_visual(
         self,
         session_id: str,
-        before_screenshot: str,
-        after_screenshot: str,
         step_info: Dict
 ) -> Dict:
     """Celery task: Use AI vision to verify if junction revealed new fields."""
@@ -1228,6 +1296,12 @@ def verify_junction_visual(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch junction screenshots from Redis (removed from Celery kwargs — P0 scalability fix)
+    before_raw = redis_client.get(f"mapper_screenshot_before:{session_id}")
+    before_screenshot = before_raw.decode() if isinstance(before_raw, bytes) else (before_raw or "")
+    after_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    after_screenshot = after_raw.decode() if isinstance(after_raw, bytes) else (after_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1317,7 +1391,6 @@ def verify_junction_visual(
 def verify_page_visual(
         self,
         session_id: str,
-        screenshot_base64: str,
         executed_steps: List[Dict],
         already_verified_fields: List[Dict],
         retry_count: int = 0,
@@ -1328,6 +1401,10 @@ def verify_page_visual(
 
     db = _get_db_session()
     redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
 
     try:
         ctx = _get_session_context(redis_client, session_id)
@@ -1357,11 +1434,23 @@ def verify_page_visual(
         from services.ai_form_mapper_page_visual_verifier import create_page_visual_verifier
         verifier = create_page_visual_verifier(api_key, session_logger=log)
 
+        # Load verification instructions from FormPageRoute
+        verification_instructions = None
+        form_page_route_id = ctx.get("form_route_id")
+        if form_page_route_id:
+            from models.database import FormPageRoute
+            form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+            if form_page and form_page.verification_file_content:
+                verification_instructions = form_page.verification_file_content
+                log.info(f"Loaded verification instructions ({len(verification_instructions)} chars)",
+                         category="ai_routing")
+
         # Call AI to verify page
         ai_result = verifier.verify_page(
             screenshot_base64=screenshot_base64,
             executed_steps=executed_steps,
-            already_verified_fields=already_verified_fields
+            already_verified_fields=already_verified_fields,
+            verification_instructions=verification_instructions
         )
 
         msg = f"!!!! 👁️ Visual Page Verification result: page_ready={ai_result.get('page_ready')}, results_count={len(ai_result.get('results', []))}"
@@ -1415,6 +1504,140 @@ def verify_page_visual(
     finally:
         db.close()
 
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=5)
+def verify_dynamic_step_visual(
+        self,
+        session_id: str,
+        step_description: str,
+        test_case_description: str = "",
+        test_page_route_id: int = 0
+) -> Dict:
+    """Celery task: Visual verification of a verify step for dynamic content."""
+    logger.info(f"[FormMapperTask] Dynamic content verify step for session {session_id}")
+
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+
+    # Fetch screenshot from Redis (removed from Celery kwargs — P0 scalability fix)
+    ss_raw = redis_client.get(f"mapper_screenshot:{session_id}")
+    screenshot_base64 = ss_raw.decode() if isinstance(ss_raw, bytes) else (ss_raw or "")
+
+    try:
+        ctx = _get_session_context(redis_client, session_id)
+        if ctx.get("company_id") is None or ctx.get("company_id") == 0:
+            result = {"success": False, "error": "Session not found"}
+            _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+            return result
+
+        api_key = _check_budget_and_get_api_key(db, ctx["company_id"], ctx["product_id"])
+
+        # Structured logging
+        log = get_session_logger(db_session=None, activity_type=ActivityType.MAPPING.value, session_id=session_id,
+                                 company_id=ctx.get("company_id"), company_name=ctx.get("company_name"))
+        log.info("Celery task: verify_dynamic_step_visual started", category="celery_task")
+
+        msg = f"!!!! 👁️ Dynamic Verify Step for session {session_id}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        if not api_key:
+            result = {"success": False, "error": "No API key available"}
+            _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+            return result
+
+        from services.ai_dynamic_content_verify_prompter import DynamicContentVerifyHelper
+
+        # Fetch reference images and verification instructions
+        reference_images = None
+        verification_instructions = None
+
+        if test_page_route_id:
+            from models.test_page_models import TestPageRoute, TestPageReferenceImage
+            from services.s3_storage import get_s3_files_as_base64_parallel
+
+            # Get test page for verification instructions
+            test_page = db.query(TestPageRoute).filter(TestPageRoute.id == test_page_route_id).first()
+            if test_page:
+                verification_instructions = test_page.verification_file_content
+
+                # Get reference images
+                ref_images_db = db.query(TestPageReferenceImage).filter(
+                    TestPageReferenceImage.test_page_route_id == test_page_route_id,
+                    TestPageReferenceImage.status == "ready"
+                ).all()
+
+                if ref_images_db:
+                    # Fetch all images from S3 in parallel
+                    s3_keys = [img.s3_key for img in ref_images_db]
+                    base64_images = get_s3_files_as_base64_parallel(s3_keys)
+
+                    reference_images = []
+                    for i, img in enumerate(ref_images_db):
+                        if base64_images[i]:
+                            reference_images.append({
+                                "name": img.name,
+                                "base64": base64_images[i]
+                            })
+
+                    log.info(f"Loaded {len(reference_images)} reference images for verification", category="ai_routing")
+
+                if verification_instructions:
+                    log.info(f"Loaded verification instructions ({len(verification_instructions)} chars)",
+                             category="ai_routing")
+
+        verifier = DynamicContentVerifyHelper(api_key, session_logger=log)
+
+        # Call AI to verify step
+        ai_result = verifier.verify_step_visual(
+            screenshot_base64=screenshot_base64,
+            step_description=step_description,
+            test_case_description=test_case_description,
+            reference_images=reference_images,
+            verification_instructions=verification_instructions
+        )
+
+        msg = f"!!!! 👁️ Dynamic Verify Step result: success={ai_result.get('success')}, page_issue={ai_result.get('page_issue', False)}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+
+        logger.info(f"[FormMapperTask] Dynamic verify step result: success={ai_result.get('success')}")
+
+        # Record AI usage
+        from services.ai_budget_service import AIOperationType
+        _record_usage(
+            db, ctx["company_id"], ctx["product_id"], ctx.get("user_id", 0),
+            AIOperationType.FORM_MAPPER_REGENERATE,
+            800,  # Approximate input tokens
+            200,  # Approximate output tokens
+            session_id
+        )
+
+        result = {
+            "success": ai_result.get("success", True),
+            "page_issue": ai_result.get("page_issue", False),
+            "reason": ai_result.get("reason", "")
+        }
+        _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+        return result
+
+    except Exception as e:
+        msg = f"!!!! ❌ Dynamic verify step error: {e}"
+        print(msg)
+        logger.error(f"[FormMapperTask] Dynamic verify step error: {e}")
+        if 'log' in locals():
+            log.error(msg, category="error")
+
+        # On error, continue without verification (don't block mapping)
+        result = {
+            "success": True,
+            "page_issue": False,
+            "reason": f"Verification error: {str(e)} - continuing without verification"
+        }
+        _continue_orchestrator_chain(session_id, "verify_dynamic_step_visual", result)
+        return result
+    finally:
+        db.close()
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=5)
 def trigger_visual_page_screenshot(self, session_id: str) -> Dict:
@@ -1679,18 +1902,39 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
 
         # Check how many paths already exist for this form_page_route
         form_page_route_id = ctx.get("form_route_id")
-        existing_paths = db.query(FormMapResult).filter(
-            FormMapResult.form_page_route_id == form_page_route_id
-        ).count()
+        mapping_type = ctx.get("mapping_type", "form")
+        test_page_route_id = ctx.get("test_page_route_id")
+
+        #existing_paths = db.query(FormMapResult).filter(
+        #    FormMapResult.form_page_route_id == form_page_route_id
+        #).count()
+
+        if mapping_type == "dynamic_content" and test_page_route_id:
+            existing_paths = db.query(FormMapResult).filter(
+                FormMapResult.test_page_route_id == test_page_route_id
+            ).count()
+        else:
+            existing_paths = db.query(FormMapResult).filter(
+                FormMapResult.form_page_route_id == form_page_route_id
+            ).count()
+
+        # Get test_scenario_id if in scenario mode
+        test_scenario_id = ctx.get("test_scenario_id")
+        if test_scenario_id and isinstance(test_scenario_id, str):
+            test_scenario_id = int(test_scenario_id) if test_scenario_id != "0" else None
+        elif test_scenario_id == 0:
+            test_scenario_id = None
 
         form_map_result = FormMapResult(
             form_mapper_session_id=int(session_id),
-            form_page_route_id=form_page_route_id,
+            form_page_route_id=form_page_route_id if mapping_type != "dynamic_content" else None,
+            test_page_route_id=test_page_route_id if mapping_type == "dynamic_content" else None,
+            test_scenario_id=test_scenario_id,
             network_id=ctx.get("network_id"),
             company_id=ctx.get("company_id"),
             path_number=existing_paths + 1,
             path_junctions=path_junctions if path_junctions else [],
-            steps=updated_stages if updated_stages else stages
+            steps=updated_stages if updated_stages else stages,
         )
 
         db.add(form_map_result)
@@ -1705,6 +1949,11 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
 
     except BudgetExceededError as e:
         result = {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
+        _continue_orchestrator_chain(session_id, "save_mapping_result", result)
+        return result
+
+    except AccessDeniedError as e:
+        result = {"success": False, "error": str(e), "access_denied": True}
         _continue_orchestrator_chain(session_id, "save_mapping_result", result)
         return result
 
@@ -1799,6 +2048,9 @@ def field_assist_query(
     except BudgetExceededError as e:
         return {"success": False, "error": "AI budget exceeded", "budget_exceeded": True}
 
+    except AccessDeniedError as e:
+        return {"success": False, "error": str(e), "access_denied": True}
+
     except Exception as e:
         msg = f"!!!! ❌ Field assist query failed: {e}"
         print(msg)
@@ -1832,6 +2084,21 @@ def sync_mapper_session_status(session_id: str, status: str, error: str = None):
                 db_session.completed_at = datetime.utcnow()
             db.commit()
             logger.info(f"[MapperTasks] DB session {session_id} status -> {status}")
+
+            # Also update TestPageRoute status for dynamic content
+            if db_session.test_page_route_id:
+                from models.test_page_models import TestPageRoute
+                test_page = db.query(TestPageRoute).filter(
+                    TestPageRoute.id == db_session.test_page_route_id
+                ).first()
+                if test_page:
+                    if status == "completed":
+                        test_page.status = "mapped"
+                    elif status == "failed":
+                        test_page.status = "failed"
+                    db.commit()
+                    logger.info(
+                        f"[MapperTasks] TestPageRoute {db_session.test_page_route_id} status -> {test_page.status}")
 
             # Push close task to agent when session fails
             if status == "failed":
@@ -1950,10 +2217,25 @@ def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
         ).all()
 
         count = len(stale_sessions)
+        redis_client = _get_redis_client()
         for session in stale_sessions:
             session.status = "failed"
             session.last_error = f"Session timed out after {timeout_hours} hours"
             session.completed_at = datetime.utcnow()
+
+            # Clean up Redis keys for this session
+            sid = str(session.id)
+            redis_client.delete(
+                f"mapper_session:{sid}",
+                f"mapper_dom:{sid}",
+                f"mapper_screenshot:{sid}",
+                f"mapper_screenshot_before:{sid}",
+                f"mapper_lock:{sid}",
+            )
+            # Clean up agent queue if user_id available
+            if session.user_id:
+                redis_client.delete(f"agent:{session.user_id}")
+            logger.info(f"[MapperTasks] Cleaned Redis keys for stale session {sid}")
 
         db.commit()
         logger.info(f"[MapperTasks] Cleaned up {count} stale sessions")
@@ -1965,6 +2247,80 @@ def cleanup_stale_mapper_sessions(timeout_hours: int = 2):
     finally:
         db.close()
 
+@shared_task(name="tasks.detect_stuck_mapper_sessions")
+def detect_stuck_mapper_sessions():
+    """
+    Periodic task: detect sessions stuck waiting for agent response.
+    If mapper_agent_active:{session_id} expired (agent hasn't responded in 3 min),
+    fail the session. Runs every 60 seconds via Celery beat.
+    """
+    db = _get_db_session()
+    redis_client = _get_redis_client()
+    try:
+        from models.form_mapper_models import FormMapperSession
+        from datetime import datetime
+
+        # Agent-waiting states — session expects an agent response
+        agent_waiting_states = {
+            "extracting_initial_dom", "getting_initial_screenshot",
+            "executing_step", "step_failed_extracting_dom",
+            "alert_extracting_dom", "alert_navigating_back",
+            "dom_change_navigating_back", "dom_change_getting_screenshot",
+            "dom_change_getting_dom", "validation_error_getting_dom",
+            "next_path_navigating",
+            "junction_getting_before_screenshot", "junction_getting_after_screenshot",
+            "visual_page_getting_screenshot", "dynamic_verify_getting_screenshot",
+        }
+
+        # Get all running sessions from DB
+        running_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.status.in_(["running", "initializing", "pending"])
+        ).all()
+
+        failed_count = 0
+        for session in running_sessions:
+            sid = str(session.id)
+            # Check Redis session state
+            state_raw = redis_client.hget(f"mapper_session:{sid}", "state")
+            if not state_raw:
+                continue
+            state = state_raw.decode() if isinstance(state_raw, bytes) else state_raw
+
+            if state not in agent_waiting_states:
+                continue  # Session is waiting for Celery (AI), not agent
+
+            # Check if agent heartbeat key exists
+            if not redis_client.exists(f"mapper_agent_active:{sid}"):
+                # Agent hasn't responded in 3+ minutes — fail session via orchestrator
+                from services.form_mapper_orchestrator import FormMapperOrchestrator
+                orchestrator = FormMapperOrchestrator(redis_client, db)
+                orchestrator._fail_session(sid, "Agent unresponsive — no response for 3+ minutes")
+                failed_count += 1
+
+                # Clean up Redis keys immediately
+                redis_client.delete(
+                    f"mapper_session:{sid}",
+                    f"mapper_dom:{sid}",
+                    f"mapper_screenshot:{sid}",
+                    f"mapper_screenshot_before:{sid}",
+                    f"mapper_lock:{sid}",
+                    f"mapper_agent_active:{sid}",
+                )
+
+                if session.user_id:
+                    redis_client.delete(f"agent:{session.user_id}")
+
+        if failed_count:
+            db.commit()
+            logger.info(f"[MapperTasks] Failed {failed_count} stuck sessions (agent unresponsive)")
+        return {"failed": failed_count, "checked": len(running_sessions)}
+
+    except Exception as e:
+        logger.error(f"[MapperTasks] Stuck session detection failed: {e}", exc_info=True)
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
 
 def _cleanup_previous_mapping_results(db, form_page_route_id: int) -> int:
     """
@@ -2016,6 +2372,46 @@ def cancel_previous_sessions_for_route(form_page_route_id: int, new_session_id: 
         return {"cancelled": count, "deleted_paths": deleted_paths}
     except Exception as e:
         db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@shared_task(name="tasks.cancel_previous_sessions_for_test_page")
+def cancel_previous_sessions_for_test_page(test_page_route_id: int, new_session_id: int):
+    """Cancel previous sessions and cleanup results for test page (dynamic content)"""
+    db = _get_db_session()
+    try:
+        from models.form_mapper_models import FormMapperSession, FormMapResult
+        from datetime import datetime
+
+        # Cancel active sessions for this test page
+        active_sessions = db.query(FormMapperSession).filter(
+            FormMapperSession.test_page_route_id == test_page_route_id,
+            FormMapperSession.id != new_session_id,
+            FormMapperSession.status.in_(["initializing", "pending", "running"])
+        ).all()
+
+        count = len(active_sessions)
+        for session in active_sessions:
+            session.status = "cancelled_ack"
+            session.last_error = f"Cancelled - new session {new_session_id} started"
+            session.completed_at = datetime.utcnow()
+
+        # Delete previous mapping results for fresh start
+        deleted_paths = db.query(FormMapResult).filter(
+            FormMapResult.test_page_route_id == test_page_route_id
+        ).delete()
+
+        db.commit()
+
+        logger.info(
+            f"[FormMapperTask] Test page {test_page_route_id}: cancelled {count} sessions, deleted {deleted_paths} paths")
+
+        return {"cancelled": count, "deleted_paths": deleted_paths}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[FormMapperTask] Failed to cleanup test page {test_page_route_id}: {e}")
         return {"error": str(e)}
     finally:
         db.close()

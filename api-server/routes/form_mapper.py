@@ -808,9 +808,19 @@ def _trigger_celery_task(task_name: str, celery_args: dict):
         "trigger_visual_page_screenshot": trigger_visual_page_screenshot,
         "verify_dynamic_step_visual": verify_dynamic_step_visual
     }
-    
+
     task = task_map.get(task_name)
     if task:
+        # Snapshot session version before dispatch (stale result detection)
+        session_id = celery_args.get("session_id")
+        if session_id:
+            try:
+                redis_client = redis_lib.Redis(connection_pool=_api_redis_pool)
+                version_raw = redis_client.hget(f"mapper_session:{session_id}", "session_version")
+                version = int(version_raw) if version_raw else 0
+                redis_client.set(f"mapper_task_version:{session_id}", version, ex=3600)
+            except Exception:
+                pass
         task.delay(**celery_args)
     else:
         msg = f"!!!! ❌ Unknown Celery task requested: {task_name}"

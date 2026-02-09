@@ -38,26 +38,20 @@ interface NetworksByType {
 // ============================================
 const t = {
   // Backgrounds
-  pageBg: '#f0f4f8',
+  pageBg: '#f1f5f9',
   cardBg: '#ffffff',
-  sidebarBg: '#0f1b2d',
+  sidebarBg: '#ffffff',
   headerBg: '#ffffff',
-  mutedBg: '#f1f5f9',
-  hoverBg: '#e8f4f8',
+  mutedBg: '#f8fafc',
+  hoverBg: '#f1f5f9',
   // Text
   text: '#0f172a',
   textSecondary: '#475569',
   textMuted: '#94a3b8',
-  // Sidebar-specific
-  sidebarText: '#94a3b8',
-  sidebarTextActive: '#ffffff',
-  sidebarHover: 'rgba(255,255,255,0.06)',
-  sidebarActiveBg: 'rgba(8, 145, 178, 0.2)',
-  sidebarSection: '#64748b',
   // Brand
   brand: '#0891b2',
-  brandLight: 'rgba(8, 145, 178, 0.12)',
-  brandBorder: 'rgba(8, 145, 178, 0.3)',
+  brandLight: 'rgba(8, 145, 178, 0.08)',
+  brandBorder: 'rgba(8, 145, 178, 0.2)',
   brandText: '#0891b2',
   // Borders
   border: '#e2e8f0',
@@ -640,10 +634,9 @@ export default function DashboardLayout({
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
- .sidebar-item:hover {
-  background: ${t.sidebarHover} !important;
-  color: ${t.sidebarTextActive} !important;
-  }
+        .sidebar-item:hover {
+          background: ${t.hoverBg} !important;
+        }
         .top-btn:hover {
           background: ${t.hoverBg} !important;
         }
@@ -663,7 +656,6 @@ export default function DashboardLayout({
         height: '56px',
         background: t.headerBg,
         borderBottom: `1px solid ${t.border}`,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
@@ -673,20 +665,19 @@ export default function DashboardLayout({
           <div style={{
             width: '32px',
             height: '32px',
-            background: `linear-gradient(135deg, ${t.brand}, #06b6d4)`,
+            background: t.brand,
             borderRadius: '8px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 2px 6px rgba(8, 145, 178, 0.3)',
           }}>
             <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>Q</span>
           </div>
           <span style={{ 
-            fontSize: '17px', 
-            fontWeight: 700, 
+            fontSize: '16px', 
+            fontWeight: 600, 
             color: t.text,
-            letterSpacing: '-0.4px'
+            letterSpacing: '-0.3px'
           }}>
             Quattera AI
           </span>
@@ -944,18 +935,17 @@ export default function DashboardLayout({
         {/* SIDEBAR */}
         {/* ============================================ */}
         <div style={{
-          width: '230px',
+          width: '220px',
           background: t.sidebarBg,
-          borderRight: 'none',
+          borderRight: `1px solid ${t.border}`,
           flexShrink: 0,
-          paddingTop: '12px',
-          boxShadow: '2px 0 12px rgba(0,0,0,0.08)',
+          paddingTop: '8px',
         }}>          
-          <div style={{ padding: '0 12px' }}>
+          <div style={{ padding: '0 10px' }}>
             {/* Team Members - admin only */}
             {(userRole === 'admin' || userRole === 'super_admin') && (
               <>
-                <div style={{ padding: '14px 12px 8px', fontSize: '10px', fontWeight: 700, color: t.sidebarSection, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+                <div style={{ padding: '12px 12px 6px', fontSize: '11px', fontWeight: 600, color: t.textMuted, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
                   Team
                 </div>
                 <div 
@@ -965,14 +955,14 @@ export default function DashboardLayout({
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    padding: '9px 12px',
+                    padding: '7px 12px',
                     cursor: 'pointer',
-                    fontSize: '13.5px',
-                    fontWeight: pathname === '/users' ? 600 : 400,
-                    borderRadius: '7px',
-                    color: pathname === '/users' ? t.sidebarTextActive : t.sidebarText,
-                    background: pathname === '/users' ? t.sidebarActiveBg : 'transparent',
-                    borderLeft: pathname === '/users' ? `3px solid ${t.brand}` : '3px solid transparent',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    borderRadius: '6px',
+                    color: pathname === '/users' ? t.brand : t.textSecondary,
+                    background: pathname === '/users' ? t.brandLight : 'transparent',
+                    borderLeft: pathname === '/users' ? `2px solid ${t.brand}` : '2px solid transparent',
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -982,7 +972,7 @@ export default function DashboardLayout({
             )}
             
             {/* Project section */}
-            <div style={{ padding: '18px 12px 8px', fontSize: '10px', fontWeight: 700, color: t.sidebarSection, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+            <div style={{ padding: '12px 12px 6px', fontSize: '11px', fontWeight: 600, color: t.textMuted, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
               Project
             </div>
             
@@ -1007,14 +997,14 @@ export default function DashboardLayout({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '9px 12px',
+                  padding: '7px 12px',
                   cursor: 'pointer',
-                  fontSize: '13.5px',
-                  fontWeight: isActiveRoute(item.id) ? 600 : 400,
-                  borderRadius: '7px',
-                  color: isActiveRoute(item.id) ? t.sidebarTextActive : t.sidebarText,
-                  background: isActiveRoute(item.id) ? t.sidebarActiveBg : 'transparent',
-                  borderLeft: isActiveRoute(item.id) ? `3px solid ${t.brand}` : '3px solid transparent',
+                  fontSize: '13px',
+                  fontWeight: isActiveRoute(item.id) ? 600 : 500,
+                  borderRadius: '6px',
+                  color: isActiveRoute(item.id) ? t.brand : t.textSecondary,
+                  background: isActiveRoute(item.id) ? t.brandLight : 'transparent',
+                  borderLeft: isActiveRoute(item.id) ? `2px solid ${t.brand}` : '2px solid transparent',
                   transition: 'all 0.15s ease',
                   margin: '1px 0',
                 }}
@@ -1024,7 +1014,7 @@ export default function DashboardLayout({
             ))}
             
             {/* System section */}
-            <div style={{ padding: '18px 12px 8px', fontSize: '10px', fontWeight: 700, color: t.sidebarSection, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+            <div style={{ padding: '16px 12px 6px', fontSize: '11px', fontWeight: 600, color: t.textMuted, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
               System
             </div>
             
@@ -1035,14 +1025,14 @@ export default function DashboardLayout({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '9px 12px',
+                padding: '7px 12px',
                 cursor: 'pointer',
-                fontSize: '13.5px',
-                fontWeight: isActiveRoute('logs') ? 600 : 400,
-                borderRadius: '7px',
-                color: isActiveRoute('logs') ? t.sidebarTextActive : t.sidebarText,
-                background: isActiveRoute('logs') ? t.sidebarActiveBg : 'transparent',
-                borderLeft: isActiveRoute('logs') ? `3px solid ${t.brand}` : '3px solid transparent',
+                fontSize: '13px',
+                fontWeight: isActiveRoute('logs') ? 600 : 500,
+                borderRadius: '6px',
+                color: isActiveRoute('logs') ? t.brand : t.textSecondary,
+                background: isActiveRoute('logs') ? t.brandLight : 'transparent',
+                borderLeft: isActiveRoute('logs') ? `2px solid ${t.brand}` : '2px solid transparent',
                 transition: 'all 0.15s ease',
               }}
             >

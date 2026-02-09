@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import UserProvidedInputsSection from './UserProvidedInputsSection'
 import FormPageEditPanel from './FormPageEditPanel'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 
 interface Network {
   id: number
@@ -51,6 +52,8 @@ interface CompletedPath {
   is_verified: boolean
   created_at: string
   updated_at: string
+  test_scenario_id?: number
+  test_scenario_name?: string
 }
 
 interface SessionStatus {
@@ -111,9 +114,7 @@ interface LoginLogoutData {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null)
   
@@ -178,9 +179,6 @@ export default function DashboardPage() {
   const [selectedFormForMapping, setSelectedFormForMapping] = useState<FormPage | null>(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   
-  // Theme state - reads from localStorage to sync with layout
-  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
-
   // Login/Logout stages state
   const [loginLogoutData, setLoginLogoutData] = useState<Record<number, LoginLogoutData>>({})
   const [editingLoginLogout, setEditingLoginLogout] = useState<{
@@ -191,497 +189,69 @@ export default function DashboardPage() {
     url: string
   } | null>(null)
 
-  // Theme definitions (same as layout.tsx)
-  const themes: Record<string, {
-    name: string
+  // Theme configuration - Pearl White only (fixed theme, synced with layout.tsx)
+  const theme = {
+    name: 'Pearl White',
     colors: {
-      bgGradient: string
-      headerBg: string
-      sidebarBg: string
-      cardBg: string
-      cardBorder: string
-      cardGlow: string
-      accentPrimary: string
-      accentSecondary: string
-      accentGlow: string
-      iconGlow: string
-      buttonGlow: string
-      textPrimary: string
-      textSecondary: string
-      textGlow: string
-      statusOnline: string
-      statusGlow: string
-      borderGlow: string
-    }
-  }> = {
-    'platinum-steel': {
-      name: 'Platinum Steel',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
-        headerBg: 'rgba(75, 85, 99, 0.9)',
-        sidebarBg: 'rgba(75, 85, 99, 0.6)',
-        cardBg: 'rgba(75, 85, 99, 0.5)',
-        cardBorder: 'rgba(156, 163, 175, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#6366f1',
-        accentSecondary: '#8b5cf6',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#f3f4f6',
-        textSecondary: '#9ca3af',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'ocean-depths': {
-      name: 'Ocean Depths',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f4c5c 0%, #0a3541 50%, #051e26 100%)',
-        headerBg: 'rgba(15, 76, 92, 0.9)',
-        sidebarBg: 'rgba(15, 76, 92, 0.6)',
-        cardBg: 'rgba(15, 76, 92, 0.5)',
-        cardBorder: 'rgba(34, 211, 238, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#06b6d4',
-        accentSecondary: '#22d3ee',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfeff',
-        textSecondary: '#67e8f9',
-        textGlow: 'none',
-        statusOnline: '#22d3ee',
-        statusGlow: '0 0 6px rgba(34, 211, 238, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'aurora-borealis': {
-      name: 'Aurora Borealis',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #0f0a2e 100%)',
-        headerBg: 'rgba(49, 46, 129, 0.9)',
-        sidebarBg: 'rgba(49, 46, 129, 0.6)',
-        cardBg: 'rgba(49, 46, 129, 0.5)',
-        cardBorder: 'rgba(167, 139, 250, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#8b5cf6',
-        accentSecondary: '#a78bfa',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#f5f3ff',
-        textSecondary: '#c4b5fd',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'sunset-ember': {
-      name: 'Sunset Ember',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #7c2d12 0%, #431407 50%, #1c0a04 100%)',
-        headerBg: 'rgba(124, 45, 18, 0.9)',
-        sidebarBg: 'rgba(124, 45, 18, 0.6)',
-        cardBg: 'rgba(124, 45, 18, 0.5)',
-        cardBorder: 'rgba(251, 146, 60, 0.4)',
-        cardGlow: 'none',
-        accentPrimary: '#f97316',
-        accentSecondary: '#fb923c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff7ed',
-        textSecondary: '#fdba74',
-        textGlow: 'none',
-        statusOnline: '#fbbf24',
-        statusGlow: '0 0 6px rgba(251, 191, 36, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'emerald-forest': {
-      name: 'Emerald Forest',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #064e3b 0%, #022c22 50%, #011513 100%)',
-        headerBg: 'rgba(6, 78, 59, 0.9)',
-        sidebarBg: 'rgba(6, 78, 59, 0.6)',
-        cardBg: 'rgba(6, 78, 59, 0.5)',
-        cardBorder: 'rgba(52, 211, 153, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#10b981',
-        accentSecondary: '#34d399',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ecfdf5',
-        textSecondary: '#6ee7b7',
-        textGlow: 'none',
-        statusOnline: '#34d399',
-        statusGlow: '0 0 6px rgba(52, 211, 153, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'crimson-night': {
-      name: 'Crimson Night',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #450a0a 0%, #2d0606 50%, #1a0303 100%)',
-        headerBg: 'rgba(69, 10, 10, 0.9)',
-        sidebarBg: 'rgba(69, 10, 10, 0.6)',
-        cardBg: 'rgba(69, 10, 10, 0.5)',
-        cardBorder: 'rgba(251, 113, 133, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#f43f5e',
-        accentSecondary: '#fb7185',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#fff1f2',
-        textSecondary: '#fda4af',
-        textGlow: 'none',
-        statusOnline: '#fb7185',
-        statusGlow: '0 0 6px rgba(251, 113, 133, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    'bright-silver': {
-      name: 'Bright Silver',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
-        headerBg: 'rgba(107, 114, 128, 0.95)',
-        sidebarBg: 'rgba(107, 114, 128, 0.7)',
-        cardBg: 'rgba(107, 114, 128, 0.6)',
-        cardBorder: 'rgba(209, 213, 219, 0.5)',
-        cardGlow: 'none',
-        accentPrimary: '#1e3a5f',
-        accentSecondary: '#2d5a87',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ffffff',
-        textSecondary: '#e5e7eb',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
-    'chrome-glow': {
-      name: 'Chrome Glow',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #9ca3af 0%, #6b7280 50%, #4b5563 100%)',
-        headerBg: 'rgba(156, 163, 175, 0.95)',
-        sidebarBg: 'rgba(156, 163, 175, 0.7)',
-        cardBg: 'rgba(156, 163, 175, 0.6)',
-        cardBorder: 'rgba(229, 231, 235, 0.6)',
-        cardGlow: 'none',
-        accentPrimary: '#0f4c5c',
-        accentSecondary: '#1a6b7c',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#111827',
-        textSecondary: '#374151',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
-    'pearl-white': {
-      name: 'Pearl White',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-        headerBg: 'rgba(248, 250, 252, 0.98)',
-        sidebarBg: 'rgba(241, 245, 249, 0.95)',
-        cardBg: 'rgba(242, 246, 250, 0.98)',
-        cardBorder: 'rgba(100, 116, 139, 0.3)',
-        cardGlow: 'none',
-        accentPrimary: '#0369a1',
-        accentSecondary: '#0ea5e9',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#1e293b',
-        textSecondary: '#475569',
-        textGlow: 'none',
-        statusOnline: '#16a34a',
-        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
-        borderGlow: 'none'
-      }
-    },
-    'cyber-pink': {
-      name: 'Cyber Pink',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0a1a 0%, #0d0515 50%, #050208 100%)',
-        headerBg: 'rgba(40, 15, 40, 0.95)',
-        sidebarBg: 'rgba(40, 15, 40, 0.8)',
-        cardBg: 'rgba(50, 20, 50, 0.6)',
-        cardBorder: 'rgba(255, 0, 128, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 128, 0.08)',
-        accentPrimary: '#ff0080',
-        accentSecondary: '#ff00ff',
-        accentGlow: 'rgba(255, 0, 128, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 128, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 128, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff99cc',
-        textGlow: '0 0 9px rgba(255, 0, 128, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 128, 0.12)'
-      }
-    },
-    'radioactive': {
-      name: 'Radioactive',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0a1a05 0%, #050d02 50%, #020500 100%)',
-        headerBg: 'rgba(20, 40, 10, 0.95)',
-        sidebarBg: 'rgba(20, 40, 10, 0.8)',
-        cardBg: 'rgba(25, 50, 15, 0.6)',
-        cardBorder: 'rgba(136, 255, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 0, 0.06)',
-        accentPrimary: '#00ff00',
-        accentSecondary: '#88ff00',
-        accentGlow: 'rgba(0, 255, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#bbff66',
-        textGlow: '0 0 9px rgba(136, 255, 0, 0.24)',
-        statusOnline: '#ffff00',
-        statusGlow: '0 0 9px rgba(255, 255, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 0, 0.12)'
-      }
-    },
-    'electric-blue': {
-      name: 'Electric Blue',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #000a1a 0%, #00051a 50%, #000208 100%)',
-        headerBg: 'rgba(0, 20, 50, 0.95)',
-        sidebarBg: 'rgba(0, 20, 50, 0.8)',
-        cardBg: 'rgba(0, 30, 60, 0.6)',
-        cardBorder: 'rgba(0, 204, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 102, 255, 0.08)',
-        accentPrimary: '#0066ff',
-        accentSecondary: '#00ccff',
-        accentGlow: 'rgba(0, 102, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 102, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 102, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ddff',
-        textGlow: '0 0 9px rgba(0, 204, 255, 0.24)',
-        statusOnline: '#00ffff',
-        statusGlow: '0 0 9px rgba(0, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 102, 255, 0.12)'
-      }
-    },
-    'golden-sunrise': {
-      name: 'Golden Sunrise',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a1005 0%, #0d0802 50%, #050200 100%)',
-        headerBg: 'rgba(40, 30, 10, 0.95)',
-        sidebarBg: 'rgba(40, 30, 10, 0.8)',
-        cardBg: 'rgba(50, 35, 15, 0.6)',
-        cardBorder: 'rgba(255, 204, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 136, 0, 0.08)',
-        accentPrimary: '#ff8800',
-        accentSecondary: '#ffcc00',
-        accentGlow: 'rgba(255, 136, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 136, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 136, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffdd44',
-        textGlow: '0 0 9px rgba(255, 204, 0, 0.24)',
-        statusOnline: '#ffff66',
-        statusGlow: '0 0 9px rgba(255, 255, 102, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 136, 0, 0.12)'
-      }
-    },
-    'plasma-purple': {
-      name: 'Plasma Purple',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #0f051a 0%, #08020d 50%, #030105 100%)',
-        headerBg: 'rgba(30, 10, 50, 0.95)',
-        sidebarBg: 'rgba(30, 10, 50, 0.8)',
-        cardBg: 'rgba(40, 15, 60, 0.6)',
-        cardBorder: 'rgba(204, 102, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(153, 0, 255, 0.08)',
-        accentPrimary: '#9900ff',
-        accentSecondary: '#cc66ff',
-        accentGlow: 'rgba(153, 0, 255, 0.18)',
-        iconGlow: '0 0 4px rgba(153, 0, 255, 0.09)',
-        buttonGlow: '0 0 15px rgba(153, 0, 255, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#dd99ff',
-        textGlow: '0 0 9px rgba(204, 102, 255, 0.24)',
-        statusOnline: '#ff99ff',
-        statusGlow: '0 0 9px rgba(255, 153, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(153, 0, 255, 0.12)'
-      }
-    },
-    'fire-storm': {
-      name: 'Fire Storm',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0505 0%, #0d0202 50%, #050000 100%)',
-        headerBg: 'rgba(40, 10, 10, 0.95)',
-        sidebarBg: 'rgba(40, 10, 10, 0.8)',
-        cardBg: 'rgba(50, 15, 15, 0.6)',
-        cardBorder: 'rgba(255, 102, 0, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 0, 0, 0.08)',
-        accentPrimary: '#ff0000',
-        accentSecondary: '#ff6600',
-        accentGlow: 'rgba(255, 0, 0, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 0, 0, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 0, 0, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ff9944',
-        textGlow: '0 0 9px rgba(255, 102, 0, 0.24)',
-        statusOnline: '#ffcc00',
-        statusGlow: '0 0 9px rgba(255, 204, 0, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 0, 0, 0.12)'
-      }
-    },
-    'arctic-aurora': {
-      name: 'Arctic Aurora',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #001a1a 0%, #000d0d 50%, #000505 100%)',
-        headerBg: 'rgba(0, 40, 40, 0.95)',
-        sidebarBg: 'rgba(0, 40, 40, 0.8)',
-        cardBg: 'rgba(0, 50, 50, 0.6)',
-        cardBorder: 'rgba(0, 255, 255, 0.6)',
-        cardGlow: '0 0 18px rgba(0, 255, 204, 0.08)',
-        accentPrimary: '#00ffcc',
-        accentSecondary: '#00ffff',
-        accentGlow: 'rgba(0, 255, 204, 0.18)',
-        iconGlow: '0 0 4px rgba(0, 255, 204, 0.09)',
-        buttonGlow: '0 0 15px rgba(0, 255, 204, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#66ffff',
-        textGlow: '0 0 9px rgba(0, 255, 255, 0.24)',
-        statusOnline: '#66ffff',
-        statusGlow: '0 0 9px rgba(102, 255, 255, 0.27)',
-        borderGlow: '0 0 15px rgba(0, 255, 204, 0.12)'
-      }
-    },
-    'midnight-rose': {
-      name: 'Midnight Rose',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #1a0510 0%, #0d0208 50%, #050103 100%)',
-        headerBg: 'rgba(40, 10, 25, 0.95)',
-        sidebarBg: 'rgba(40, 10, 25, 0.8)',
-        cardBg: 'rgba(50, 15, 35, 0.6)',
-        cardBorder: 'rgba(255, 102, 153, 0.6)',
-        cardGlow: '0 0 18px rgba(255, 51, 119, 0.08)',
-        accentPrimary: '#ff3377',
-        accentSecondary: '#ff66aa',
-        accentGlow: 'rgba(255, 51, 119, 0.18)',
-        iconGlow: '0 0 4px rgba(255, 51, 119, 0.09)',
-        buttonGlow: '0 0 15px rgba(255, 51, 119, 0.21)',
-        textPrimary: '#ffffff',
-        textSecondary: '#ffaacc',
-        textGlow: '0 0 9px rgba(255, 102, 153, 0.24)',
-        statusOnline: '#ff99cc',
-        statusGlow: '0 0 9px rgba(255, 153, 204, 0.27)',
-        borderGlow: '0 0 15px rgba(255, 51, 119, 0.12)'
-      }
+      bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+      headerBg: 'rgba(248, 250, 252, 0.98)',
+      sidebarBg: 'rgba(241, 245, 249, 0.95)',
+      cardBg: 'rgba(242, 246, 250, 0.98)',
+      cardBorder: 'rgba(100, 116, 139, 0.3)',
+      cardGlow: 'none',
+      accentPrimary: '#0369a1',
+      accentSecondary: '#0ea5e9',
+      accentGlow: 'none',
+      iconGlow: 'none',
+      buttonGlow: 'none',
+      textPrimary: '#1e293b',
+      textSecondary: '#475569',
+      textGlow: 'none',
+      statusOnline: '#16a34a',
+      statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
+      borderGlow: 'none'
     }
   }
 
   // Get current theme colors
-  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
+  const getTheme = () => theme
 
-  // Detect if current theme is light (for contrast adjustments)
-  const isLightTheme = () => {
-    const lightThemes = ['pearl-white']
-    return lightThemes.includes(currentTheme)
-  }
+  // Always light theme
+  const isLightTheme = () => true
 
   // Get contrasting background for elements (darker on light themes)
   const getContrastBg = (opacity: number = 0.1) => {
-    return isLightTheme() 
-      ? `rgba(0, 0, 0, ${opacity})`
-      : `rgba(255, 255, 255, ${opacity * 0.3})`
+    return `rgba(0, 0, 0, ${opacity})`
   }
 
-  // Systematic background colors for consistency
+  // Systematic background colors for consistency (light theme only)
   const getBgColor = (level: 'card' | 'section' | 'input' | 'header' | 'hover' | 'muted') => {
-    if (isLightTheme()) {
-      switch (level) {
-        case 'card': return 'rgba(255, 255, 255, 0.95)'
-        case 'section': return 'rgba(0, 0, 0, 0.03)'
-        case 'input': return 'rgba(255, 255, 255, 0.9)'
-        case 'header': return 'rgba(0, 0, 0, 0.04)'
-        case 'hover': return 'rgba(0, 0, 0, 0.06)'
-        case 'muted': return 'rgba(0, 0, 0, 0.02)'
-        default: return 'rgba(255, 255, 255, 0.95)'
-      }
-    } else {
-      switch (level) {
-        case 'card': return 'rgba(255, 255, 255, 0.03)'
-        case 'section': return 'rgba(0, 0, 0, 0.1)'
-        case 'input': return 'rgba(255, 255, 255, 0.05)'
-        case 'header': return 'rgba(255, 255, 255, 0.05)'
-        case 'hover': return 'rgba(255, 255, 255, 0.08)'
-        case 'muted': return 'rgba(255, 255, 255, 0.02)'
-        default: return 'rgba(255, 255, 255, 0.03)'
-      }
+    switch (level) {
+      case 'card': return 'rgba(255, 255, 255, 0.95)'
+      case 'section': return 'rgba(0, 0, 0, 0.03)'
+      case 'input': return 'rgba(255, 255, 255, 0.9)'
+      case 'header': return 'rgba(0, 0, 0, 0.04)'
+      case 'hover': return 'rgba(0, 0, 0, 0.06)'
+      case 'muted': return 'rgba(0, 0, 0, 0.02)'
+      default: return 'rgba(255, 255, 255, 0.95)'
     }
   }
 
-  // Systematic border colors
+  // Systematic border colors (light theme only)
   const getBorderColor = (emphasis: 'normal' | 'strong' | 'subtle' | 'light' = 'normal') => {
-    if (isLightTheme()) {
-      switch (emphasis) {
-        case 'strong': return 'rgba(0, 0, 0, 0.15)'
-        case 'subtle': return 'rgba(0, 0, 0, 0.06)'
-        case 'light': return 'rgba(0, 0, 0, 0.08)'
-        default: return 'rgba(0, 0, 0, 0.1)'
-      }
-    } else {
-      switch (emphasis) {
-        case 'strong': return 'rgba(255, 255, 255, 0.15)'
-        case 'subtle': return 'rgba(255, 255, 255, 0.06)'
-        case 'light': return 'rgba(255, 255, 255, 0.08)'
-        default: return 'rgba(255, 255, 255, 0.1)'
-      }
+    switch (emphasis) {
+      case 'strong': return 'rgba(0, 0, 0, 0.15)'
+      case 'subtle': return 'rgba(0, 0, 0, 0.06)'
+      case 'light': return 'rgba(0, 0, 0, 0.08)'
+      default: return 'rgba(0, 0, 0, 0.1)'
     }
   }
-
-  // Load theme from localStorage on mount and listen for changes
-  useEffect(() => {
-    const loadTheme = () => {
-      const savedTheme = localStorage.getItem('quathera-theme')
-      if (savedTheme && themes[savedTheme]) {
-        setCurrentTheme(savedTheme)
-      }
-    }
-    loadTheme()
-    
-    // Listen for storage changes (when theme is changed in layout)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'quathera-theme' && e.newValue && themes[e.newValue]) {
-        setCurrentTheme(e.newValue)
-      }
-    }
-    window.addEventListener('storage', handleStorageChange)
-    
-    // Also poll for changes (in case same-tab changes don't trigger storage event)
-    const interval = setInterval(loadTheme, 500)
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      clearInterval(interval)
-    }
-  }, [])
 
   // Fetch test templates on mount
   useEffect(() => {
     const fetchTestTemplates = async () => {
       try {
-        const response = await fetch('/api/test-templates')
+        const response = await fetchWithAuth('/api/test-templates')
         if (response.ok) {
           const data = await response.json()
           setTestTemplates(data.templates || [])
@@ -712,36 +282,42 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token')
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedProjectId = localStorage.getItem('active_project_id')
     const storedProjectName = localStorage.getItem('active_project_name')
-    
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setActiveProjectId(storedProjectId)
-    setActiveProjectName(storedProjectName)
-    
-    if (storedProjectId) {
-      loadNetworks(storedProjectId, storedToken)
-      loadFormPages(storedProjectId, storedToken)
-      checkActiveSessions(storedProjectId, storedToken)
-    }
+
+    // Verify auth via API (cookie sent automatically)
+    fetchWithAuth('/api/auth/me')
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+
+        setUserId(String(data.user_id))
+        setActiveProjectId(storedProjectId)
+        setActiveProjectName(storedProjectName)
+
+        if (storedProjectId) {
+          loadNetworks(storedProjectId)
+          loadFormPages(storedProjectId)
+          checkActiveSessions(storedProjectId)
+        }
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
   // Check for active/running sessions on page load
-  const checkActiveSessions = async (projectId: string, authToken: string) => {
+  const checkActiveSessions = async (projectId: string) => {
     try {
-      const response = await fetch(
-        `/api/form-pages/projects/${projectId}/active-sessions`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      const response = await fetchWithAuth(
+        `/api/form-pages/projects/${projectId}/active-sessions`
       )
       
       if (response.ok) {
@@ -784,15 +360,13 @@ export default function DashboardPage() {
       setActiveProjectName(project.name)
       setSelectedNetworkIds([])
       stopDiscovery()
-      if (token) {
-        loadNetworks(project.id.toString(), token)
-        loadFormPages(project.id.toString(), token)
-      }
+      loadNetworks(project.id.toString())
+      loadFormPages(project.id.toString())
     }
-    
+
     window.addEventListener('activeProjectChanged', handleProjectChange as EventListener)
     return () => window.removeEventListener('activeProjectChanged', handleProjectChange as EventListener)
-  }, [token])
+  }, [])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -805,20 +379,19 @@ export default function DashboardPage() {
 
   // Fetch login/logout stages when formPages change
   useEffect(() => {
-    if (formPages.length > 0 && token) {
+    if (formPages.length > 0) {
       // Get unique network IDs from form pages
       const networkIds = [...new Set(formPages.map(fp => fp.network_id))] as number[]
-      fetchLoginLogoutStages(networkIds, token)
+      fetchLoginLogoutStages(networkIds)
     }
-  }, [formPages, token])
+  }, [formPages])
 
-  const loadNetworks = async (projectId: string, authToken: string) => {
+  const loadNetworks = async (projectId: string) => {
     setLoadingNetworks(true)
     try {
-      const response = await fetch(
-        `/api/projects/${projectId}/networks`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
-      )
+      const response = await fetchWithAuth(
+          `/api/projects/${projectId}/networks`
+        )
       
       if (response.ok) {
         const data = await response.json()
@@ -828,6 +401,13 @@ export default function DashboardPage() {
           ...data.production.map((n: Network) => ({ ...n, network_type: 'production' }))
         ]
         setNetworks(allNetworks)
+      } else if (response.status === 401 || response.status === 403) {
+        const errData = await response.json().catch(() => ({}))
+        console.error('Auth error:', errData.detail)
+        const detailStr = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail)
+        if (detailStr && detailStr.toLowerCase().includes('token')) {
+          setError(detailStr)
+        }
       }
     } catch (err) {
       console.error('Failed to load networks:', err)
@@ -836,23 +416,21 @@ export default function DashboardPage() {
     }
   }
 
-  const loadFormPages = async (projectId: string, authToken: string) => {
+  const loadFormPages = async (projectId: string) => {
     setLoadingFormPages(true)
     try {
-      const response = await fetch(
-        `/api/projects/${projectId}/form-pages`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      const response = await fetchWithAuth(
+        `/api/projects/${projectId}/form-pages`
       )
-      
+
       if (response.ok) {
         const data = await response.json()
-        
+
         // Fetch paths counts for all form pages
         if (data.length > 0) {
           const ids = data.map((fp: any) => fp.id).join(',')
-          const countsResponse = await fetch(
-            `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`,
-            { headers: { 'Authorization': `Bearer ${authToken}` } }
+          const countsResponse = await fetchWithAuth(
+              `/api/form-mapper/routes/paths-counts?form_page_route_ids=${ids}`
           )
           if (countsResponse.ok) {
             const counts = await countsResponse.json()
@@ -866,9 +444,16 @@ export default function DashboardPage() {
         } else {
           setFormPages(data)
         }
-        
+
         // Check for active mapping sessions after loading form pages
-        checkActiveMappingSessions(authToken)
+        checkActiveMappingSessions()
+      } else if (response.status === 401 || response.status === 403) {
+        const errData = await response.json().catch(() => ({}))
+        console.error('Auth error:', errData.detail)
+        const detailStr = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail)
+        if (detailStr && detailStr.toLowerCase().includes('token')) {
+          setError(detailStr)
+        }
       }
     } catch (err) {
       console.error('Failed to load form pages:', err)
@@ -878,11 +463,9 @@ export default function DashboardPage() {
   }
 
   // Check for active mapping sessions and restore UI state
-  const checkActiveMappingSessions = async (authToken: string) => {
+  const checkActiveMappingSessions = async () => {
     try {
-      const response = await fetch('/api/form-mapper/active-sessions', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      })
+      const response = await fetchWithAuth('/api/form-mapper/active-sessions')
       
       if (response.ok) {
         const activeSessions = await response.json()
@@ -915,19 +498,13 @@ export default function DashboardPage() {
   }
 
   // Fetch login/logout stages for networks
-  const fetchLoginLogoutStages = async (networkIds: number[], authToken: string) => {
+  const fetchLoginLogoutStages = async (networkIds: number[]) => {
     const results: Record<number, LoginLogoutData> = {}
-    
+
     for (const networkId of networkIds) {
       try {
-        const response = await fetch(
-          `/api/form-pages/networks/${networkId}/login-logout-stages`,
-          {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json'
-            }
-          }
+        const response = await fetchWithAuth(
+          `/api/form-pages/networks/${networkId}/login-logout-stages`
         )
         if (response.ok) {
           const data = await response.json()
@@ -983,24 +560,21 @@ export default function DashboardPage() {
 
   // Save login/logout steps
   const saveLoginLogoutSteps = async () => {
-    if (!editingLoginLogout || !token) return
-    
+    if (!editingLoginLogout) return
+
     setSavingFormPage(true)
     try {
-      const endpoint = editingLoginLogout.type === 'login' 
+      const endpoint = editingLoginLogout.type === 'login'
         ? `/api/form-pages/networks/${editingLoginLogout.networkId}/login-stages`
         : `/api/form-pages/networks/${editingLoginLogout.networkId}/logout-stages`
-      
+
       const body = editingLoginLogout.type === 'login'
         ? { login_stages: editNavigationSteps }
         : { logout_stages: editNavigationSteps }
-      
-      const response = await fetch(endpoint, {
+
+      const response = await fetchWithAuth(endpoint, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
       
@@ -1033,13 +607,11 @@ export default function DashboardPage() {
   // ============================================
   
   const startFormMapping = async (formPage: FormPage) => {
-    if (!token || !userId) return
-    
+    if (!userId) return
+
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -1060,20 +632,13 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           form_page_route_id: formPage.id,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: formPage.network_id,
-          test_cases: [
-            { test_id: 1, test_name: 'Default Test', description: 'Auto-generated test case' }
-          ]
+          test_cases: []
         })
       })
       
@@ -1105,7 +670,9 @@ export default function DashboardPage() {
         ...prev,
         [formPage.id]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
+
     }
   }
 
@@ -1115,16 +682,14 @@ export default function DashboardPage() {
   }
 
   const startMappingWithTemplate = async () => {
-    if (!selectedFormForMapping || !selectedTemplateId || !token || !userId) return
+    if (!selectedFormForMapping || !selectedTemplateId || !userId) return
     
     const template = testTemplates.find(t => t.id === selectedTemplateId)
     if (!template) return
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -1146,16 +711,11 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           form_page_route_id: selectedFormForMapping.id,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
           network_id: selectedFormForMapping.network_id,
           test_cases: template.test_cases
         })
@@ -1187,14 +747,15 @@ export default function DashboardPage() {
         ...prev,
         [selectedFormForMapping.id]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
     }
     
     setSelectedFormForMapping(null)
   }
 
   const startMappingFromEditPanel = async () => {
-    if (!editingFormPage || !token || !userId) return
+    if (!editingFormPage || !userId) return
     
     // Warn if paths exist - they will be deleted on remap
     if (completedPaths.length > 0) {
@@ -1204,9 +765,7 @@ export default function DashboardPage() {
     
     // Check if agent is online first
     try {
-      const agentResponse = await fetch(`/api/agent/status?user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const agentResponse = await fetchWithAuth('/api/agent/status')
       if (agentResponse.ok) {
         const agentData = await agentResponse.json()
         if (agentData.status !== 'online') {
@@ -1221,7 +780,8 @@ export default function DashboardPage() {
     // Use default template (first one) or create_verify if available
     const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
     if (!defaultTemplate) {
-      setError('No test template available')
+      console.error('No test template available')
+      setError('Mapping failed')
       return
     }
     
@@ -1235,16 +795,11 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch('/api/form-mapper/start', {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          form_page_route_id: formPageId,
-          user_id: parseInt(userId),
-          company_id: companyId ? parseInt(companyId) : undefined,
+          form_page_route_id: editingFormPage.id,
           network_id: editingFormPage.network_id,
           test_cases: defaultTemplate.test_cases
         })
@@ -1279,10 +834,179 @@ export default function DashboardPage() {
         ...prev,
         [formPageId]: { status: 'failed', error: err.message }
       }))
-      setError(`Failed to start mapping: ${err.message}`)
+      console.error('Failed to start mapping:', err.message)
+      setError(`Failed to start mapping`)
     }
   }
-  
+
+  const startMappingWithScenario = async (formPageId: number, scenarioId: number) => {
+    if (!editingFormPage || !userId) return
+
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetchWithAuth('/api/agent/status')
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Use default template
+    const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
+    if (!defaultTemplate) {
+      setError('No test template available')
+      return
+    }
+
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPageId))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'starting' }
+    }))
+
+    try {
+      const response = await fetchWithAuth('/api/form-mapper/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          form_page_route_id: formPageId,
+          network_id: editingFormPage.network_id,
+          test_cases: defaultTemplate.test_cases,
+          test_scenario_id: scenarioId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to start mapping')
+      }
+
+      const data = await response.json()
+
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: data.session_id }
+      }))
+
+      startMappingStatusPolling(formPageId, data.session_id)
+      setMessage(`Started mapping with test scenario`)
+
+    } catch (err: any) {
+      console.error('Failed to start mapping with scenario:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPageId)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to start mapping with scenario`)
+    }
+  }
+
+  const continueMappingFromEditPanel = async () => {
+    if (!editingFormPage || !userId) return
+
+    // Must have existing paths to continue
+    if (completedPaths.length === 0) {
+      setError('No existing paths found. Use "Map Form Page" for initial mapping.')
+      return
+    }
+
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetchWithAuth('/api/agent/status')
+      if (agentResponse.ok) {
+        const agentData = await agentResponse.json()
+        if (agentData.status !== 'online') {
+          setError('⚠️ Agent is offline. Please start your desktop agent before mapping.')
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+    }
+
+    // Use default template
+    const defaultTemplate = testTemplates.find(t => t.name === 'create_verify') || testTemplates[0]
+    if (!defaultTemplate) {
+      console.error('No test template available')
+      setError('Continue mapping failed - no test template')
+      return
+    }
+
+    const formPageId = editingFormPage.id
+
+    // Mark as mapping
+    setMappingFormIds(prev => new Set(prev).add(formPageId))
+    setMappingStatus(prev => ({
+      ...prev,
+      [formPageId]: { status: 'evaluating' }
+    }))
+
+    try {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${formPageId}/continue-mapping`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            network_id: editingFormPage.network_id,
+            test_cases: defaultTemplate.test_cases
+          })
+        })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to continue mapping')
+      }
+
+      const data = await response.json()
+
+      // Check if all paths already complete
+      if (data.all_paths_complete) {
+        setMappingFormIds(prev => {
+          const next = new Set(prev)
+          next.delete(formPageId)
+          return next
+        })
+        setMappingStatus(prev => ({
+          ...prev,
+          [formPageId]: { status: 'completed' }
+        }))
+        setMessage('All paths already mapped - no additional paths needed!')
+        return
+      }
+
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'mapping', sessionId: data.session_id }
+      }))
+
+      startMappingStatusPolling(formPageId, parseInt(data.session_id))
+      setMessage(`Continue mapping: ${editingFormPage.form_name} - evaluating for additional paths...`)
+
+    } catch (err: any) {
+      console.error('Failed to continue mapping:', err)
+      setMappingFormIds(prev => {
+        const next = new Set(prev)
+        next.delete(formPageId)
+        return next
+      })
+      setMappingStatus(prev => ({
+        ...prev,
+        [formPageId]: { status: 'failed', error: err.message }
+      }))
+      setError(`Failed to continue mapping`)
+    }
+  }
+
   const startMappingStatusPolling = (formPageId: number, sessionId: number) => {
     // Clear any existing polling for this form
     if (mappingPollingRef.current[formPageId]) {
@@ -1291,9 +1015,7 @@ export default function DashboardPage() {
     
     const poll = async () => {
       try {
-        const response = await fetch(`/api/form-mapper/sessions/${sessionId}/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+        const response = await fetchWithAuth(`/api/form-mapper/sessions/${sessionId}/status`)
         
         if (response.ok) {
           const data = await response.json()
@@ -1313,7 +1035,7 @@ export default function DashboardPage() {
           }
 
           // Stop polling if completed or failed
-          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled' || data.status === 'no_more_paths') {
             stopMappingStatusPolling(formPageId)
             setMappingFormIds(prev => {
               const next = new Set(prev)
@@ -1322,11 +1044,21 @@ export default function DashboardPage() {
             })
 
             if (data.status === 'completed') {
-              setMessage(`Mapping completed for form page ${formPageId}`)
+              setMessage(`Mapping completed: ${editingFormPage?.form_name || formPageId}`)
               // Always refresh paths when mapping completes
               fetchCompletedPaths(formPageId)
             } else if (data.status === 'failed') {
-              setError(`Mapping failed: ${data.error || 'Unknown error'}`)
+              console.error('Mapping failed:', data.error)
+              const isAIError = data.error && (
+                data.error.includes('API Error') ||
+                data.error.includes('API Overloaded') ||
+                data.error.includes('credit balance') ||
+                data.error.includes('budget exceeded') ||
+                data.error.includes('AI parse failed')
+              )
+              setError(isAIError ? data.error : 'Mapping failed')
+            } else if (data.status === 'no_more_paths') {
+              setMessage('All form paths have been explored - no additional paths needed!')
             }
           }
         }
@@ -1362,10 +1094,9 @@ export default function DashboardPage() {
     }))
     
     try {
-      const response = await fetch(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const response = await fetchWithAuth(`/api/form-mapper/sessions/${status.sessionId}/cancel`, {
+          method: 'POST'
+        })
       
       if (response.ok) {
         // Stop old polling
@@ -1377,9 +1108,7 @@ export default function DashboardPage() {
         // Start polling until fully stopped (cancelled, failed, or completed)
         const pollUntilStopped = setInterval(async () => {
           try {
-            const statusResponse = await fetch(`/api/form-mapper/sessions/${cancelledSessionId}/status`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            })
+            const statusResponse = await fetchWithAuth(`/api/form-mapper/sessions/${cancelledSessionId}/status`)
             if (statusResponse.ok) {
               const data = await statusResponse.json()
               const sessionStatus = data.session?.status || data.status
@@ -1426,7 +1155,7 @@ export default function DashboardPage() {
         
       } else {
         const errorData = await response.json()
-        setError(`Failed to cancel mapping: ${errorData.detail || 'Unknown error'}`)
+        console.error('Failed to cancel mapping:', errorData.detail)
         // Revert to mapping state on error
         setMappingStatus(prev => ({
           ...prev,
@@ -1434,8 +1163,7 @@ export default function DashboardPage() {
         }))
       }
     } catch (err: any) {
-      console.error('Failed to cancel mapping:', err)
-      setError(`Failed to cancel mapping: ${err.message}`)
+      console.error('Failed to cancel mapping:', err.message)
       // Revert to mapping state on error
       setMappingStatus(prev => ({
         ...prev,
@@ -1490,13 +1218,12 @@ export default function DashboardPage() {
     }
     
     // Call backend to cancel running sessions
-    if (currentSessionId && token) {
+    if (currentSessionId) {
       try {
-        await fetch(
+        await fetchWithAuth(
           `/api/form-pages/sessions/${currentSessionId}/cancel`,
-          { 
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` } 
+          {
+            method: 'POST'
           }
         )
       } catch (err) {
@@ -1568,16 +1295,13 @@ export default function DashboardPage() {
         headless: headless.toString()
       })
       
-      const response = await fetch(
-        `/api/form-pages/networks/${item.networkId}/locate?${params}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+      const response = await fetchWithAuth(
+          `/api/form-pages/networks/${item.networkId}/locate?${params}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
           }
-        }
-      )
+        )
       
       if (response.ok) {
         const data = await response.json()
@@ -1598,7 +1322,7 @@ export default function DashboardPage() {
         
         // Mark as failed and move to next
         const failedQueue = updatedQueue.map((q, i) => 
-          i === index ? { ...q, status: 'failed' as const, errorMessage: errData.detail } : q
+          i === index ? { ...q, status: 'failed' as const, errorMessage: typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Discovery failed') } : q
         )
         setDiscoveryQueue(failedQueue)
         
@@ -1632,9 +1356,8 @@ export default function DashboardPage() {
       }
       
       try {
-        const response = await fetch(
-          `/api/form-pages/sessions/${sessionId}/status`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
+        const response = await fetchWithAuth(
+          `/api/form-pages/sessions/${sessionId}/status`
         )
         
         if (response.ok) {
@@ -1709,15 +1432,15 @@ export default function DashboardPage() {
       const errorDetails = failedItems.map(f => `${f.networkName}: ${f.errorMessage || 'Unknown error'}`).join('; ')
       setMessage(`Discovery finished. Completed: ${completed}, Failed: ${failed}. Found ${totalForms} form pages.`)
       if (failedItems.length > 0 && failedItems[0].errorMessage) {
-        setError(errorDetails)
+        console.error('Error:', errorDetails)
       }
     } else {
       setMessage(`Discovery completed! Found ${totalForms} new form pages across ${completed} test site(s).`)
     }
     
     // Reload form pages
-    if (activeProjectId && token) {
-      loadFormPages(activeProjectId, token)
+    if (activeProjectId) {
+      loadFormPages(activeProjectId)
     }
   }
 
@@ -1887,18 +1610,11 @@ export default function DashboardPage() {
 
   // ============ COMPLETED PATHS FUNCTIONS ============
   const fetchCompletedPaths = async (formPageRouteId: number) => {
-    if (!token) return
-    try {
-      setLoadingPaths(true)
-      const response = await fetch(
-        `/api/form-mapper/routes/${formPageRouteId}/paths`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
+  try {
+    setLoadingPaths(true)
+    const response = await fetchWithAuth(
+      `/api/form-mapper/routes/${formPageRouteId}/paths`
+    )
       if (response.ok) {
         const data = await response.json()
         setCompletedPaths(data.paths || [])
@@ -1929,20 +1645,16 @@ export default function DashboardPage() {
   }
 
   const handleSavePathStep = async (pathId: number, stepIndex: number, stepData?: any) => {
-    if (!token) return
-    const dataToSave = stepData || editedPathStepData
-    try {
-      const response = await fetch(
-        `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(dataToSave)
-        }
-      )
+      const dataToSave = stepData || editedPathStepData
+      try {
+        const response = await fetchWithAuth(
+          `/api/form-mapper/paths/${pathId}/steps/${stepIndex}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(dataToSave)
+            }
+          )
       if (response.ok) {
         setCompletedPaths(completedPaths.map(path => {
           if (path.id === pathId) {
@@ -1995,17 +1707,14 @@ export default function DashboardPage() {
 
   const saveFormPage = async () => {
     if (!editingFormPage || !token) return
-    
+
     setSavingFormPage(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${editingFormPage.id}`,
         {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             form_name: editFormName,
             navigation_steps: editNavigationSteps
@@ -2018,14 +1727,14 @@ export default function DashboardPage() {
         setShowEditPanel(false)
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to update form page')
+        console.error('Failed to update form page:', errData.detail)
       }
     } catch (err) {
-      setError('Connection error')
+      console.error('Connection error')
     } finally {
       setSavingFormPage(false)
     }
@@ -2037,15 +1746,14 @@ export default function DashboardPage() {
   }
 
   const deleteFormPage = async () => {
-    if (!formPageToDelete || !token) return
+    if (!formPageToDelete) return
     
     setDeletingFormPage(true)
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${formPageToDelete.id}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -2055,11 +1763,11 @@ export default function DashboardPage() {
         setFormPageToDelete(null)
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete form page')
+        console.error('Failed to delete form page:', errData.detail)
       }
     } catch (err) {
       setError('Connection error')
@@ -2070,14 +1778,12 @@ export default function DashboardPage() {
 
   // Rediscover form page - deletes and redirects to main page with discovery expanded
   const rediscoverFormPage = async (formPageId: number) => {
-    if (!token) return
-    
+
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/form-pages/routes/${formPageId}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -2094,17 +1800,46 @@ export default function DashboardPage() {
         
         // Reload form pages
         if (activeProjectId) {
-          loadFormPages(activeProjectId, token)
+          loadFormPages(activeProjectId)
         }
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete form page')
+        console.error('Failed to delete form page:', errData.detail)
       }
     } catch (err) {
-      setError('Connection error')
+      console.error('Connection error')
     }
   }
 
+
+  // Delete a path
+  const deletePath = async (pathId: number) => {
+
+    const confirmed = confirm('Are you sure you want to delete this path?')
+    if (!confirmed) return
+
+    try {
+      const response = await fetchWithAuth(
+        `/api/form-mapper/paths/${pathId}`,
+        {
+          method: 'DELETE'
+        }
+      )
+
+      if (response.ok) {
+        setMessage('Path deleted successfully!')
+        // Refresh paths
+        if (editingFormPage) {
+          fetchCompletedPaths(editingFormPage.id)
+        }
+      } else {
+        const errData = await response.json()
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete path'))
+      }
+    } catch (err) {
+      console.error('Connection error')
+    }
+  }
   // No project selected
   if (!activeProjectId) {
     return (
@@ -2149,7 +1884,6 @@ export default function DashboardPage() {
         formPages={getAllNavigableItems()}
         completedPaths={isLoginLogoutEdit ? [] : completedPaths}
         loadingPaths={isLoginLogoutEdit ? false : loadingPaths}
-        token={token || ''}
         editFormName={editFormName}
         setEditFormName={setEditFormName}
         editNavigationSteps={editNavigationSteps}
@@ -2182,10 +1916,12 @@ export default function DashboardPage() {
         onSave={isLoginLogoutEdit ? saveLoginLogoutSteps : saveFormPage}
         onStartMapping={isLoginLogoutEdit ? () => {} : startMappingFromEditPanel}
         onCancelMapping={cancelMapping}
+        onContinueMapping={isLoginLogoutEdit ? () => {} : continueMappingFromEditPanel}
         onOpenEditPanel={openEditPanel}
-        onDeletePath={(pathId: number) => { /* TODO: implement */ }}
+        onDeletePath={deletePath}
         onSavePathStep={handleSavePathStep}
         onExportPath={downloadPathJson}
+        onStartMappingWithScenario={isLoginLogoutEdit ? () => {} : startMappingWithScenario}
         onRefreshPaths={() => !isLoginLogoutEdit && fetchCompletedPaths(editingFormPage.id)}
         onDeleteFormPage={isLoginLogoutEdit ? () => {} : rediscoverFormPage}
         getTheme={getTheme}
@@ -3045,9 +2781,9 @@ export default function DashboardPage() {
                                   fontSize: '15px',
                                   fontWeight: 600
                                 }}>
-                                  {completedPaths.filter(p => p.id === form.id).length > 0 
-                                    ? `${completedPaths.filter(p => p.id === form.id).length} paths`
-                                    : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
+                                  {(form as any).paths_count > 0
+                                      ? `${(form as any).paths_count} path${(form as any).paths_count > 1 ? 's' : ''}`
+                                      : (mappingFormIds.has(form.id) ? 'Mapping...' : 'Not mapped')}
                                 </span>
                               </td>
                               <td style={{ 
@@ -3085,12 +2821,12 @@ export default function DashboardPage() {
                                       fontSize: '20px',
                                       transition: 'all 0.2s ease'
                                     }}
-                                    title="Edit form page"
+                                    title="View form page"
                                   >
-                                    ✏️
+                                    👁️
                                   </button>
                                   <button 
-                                    onClick={() => confirmDeleteFormPage(form)}
+                                    onClick={() => openDeleteModal(form)}
                                     className="action-btn"
                                     style={{
                                       background: isLightTheme() ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.15)',
@@ -3167,7 +2903,8 @@ export default function DashboardPage() {
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
                               <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
-                                <button 
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'login')}
                                   className="action-btn"
                                   style={{
@@ -3179,10 +2916,12 @@ export default function DashboardPage() {
                                     fontSize: '20px',
                                     transition: 'all 0.2s ease'
                                   }}
-                                  title="Edit login steps"
+                                  title="View login steps"
                                 >
-                                  ✏️
+                                  👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
+                                </div>
                               </td>
                             </tr>
                             
@@ -3239,7 +2978,8 @@ export default function DashboardPage() {
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
                               <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, textAlign: 'center' }}>
-                                <button 
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
                                   className="action-btn"
                                   style={{
@@ -3251,10 +2991,12 @@ export default function DashboardPage() {
                                     fontSize: '20px',
                                     transition: 'all 0.2s ease'
                                   }}
-                                  title="Edit logout steps"
+                                  title="View logout steps"
                                 >
-                                  ✏️
+                                   👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
+                                </div>
                               </td>
                             </tr>
                           </>
@@ -3286,18 +3028,18 @@ export default function DashboardPage() {
               Delete Form Page?
             </h2>
             
-            <p style={{ fontSize: '16px', margin: '20px 0', color: getTheme().colors.textPrimary }}>
-              Are you sure you want to delete <strong style={{ color: getTheme().colors.textPrimary }}>"{formPageToDelete.form_name}"</strong>?
+            <p style={{ fontSize: '20px', margin: '20px 0', color: '#1e293b' }}>
+              Are you sure you want to delete <strong style={{ color: '#dc2626' }}>"{formPageToDelete.form_name}"</strong>?
             </p>
-            
+
             <div style={deleteWarningBoxStyle}>
               <div style={{ display: 'flex', gap: '14px' }}>
-                <span style={{ fontSize: '24px' }}>🚨</span>
+                <span style={{ fontSize: '28px' }}>🚨</span>
                 <div>
-                  <strong style={{ fontSize: '15px', color: '#ef4444' }}>Warning - This will permanently delete:</strong>
-                  <ul style={{ margin: '8px 0 0', fontSize: '14px', color: '#94a3b8', paddingLeft: '20px' }}>
-                    <li style={{ marginBottom: '4px' }}>All discovered <strong style={{ color: '#fff' }}>paths</strong> for this form</li>
-                    <li style={{ marginBottom: '4px' }}>All <strong style={{ color: '#fff' }}>navigation steps</strong> leading to this form</li>
+                  <strong style={{ fontSize: '18px', color: '#dc2626' }}>Warning - This will permanently delete:</strong>
+                  <ul style={{ margin: '12px 0 0', fontSize: '17px', color: '#334155', paddingLeft: '20px', lineHeight: '1.8' }}>
+                    <li style={{ marginBottom: '8px' }}>All discovered <strong style={{ color: '#dc2626' }}>paths</strong> for this form</li>
+                    <li style={{ marginBottom: '8px' }}>All <strong style={{ color: '#dc2626' }}>navigation steps</strong> leading to this form</li>
                     <li>The form page entry itself</li>
                   </ul>
                 </div>
@@ -3662,10 +3404,10 @@ const primaryButtonStyle: React.CSSProperties = {
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  color: '#e2e8f0',
+  background: '#f1f5f9',
+  color: '#475569',
   padding: '16px 32px',
-  border: '1px solid rgba(255,255,255,0.12)',
+  border: '2px solid #cbd5e1',
   borderRadius: '14px',
   fontSize: '17px',
   fontWeight: 600,

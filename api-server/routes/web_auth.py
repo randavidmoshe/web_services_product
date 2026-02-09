@@ -351,32 +351,32 @@ class AgentLoginRequest(BaseModel):
     password: str
 
 
-@router.post("/agent-login")
-async def agent_login(
-    request: AgentLoginRequest,
-    db: Session = Depends(get_db)
-):
-    """Agent login endpoint - authenticate and return agent config"""
-    email = request.email
-    password = request.password
-    
-    user = db.query(User).filter(User.email == email).first()
-    
-    if user and pwd_context.verify(password, user.password_hash):
-        agent_token = f"agent_{secrets.token_urlsafe(32)}"
-        
-        user.last_login_at = datetime.utcnow()
-        db.commit()
-        
-        return {
-            "success": True,
-            "token": agent_token,
-            "company_id": user.company_id,
-            "user_id": user.id,
-            "api_url": os.getenv("API_URL", "http://localhost:8001")
-        }
-    
-    raise HTTPException(status_code=401, detail="Invalid email or password")
+#@router.post("/agent-login")
+#async def agent_login(
+#    request: AgentLoginRequest,
+#    db: Session = Depends(get_db)
+#):
+#    """Agent login endpoint - authenticate and return agent config"""
+#   email = request.email
+#   password = request.password
+#
+#   user = db.query(User).filter(User.email == email).first()
+#
+#    if user and pwd_context.verify(password, user.password_hash):
+#       agent_token = f"agent_{secrets.token_urlsafe(32)}"
+#
+#        user.last_login_at = datetime.utcnow()
+#        db.commit()
+#
+#        return {
+#            "success": True,
+#            "token": agent_token,
+#            "company_id": user.company_id,
+#            "user_id": user.id,
+#            "api_url": os.getenv("API_URL", "http://localhost:8001")
+#        }
+#
+#   raise HTTPException(status_code=401, detail="Invalid email or password")
 
 
 # ========== SIGNUP ENDPOINT ==========

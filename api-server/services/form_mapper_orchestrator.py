@@ -29,6 +29,9 @@ _orchestrator_redis_pool = redis_lib.ConnectionPool(
     max_connections=50
 )
 
+# TTL for session-scoped Redis keys (DOM, screenshots) — matches session lifetime
+MAPPER_KEY_TTL = 7200  # 2 hours
+
 class MapperState(str, Enum):
     """States in the form mapper state machine"""
     INITIALIZING = "initializing"
@@ -127,6 +130,12 @@ class FormMapperOrchestrator:
         """Release lock only if we still own it (atomic compare-and-delete)."""
         lock_key = f"mapper_lock:{session_id}"
         self.redis.eval(self._release_lock_script, 1, lock_key, lock_id)
+
+    def _bump_session_version(self, session_id: str) -> int:
+        """Increment session version — invalidates any in-flight Celery task results."""
+        new_version = self.redis.hincrby(self._get_session_key(session_id), "session_version", 1)
+        logger.info(f"[Orchestrator] Session {session_id} version bumped to {new_version}")
+        return new_version
 
     def _get_logger(self, session_id: str) -> SessionLogger:
         """Get or create session logger with context from session data"""
@@ -381,7 +390,7 @@ class FormMapperOrchestrator:
             "junction_instructions": "{}", "total_paths": 1,
             "test_cases": json.dumps(test_cases),
             "test_context": json.dumps(test_context), "config": json.dumps(final_config),
-            "consecutive_failures": 0, "recovery_failure_history": "[]",
+            "consecutive_failures": 0, "session_version": 0, "recovery_failure_history": "[]",
             "critical_fields_checklist": "{}", "field_requirements_for_recovery": "",
             "user_provided_inputs": json.dumps(user_provided_inputs) if user_provided_inputs else "{}",
             "pending_alert_info": "{}", "pending_validation_errors": "{}",
@@ -494,6 +503,8 @@ class FormMapperOrchestrator:
         task = {"task_id": f"mapper_{session_id}_{task_type}_{int(time.time()*1000)}",
                 "task_type": task_type, "session_id": session_id, "payload": payload}
         self.redis.lpush(f"agent:{user_id}", json.dumps(task))
+        self.redis.setex(f"mapper_agent_active:{session_id}", 180, "1")  # 3 min TTL — crash detection
+        self.redis.ltrim(f"agent:{user_id}", 0, 49)  # Cap queue at 50 tasks
         logger.info(f"[Orchestrator] Pushed {task_type} to agent:{user_id}")
         # Structured logging
         log = self._get_logger(session_id)
@@ -501,6 +512,7 @@ class FormMapperOrchestrator:
         return task
     
     def _fail_session(self, session_id: str, error: str) -> Dict:
+        self._bump_session_version(session_id)
         self.transition_to(session_id, MapperState.FAILED, last_error=error,
                           completed_at=datetime.utcnow().isoformat())
         self._sync_session_status_to_db(session_id, "failed", error)
@@ -678,7 +690,7 @@ class FormMapperOrchestrator:
         if not dom_html: return self._fail_session(session_id, "No DOM returned")
 
         dom_str = json.dumps(dom_html) if isinstance(dom_html, dict) else str(dom_html)
-        self.redis.setex(f"mapper_dom:{session_id}", 3600, dom_str)
+        self.redis.setex(f"mapper_dom:{session_id}", MAPPER_KEY_TTL, dom_str)
         dom_hash = hashlib.md5(dom_str.encode()).hexdigest()[:16]
         self.update_session(session_id, {"current_dom_hash": dom_hash})
         config = session.get("config", {})
@@ -699,7 +711,7 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
 
         screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
 
         config = session.get("config", {})
 
@@ -895,7 +907,7 @@ class FormMapperOrchestrator:
         if not session: return {"success": False, "error": "Session not found"}
 
         screenshot_base64 = result.get("screenshot_base64", "") if result.get("success") else ""
-        self.redis.setex(f"mapper_screenshot_before:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot_before:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
 
         logger.info(f"[Orchestrator] Junction before screenshot captured, executing step")
         log = self._get_logger(session_id)
@@ -934,7 +946,7 @@ class FormMapperOrchestrator:
                   has_before=bool(before_screenshot), has_after=bool(after_screenshot))
 
         # Trigger Celery task for AI verification
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, after_screenshot or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, after_screenshot or "")
 
         self.transition_to(session_id, MapperState.JUNCTION_VERIFYING)
         return {
@@ -1099,12 +1111,12 @@ class FormMapperOrchestrator:
         if not screenshot_base64:
             return self._fail_session(session_id, "Failed to capture screenshot for recovery")
         
-        self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
+        self.redis.setex(f"mapper_dom:{session_id}", MAPPER_KEY_TTL, str(dom_html))
         all_steps = session.get("all_steps", [])
         current_index = session.get("current_step_index", 0)
         failed_step = all_steps[current_index] if current_index < len(all_steps) else {}
 
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
         self.transition_to(session_id, MapperState.STEP_FAILED_AI_RECOVERY)
         return {"success": True, "trigger_celery": True, "celery_task": "analyze_failure_and_recover",
                 "celery_args": {
@@ -1331,7 +1343,7 @@ class FormMapperOrchestrator:
                               "description": f"Accept {alert_type}: {alert_text[:50]}..."})
         self.update_session(session_id, {"executed_steps": executed_steps,
                                          "pending_alert_info": {"alert_type": alert_type, "alert_text": alert_text}})
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, alert_screenshot or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, alert_screenshot or "")
         self.transition_to(session_id, MapperState.ALERT_EXTRACTING_DOM)
         task = self._push_agent_task(session_id, "form_mapper_extract_dom_for_alert",
                                     {"alert_type": alert_type, "alert_text": alert_text})
@@ -1343,14 +1355,14 @@ class FormMapperOrchestrator:
         if not result.get("success"):
             return self._fail_session(session_id, "Failed to extract DOM after alert")
         dom_html = result.get("dom_html", "")
-        self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
+        self.redis.setex(f"mapper_dom:{session_id}", MAPPER_KEY_TTL, str(dom_html))
         pending = session.get("pending_alert_info", {})
         alert_info = {"success": True, "alert_present": True,
                      "alert_type": pending.get("alert_type", "alert"),
                      "alert_text": pending.get("alert_text", "")}
 
         if result.get("screenshot_base64"):
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, result.get("screenshot_base64"))
+            self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, result.get("screenshot_base64"))
         self.transition_to(session_id, MapperState.ALERT_AI_RECOVERY)
         return {"success": True, "trigger_celery": True, "celery_task": "handle_alert_recovery",
                 "celery_args": {
@@ -1723,7 +1735,7 @@ class FormMapperOrchestrator:
             log = self._get_logger(session_id)
             log.warning("Screenshot failed, skipping UI verification", category="milestone")
             return self._trigger_regenerate_steps(session_id)
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
         self.transition_to(session_id, MapperState.DOM_CHANGE_UI_VERIFICATION)
         test_context = session.get("test_context", {})
         return {"success": True, "trigger_celery": True, "celery_task": "verify_ui_visual",
@@ -1807,7 +1819,7 @@ class FormMapperOrchestrator:
         # Store fresh DOM in Redis
         dom_html = result.get("dom_html", "")
         if dom_html:
-            self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
+            self.redis.setex(f"mapper_dom:{session_id}", MAPPER_KEY_TTL, str(dom_html))
             logger.info(f"[Orchestrator] Fresh DOM stored for regeneration: {len(dom_html)} chars")
 
         # Check if this is a verify regeneration
@@ -2020,10 +2032,10 @@ class FormMapperOrchestrator:
 
         # Store fresh DOM in Redis
         if dom_html:
-            self.redis.setex(f"mapper_dom:{session_id}", 3600, str(dom_html))
+            self.redis.setex(f"mapper_dom:{session_id}", MAPPER_KEY_TTL, str(dom_html))
 
         if screenshot_base64:
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64)
+            self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64)
 
         self.transition_to(session_id, MapperState.VALIDATION_ERROR_RECOVERY)
         return {
@@ -2066,7 +2078,7 @@ class FormMapperOrchestrator:
                    "error_messages": validation_errors.get("error_messages", [])}
 
         if screenshot_base64:
-            self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64)
+            self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64)
 
         self.transition_to(session_id, MapperState.HANDLING_VALIDATION_ERROR)
         return {"success": True, "trigger_celery": True, "celery_task": "handle_alert_recovery",
@@ -2609,7 +2621,7 @@ class FormMapperOrchestrator:
             return self._fail_session(session_id, "No screenshot in agent result")
 
         # Update session with fresh screenshot
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
 
         # Retrieve retry state from Redis session (stateless)
         retry_count = session.get("visual_verify_retry_count", 0)
@@ -2666,7 +2678,7 @@ class FormMapperOrchestrator:
         log.debug("Dynamic verify screenshot captured - triggering AI verification", category="milestone")
 
         # Trigger Celery task for AI verification
-        self.redis.setex(f"mapper_screenshot:{session_id}", 3600, screenshot_base64 or "")
+        self.redis.setex(f"mapper_screenshot:{session_id}", MAPPER_KEY_TTL, screenshot_base64 or "")
         self.transition_to(session_id, MapperState.DYNAMIC_VERIFY_VISUAL)
         return {
             "success": True,
@@ -2878,6 +2890,7 @@ class FormMapperOrchestrator:
 
     def _restart_for_next_path(self, session_id: str) -> Dict:
         """Restart mapping for the next junction path"""
+        self._bump_session_version(session_id)
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
 
@@ -2937,6 +2950,7 @@ class FormMapperOrchestrator:
     # ============================================================
     
     def cancel_session(self, session_id: str) -> Dict:
+        self._bump_session_version(session_id)
         self.transition_to(session_id, MapperState.CANCELLED, completed_at=datetime.utcnow().isoformat())
 
         # Push close task to agent to close browser immediately

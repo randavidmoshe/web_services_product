@@ -24,8 +24,8 @@ class AIHelper:
         if not api_key:
             raise ValueError("API key is required for AI functionality")
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-5-20250929"
-        #self.model = "claude-haiku-4-5-20251001"
+        #self.model = "claude-sonnet-4-5-20250929"
+        self.model = "claude-haiku-4-5-20251001"
         self.session_logger = session_logger  # For debug mode logging
     
     def _call_api_with_retry(self, prompt: str, max_tokens: int = 16000, max_retries: int = 3) -> Optional[str]:
@@ -1572,7 +1572,7 @@ If the last step in "Steps Already Completed" was a save/create/submit/accept/ok
   ]
 }}
 ```
-This will trigger verification steps generation.
+This will trigger verification steps generation (mandatory - make sure you added to this json - "force_regenerate_verify": true).
 
 **If more fields/buttons exist:** Continue below to generate remaining steps.
 

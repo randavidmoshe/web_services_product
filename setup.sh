@@ -51,7 +51,7 @@ def create_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
 EOF
 
-cat > api-server/routes/agent.py << 'EOF'
+cat > api-server/routes/agent_web.py << 'EOF'
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from models.database import get_db, User

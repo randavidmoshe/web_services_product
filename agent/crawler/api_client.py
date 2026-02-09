@@ -11,6 +11,7 @@
 import requests
 import urllib3
 from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
 
 # Suppress SSL warnings for self-signed certificates in development
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -79,6 +80,7 @@ class FormPagesAPIClient:
     
     def _headers(self) -> Dict[str, str]:
         """Get request headers with API key and JWT token"""
+        self._ensure_valid_jwt()
         headers = {
             "Content-Type": "application/json"
         }
@@ -99,7 +101,34 @@ class FormPagesAPIClient:
     def update_jwt_token(self, jwt_token: str):
         """Update the JWT token (called when token is refreshed)"""
         self.jwt_token = jwt_token
-    
+
+    def _ensure_valid_jwt(self):
+        """Refresh JWT if expired or about to expire (5 min buffer)."""
+        if not self.jwt_token or not self.api_key:
+            return
+
+        if not hasattr(self, '_jwt_expires_at') or not self._jwt_expires_at:
+            # First call - assume token valid, set expiry 25 min from now
+            self._jwt_expires_at = datetime.utcnow() + timedelta(minutes=25)
+            return
+
+        # Refresh 5 minutes before expiry
+        if datetime.utcnow() >= self._jwt_expires_at - timedelta(minutes=5):
+            try:
+                url = f"{self.api_url}/api/agent/refresh-token"
+                headers = {"X-Agent-API-Key": self.api_key}
+                response = requests.post(url, headers=headers, timeout=30, verify=self.ssl_verify)
+                if response.status_code == 200:
+                    result = response.json()
+                    self.jwt_token = result['jwt']
+                    expires_in = result.get('expires_in', 1800)
+                    self._jwt_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                    print(f"[APIClient] ✅ JWT refreshed (expires in {expires_in}s)")
+                else:
+                    print(f"[APIClient] ❌ JWT refresh failed: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"[APIClient] ❌ JWT refresh error: {e}")
+
     def _post(self, endpoint: str, data: Dict) -> Dict:
         """Make POST request to API"""
         url = f"{self.api_url}{endpoint}"

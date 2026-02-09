@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { fetchWithAuth } from '@/lib/fetchWithAuth'
 import { useRouter, usePathname } from 'next/navigation'
 
 interface Project {
@@ -9,6 +10,7 @@ interface Project {
   network_count: number
   form_page_count: number
   created_by_user_id: number
+  project_type: 'enterprise' | 'dynamic_content'
 }
 
 interface Network {
@@ -18,6 +20,8 @@ interface Network {
   network_type: string
   login_username: string | null
   login_password: string | null
+  totp_secret: string | null
+  has_totp: boolean
   created_at: string
 }
 
@@ -34,9 +38,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [companyId, setCompanyId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   
   // Active project
@@ -46,12 +48,16 @@ export default function DashboardLayout({
   
   // Project dropdown
   const [showProjectDropdown, setShowProjectDropdown] = useState(false)
+
+  // User dropdown
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
   
   // Projects modal (for managing projects)
   const [showProjectsModal, setShowProjectsModal] = useState(false)
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
+  const [newProjectType, setNewProjectType] = useState<'enterprise' | 'dynamic_content'>('enterprise')
   const [addingProject, setAddingProject] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
@@ -71,6 +77,13 @@ export default function DashboardLayout({
   const [networkUsername, setNetworkUsername] = useState('')
   const [networkPassword, setNetworkPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [totpSecret, setTotpSecret] = useState('')
+  const [showTotpSecret, setShowTotpSecret] = useState(false)
+  const [credentialsChanged, setCredentialsChanged] = useState({
+    username: false,
+    password: false,
+    totp: false
+  })
   const [savingNetwork, setSavingNetwork] = useState(false)
   const [editingNetwork, setEditingNetwork] = useState<Network | null>(null)
   
@@ -95,171 +108,58 @@ export default function DashboardLayout({
   const [aiBudget, setAiBudget] = useState<number | null>(null)
   const [isByok, setIsByok] = useState<boolean>(false)
 
-  // Theme configuration
-  const [showConfigDropdown, setShowConfigDropdown] = useState(false)
-  const [showThemeModal, setShowThemeModal] = useState(false)
-  const [currentTheme, setCurrentTheme] = useState<string>('platinum-steel')
+  const [accountCategory, setAccountCategory] = useState<string | null>(null)
 
-  // Theme definitions - Kept themes only
-  const themes: Record<string, {
-    name: string
-    emoji: string
-    category: 'elegant' | 'neon'
+  // Theme configuration - Pearl White only (fixed theme)
+  const theme = {
+    name: 'Pearl White',
+    emoji: '🤍',
+    category: 'elegant',
     colors: {
-      bgGradient: string
-      headerBg: string
-      sidebarBg: string
-      cardBg: string
-      cardBorder: string
-      cardGlow: string
-      accentPrimary: string
-      accentSecondary: string
-      accentGlow: string
-      iconGlow: string
-      buttonGlow: string
-      textPrimary: string
-      textSecondary: string
-      textGlow: string
-      statusOnline: string
-      statusGlow: string
-      borderGlow: string
-    }
-  }> = {
-    // === DARK THEME ===
-    'platinum-steel': {
-      name: 'Platinum Steel',
-      emoji: '🔩',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #374151 0%, #1f2937 50%, #111827 100%)',
-        headerBg: 'rgba(75, 85, 99, 0.9)',
-        sidebarBg: 'rgba(75, 85, 99, 0.6)',
-        cardBg: 'rgba(75, 85, 99, 0.5)',
-        cardBorder: 'rgba(156, 163, 175, 0.35)',
-        cardGlow: 'none',
-        accentPrimary: '#6366f1',
-        accentSecondary: '#8b5cf6',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#f3f4f6',
-        textSecondary: '#9ca3af',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 6px rgba(34, 197, 94, 0.4)',
-        borderGlow: 'none'
-      }
-    },
-    // === MEDIUM DARK THEME ===
-    'bright-silver': {
-      name: 'Bright Silver',
-      emoji: '🥈',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #6b7280 0%, #4b5563 50%, #374151 100%)',
-        headerBg: 'rgba(107, 114, 128, 0.95)',
-        sidebarBg: 'rgba(107, 114, 128, 0.7)',
-        cardBg: 'rgba(107, 114, 128, 0.6)',
-        cardBorder: 'rgba(209, 213, 219, 0.5)',
-        cardGlow: 'none',
-        accentPrimary: '#1e3a5f',
-        accentSecondary: '#2d5a87',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#ffffff',
-        textSecondary: '#e5e7eb',
-        textGlow: 'none',
-        statusOnline: '#22c55e',
-        statusGlow: '0 0 8px rgba(34, 197, 94, 0.5)',
-        borderGlow: 'none'
-      }
-    },
-    // === LIGHT THEMES (with improved contrast) ===
-    'pearl-white': {
-      name: 'Pearl White',
-      emoji: '🤍',
-      category: 'elegant',
-      colors: {
-        bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-        headerBg: 'rgba(248, 250, 252, 0.98)',
-        sidebarBg: 'rgba(241, 245, 249, 0.95)',
-        cardBg: 'rgba(242, 246, 250, 0.98)',
-        cardBorder: 'rgba(100, 116, 139, 0.3)',
-        cardGlow: 'none',
-        accentPrimary: '#0369a1',
-        accentSecondary: '#0ea5e9',
-        accentGlow: 'none',
-        iconGlow: 'none',
-        buttonGlow: 'none',
-        textPrimary: '#1e293b',
-        textSecondary: '#475569',
-        textGlow: 'none',
-        statusOnline: '#16a34a',
-        statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
-        borderGlow: 'none'
-      }
+      bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+      headerBg: 'rgba(248, 250, 252, 0.98)',
+      sidebarBg: 'rgba(241, 245, 249, 0.95)',
+      cardBg: 'rgba(242, 246, 250, 0.98)',
+      cardBorder: 'rgba(100, 116, 139, 0.3)',
+      cardGlow: 'none',
+      accentPrimary: '#0369a1',
+      accentSecondary: '#0ea5e9',
+      accentGlow: 'none',
+      iconGlow: 'none',
+      buttonGlow: 'none',
+      textPrimary: '#1e293b',
+      textSecondary: '#475569',
+      textGlow: 'none',
+      statusOnline: '#16a34a',
+      statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
+      borderGlow: 'none'
     }
   }
 
   // Get current theme colors
-  const getTheme = () => themes[currentTheme] || themes['platinum-steel']
+  const getTheme = () => theme
 
-  // Detect if current theme is light (for contrast adjustments)
-  const isLightTheme = () => {
-    const lightThemes = ['pearl-white']
-    return lightThemes.includes(currentTheme)
-  }
+  // Always light theme
+  const isLightTheme = () => true
 
   // Get contrasting background for elements (darker on light themes)
   const getContrastBg = (opacity: number = 0.1) => {
-    return isLightTheme() 
-      ? `rgba(0, 0, 0, ${opacity})`
-      : `rgba(255, 255, 255, ${opacity * 0.3})`
+    return `rgba(0, 0, 0, ${opacity})`
   }
-
-  // Load theme from localStorage on mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('quathera-theme')
-    if (savedTheme && themes[savedTheme]) {
-      setCurrentTheme(savedTheme)
-    }
-  }, [])
-
-  // Save theme to localStorage when changed
-  const changeTheme = (themeId: string) => {
-    setCurrentTheme(themeId)
-    localStorage.setItem('quathera-theme', themeId)
-    setShowThemeModal(false)
-    setShowConfigDropdown(false)
-  }
-
-  // Close config dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('.config-dropdown')) {
-        setShowConfigDropdown(false)
-      }
-    }
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [])
 
   // Load networks when Test Sites tab is selected
   useEffect(() => {
-    if (pathname?.includes('test-sites') && activeProject && token) {
+    if (pathname?.includes('test-sites') && activeProject) {
       loadNetworksForTab()
     }
   }, [pathname, activeProject])
 
   const loadNetworksForTab = async () => {
-    if (!activeProject || !token) return
+    if (!activeProject) return
     setLoadingNetworks(true)
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       if (response.ok) {
         const data = await response.json()
@@ -274,12 +174,11 @@ export default function DashboardLayout({
 
   // Check agent status
   const checkAgentStatus = async () => {
-    if (!userId || !token) return
-    
+    if (!userId) return
+
     try {
-      const response = await fetch(
-        `/api/agent/status?user_id=${userId}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/agent/status`
       )
       
       if (response.ok) {
@@ -302,21 +201,20 @@ export default function DashboardLayout({
 
   // Poll agent status every 30 seconds
   useEffect(() => {
-    if (userId && token) {
+    if (userId) {
       checkAgentStatus()
       const interval = setInterval(checkAgentStatus, 30000)
       return () => clearInterval(interval)
     }
-  }, [userId, token, companyId])
+  }, [userId])
 
   // Check AI usage (for admin only)
   const checkAiUsage = async () => {
-    if (!companyId || !token || userRole !== 'admin') return
-    
+    if (userRole !== 'admin') return
+
     try {
-      const response = await fetch(
-        `/api/form-pages/ai-usage?company_id=${companyId}&product_id=1`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/company/ai-usage?product_id=1`
       )
       
       if (response.ok) {
@@ -335,59 +233,62 @@ export default function DashboardLayout({
 
   // Fetch AI usage on load and every 60 seconds (for admin only)
   useEffect(() => {
-    if (userRole === 'admin' && companyId && token) {
+    if (userRole === 'admin') {
       checkAiUsage()
       const interval = setInterval(checkAiUsage, 60000)
       return () => clearInterval(interval)
     }
-  }, [userRole, companyId, token])
+  }, [userRole])
 
   useEffect(() => {
-    // Check URL params first (coming from marketing site login)
+    // URL params no longer used - auth is via HttpOnly cookies
+    // Clean any legacy URL params
     const urlParams = new URLSearchParams(window.location.search)
-    const urlToken = urlParams.get('token')
-    const urlUserId = urlParams.get('user_id')
-    const urlCompanyId = urlParams.get('company_id')
-    const urlUserType = urlParams.get('type')
-    
-    // If token in URL, store it and clean URL
-    if (urlToken && urlUserId && urlCompanyId) {
-      localStorage.setItem('token', urlToken)
-      localStorage.setItem('user_id', urlUserId)
-      localStorage.setItem('company_id', urlCompanyId)
-      localStorage.setItem('userType', urlUserType || 'user')
-      
-      // Clean URL (remove params)
+    if (urlParams.has('token')) {
       window.history.replaceState({}, '', '/dashboard')
-      
-      setToken(urlToken)
-      setUserId(urlUserId)
-      setCompanyId(urlCompanyId)
-      setUserRole(urlUserType || 'user')
-      
-      loadProjects(urlCompanyId, urlToken)
-      return
     }
     
-    // Otherwise check localStorage
-    const storedToken = localStorage.getItem('token')
+    // Check localStorage for UI display data
     const storedUserId = localStorage.getItem('user_id')
-    const storedCompanyId = localStorage.getItem('company_id')
     const storedUserRole = localStorage.getItem('userType')
-    
-    if (!storedToken) {
-      window.location.href = '/login'
-      return
-    }
-    
-    setToken(storedToken)
-    setUserId(storedUserId)
-    setCompanyId(storedCompanyId)
-    setUserRole(storedUserRole)
-    
-    if (storedCompanyId) {
-      loadProjects(storedCompanyId, storedToken)
-    }
+
+    // Verify auth by calling API (cookie will be sent automatically)
+    fetchWithAuth('/api/auth/me')
+      .then(res => {
+        if (!res.ok) {
+          window.location.href = '/login'
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+
+        setUserId(String(data.user_id))
+        setUserRole(data.type)
+        localStorage.setItem('user_id', String(data.user_id))
+        localStorage.setItem('userType', data.type)
+
+        // Check onboarding status for regular users
+        if (data.type !== 'super_admin') {
+          fetchWithAuth('/api/onboarding/status')
+            .then(res => res.ok ? res.json() : null)
+            .then(onboardingData => {
+              if (onboardingData && !onboardingData.onboarding_completed) {
+                window.location.href = '/onboarding'
+              }
+              if (onboardingData && onboardingData.account_category) {
+                setAccountCategory(onboardingData.account_category)
+              }
+            })
+            .catch(err => console.error('Failed to check onboarding:', err))
+        }
+
+        loadProjects()
+      })
+      .catch(() => {
+        window.location.href = '/login'
+      })
   }, [])
 
   // Close dropdowns when clicking outside
@@ -402,12 +303,11 @@ export default function DashboardLayout({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
 
-  const loadProjects = async (companyId: string, authToken: string) => {
+  const loadProjects = async () => {
     setLoadingProjects(true)
     try {
-      const response = await fetch(
-        `/api/projects/?company_id=${companyId}`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      const response = await fetchWithAuth(
+        '/api/projects/'
       )
       
       if (response.ok) {
@@ -445,6 +345,13 @@ export default function DashboardLayout({
     setShowProjectDropdown(false)
     // Trigger page refresh to load new project data
     window.dispatchEvent(new CustomEvent('activeProjectChanged', { detail: project }))
+
+    // Auto-redirect based on project type
+    if (project.project_type === 'dynamic_content' && pathname?.includes('form-pages-discovery')) {
+      router.push('/dashboard/test-pages')
+    } else if (project.project_type === 'enterprise' && pathname?.includes('test-pages')) {
+      router.push('/dashboard/form-pages-discovery')
+    }
   }
 
   const handleAddProject = async () => {
@@ -457,21 +364,20 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         '/api/projects/',
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: newProjectName.trim(),
             description: newProjectDescription.trim() || null,
-            company_id: parseInt(companyId!),
             product_id: 1,
-            user_id: parseInt(userId!)
+            project_type: accountCategory === 'form_centric' ? 'enterprise'
+                        : accountCategory === 'dynamic' ? 'dynamic_content'
+                        : newProjectType
           })
+
         }
       )
       
@@ -481,12 +387,13 @@ export default function DashboardLayout({
         setShowAddProjectModal(false)
         setNewProjectName('')
         setNewProjectDescription('')
-        loadProjects(companyId!, token!)
+        setNewProjectType('enterprise')
+        loadProjects()
         // Auto-select the new project
         selectProject(newProject)
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to create project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to create project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -502,11 +409,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
-        `/api/projects/${projectToDelete.id}?user_id=${userId}`,
+      const response = await fetchWithAuth(
+        `/api/projects/${projectToDelete.id}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -522,10 +428,10 @@ export default function DashboardLayout({
           localStorage.removeItem('active_project_name')
         }
         
-        loadProjects(companyId!, token!)
+        loadProjects()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete project')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete project'))
       }
     } catch (err) {
       setError('Connection error')
@@ -544,9 +450,8 @@ export default function DashboardLayout({
     setLoadingNetworks(true)
     
     try {
-      const response = await fetch(
-        `/api/projects/${activeProject.id}/networks`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+      const response = await fetchWithAuth(
+        `/api/projects/${activeProject.id}/networks`
       )
       
       if (response.ok) {
@@ -568,9 +473,12 @@ export default function DashboardLayout({
     setAddNetworkType(type)
     setNetworkName('')
     setNetworkUrl('')
-    setNetworkUsername('')
-    setNetworkPassword('')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setEditingNetwork(null)
     setShowAddNetworkModal(true)
   }
@@ -580,9 +488,12 @@ export default function DashboardLayout({
     setAddNetworkType(network.network_type as 'qa' | 'staging' | 'production')
     setNetworkName(network.name)
     setNetworkUrl(network.url)
-    setNetworkUsername(network.login_username || '')
-    setNetworkPassword(network.login_password || '')
+    setNetworkUsername(network.login_username ? '********' : '')
+    setNetworkPassword(network.login_password ? '********' : '')
+    setTotpSecret(network.totp_secret ? '********' : '')
+    setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
+    setShowTotpSecret(false)
     setShowAddNetworkModal(true)
   }
 
@@ -598,20 +509,18 @@ export default function DashboardLayout({
     try {
       const url = editingNetwork
         ? `/api/projects/${activeProject!.id}/networks/${editingNetwork.id}`
-        : `/api/projects/${activeProject!.id}/networks?user_id=${userId}`
-      
-      const response = await fetch(url, {
+        : `/api/projects/${activeProject!.id}/networks`
+
+      const response = await fetchWithAuth(url, {
         method: editingNetwork ? 'PUT' : 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: networkName.trim(),
           url: networkUrl.trim(),
           network_type: addNetworkType,
-          login_username: networkUsername.trim() || null,
-          login_password: networkPassword.trim() || null
+          ...(credentialsChanged.username && { login_username: networkUsername.trim() || null }),
+          ...(credentialsChanged.password && { login_password: networkPassword.trim() || null }),
+          ...(credentialsChanged.totp && { totp_secret: totpSecret.trim() || null })
         })
       })
       
@@ -623,7 +532,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to save network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to save network'))
       }
     } catch (err) {
       setError('Connection error')
@@ -639,11 +548,10 @@ export default function DashboardLayout({
     setError(null)
     
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `/api/projects/${activeProject!.id}/networks/${networkToDelete.id}`,
         {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'DELETE'
         }
       )
       
@@ -654,7 +562,7 @@ export default function DashboardLayout({
         openNetworksModal()
       } else {
         const errData = await response.json()
-        setError(errData.detail || 'Failed to delete network')
+        setError(typeof errData.detail === 'string' ? errData.detail : (errData.detail?.[0]?.msg || 'Failed to delete network'))
       }
     } catch (err) {
       setError('Connection error')
@@ -663,7 +571,14 @@ export default function DashboardLayout({
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetchWithAuth('/api/auth/logout', {
+        method: 'POST'
+      })
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
     localStorage.clear()
     window.location.href = '/login'
   }
@@ -695,7 +610,7 @@ export default function DashboardLayout({
     </div>
   )
 
-  if (!token) return (
+  if (!userId) return (
     <div style={{ 
       minHeight: '100vh', 
       background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
@@ -854,28 +769,32 @@ export default function DashboardLayout({
           
           <div style={{ width: '1px', height: '40px', background: isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' }} />
           
-          {/* AI Usage Indicator */}
+          {/* AI Usage Indicator - Only for Early Access (not BYOK) */}
           {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
-            <div 
+            <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '15px'
-              }} 
-              title={`AI Usage: $${aiUsed} / $${aiBudget}`}
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                padding: '8px 16px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '10px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`
+              }}
+              title={`AI Usage: ${Math.round(aiUsed)} / ${aiBudget} actions`}
             >
-              <span style={{ 
-                fontSize: '16px',
+              <span style={{
+                fontSize: '12px',
                 color: getTheme().colors.textSecondary,
-                fontWeight: 600
-              }}>AI:</span>
-              <span style={{ 
+                fontWeight: 600,
+                marginBottom: '2px'
+              }}>AI Trial Usage</span>
+              <span style={{
                 color: aiUsed >= aiBudget ? '#ef4444' : aiUsed >= aiBudget * 0.8 ? '#f59e0b' : '#10b981',
                 fontWeight: 700,
-                fontSize: '16px'
+                fontSize: '14px'
               }}>
-                {Math.round(aiUsed)} / {aiBudget}
+                Used: {Math.round(aiUsed)} of {aiBudget} actions
               </span>
             </div>
           )}
@@ -917,70 +836,6 @@ export default function DashboardLayout({
             </span>
           </div>
           
-          {/* Configuration Dropdown */}
-          <div className="config-dropdown" style={{ position: 'relative' }}>
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowConfigDropdown(!showConfigDropdown) }}
-              className="top-btn"
-              style={{
-                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
-                borderRadius: '12px',
-                padding: '12px 22px',
-                fontSize: '16px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                color: getTheme().colors.textPrimary,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <span>⚙️</span> Configuration <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
-            </button>
-            
-            {showConfigDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 10px)',
-                right: 0,
-                background: getTheme().colors.headerBg,
-                backdropFilter: 'blur(20px)',
-                border: `2px solid ${getTheme().colors.cardBorder}`,
-                borderRadius: '16px',
-                boxShadow: `${getTheme().colors.borderGlow}, 0 20px 60px rgba(0,0,0,0.5)`,
-                minWidth: '220px',
-                zIndex: 1000,
-                overflow: 'hidden',
-                animation: 'fadeIn 0.2s ease'
-              }}>
-                <div style={{ padding: '14px 18px', fontSize: '11px', fontWeight: 700, color: getTheme().colors.textSecondary, letterSpacing: '1.5px', borderBottom: `1px solid ${getTheme().colors.cardBorder}` }}>
-                  CONFIGURATION
-                </div>
-                <div
-                  onClick={() => setShowThemeModal(true)}
-                  className="dropdown-item"
-                  style={{
-                    padding: '16px 20px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '14px',
-                    color: getTheme().colors.textPrimary,
-                    transition: 'all 0.2s ease',
-                    fontSize: '16px',
-                    fontWeight: 500
-                  }}
-                >
-                  <span style={{ fontSize: '20px' }}>🎨</span>
-                  <span>Themes</span>
-                  <span style={{ marginLeft: 'auto', opacity: 0.5 }}>→</span>
-                </div>
-              </div>
-            )}
-          </div>
-          
           {/* Download Agent */}
           <button
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
@@ -1003,27 +858,93 @@ export default function DashboardLayout({
             <span>⬇️</span> Download Agent
           </button>
           
-          {/* Logout */}
-          <button 
-            onClick={handleLogout} 
-            className="top-btn" 
-            style={{
-              background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
-              borderRadius: '12px',
-              padding: '12px 22px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: getTheme().colors.textPrimary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Logout
-          </button>
+          {/* User Menu Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
+              className="top-btn"
+              style={{
+                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '12px',
+                padding: '12px 22px',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: getTheme().colors.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>👤</span>
+              <span>Account</span>
+              <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
+            </button>
+
+            {showUserDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '8px',
+                background: isLightTheme() ? 'rgba(255,255,255,0.98)' : 'rgba(30,41,59,0.98)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '12px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                minWidth: '180px',
+                overflow: 'hidden',
+                zIndex: 1000
+              }}>
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    router.push('/settings')
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: getTheme().colors.textPrimary,
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>⚙️</span> Settings
+                </div>
+                <div style={{ height: '1px', background: isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }} />
+                <div
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    handleLogout()
+                  }}
+                  style={{
+                    padding: '14px 20px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: '#ef4444',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>🚪</span> Logout
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1099,7 +1020,13 @@ export default function DashboardLayout({
             {/* Project-specific tabs */}
             {[
               { id: 'project-dashboard', path: '/dashboard/project-dashboard', icon: '📊', label: 'Dashboard' },
-              { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+              ...(activeProject?.project_type === 'dynamic_content'
+                ? [{ id: 'test-pages', path: '/dashboard/test-pages', icon: '🧪', label: 'Test Pages' }]
+                : [
+    { id: 'form-pages-discovery', path: '/dashboard/form-pages-discovery', icon: '🔍', label: 'Form Pages Discovery' },
+    { id: 'custom-tests', path: '/dashboard/custom-tests', icon: '🧪', label: 'Custom Tests' }
+  ]
+              ),
               { id: 'test-scenarios', path: '/dashboard/test-scenarios', icon: '📝', label: 'Test Scenarios' },
               { id: 'run-tests', path: '/dashboard/run-tests', icon: '▶️', label: 'Run Tests' },
               { id: 'test-sites', path: '/dashboard/test-sites', icon: '🌐', label: 'Test Sites' },
@@ -1333,11 +1260,68 @@ export default function DashboardLayout({
                   style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
                 />
               </div>
+
+              {/* Only show project type selection if accountCategory is null (legacy users) */}
+              {accountCategory === null && (
+              <div style={{ marginBottom: '8px' }}>
+                <label style={labelStyle}>Project Type *</label>
+                <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'enterprise' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'enterprise' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="enterprise"
+                      checked={newProjectType === 'enterprise'}
+                      onChange={() => setNewProjectType('enterprise')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🏢 Enterprise Forms</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Auto-discover forms, multi-path mapping</div>
+                    </div>
+                  </label>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'dynamic_content' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'dynamic_content' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
+                    flex: 1
+                  }}>
+                    <input
+                      type="radio"
+                      name="projectType"
+                      value="dynamic_content"
+                      checked={newProjectType === 'dynamic_content'}
+                      onChange={() => setNewProjectType('dynamic_content')}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🧪 Dynamic Content</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Manual test pages, natural language tests</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              )}
             </div>
             
             <div style={modalFooterStyle}>
               <button
-                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription('') }}
+                onClick={() => { setShowAddProjectModal(false); setNewProjectName(''); setNewProjectDescription(''); setNewProjectType('enterprise') }}
                 style={secondaryButtonStyle}
               >
                 Cancel
@@ -1500,8 +1484,11 @@ export default function DashboardLayout({
                 <input
                   type="text"
                   value={networkUsername}
-                  onChange={(e) => setNetworkUsername(e.target.value)}
-                  placeholder="Username for auto-login"
+                  onChange={(e) => {
+                    setNetworkUsername(e.target.value)
+                    setCredentialsChanged(prev => ({...prev, username: true}))
+                  }}
+                  placeholder={editingNetwork?.login_username ? "Configured ✓ (enter new to change)" : "Username for auto-login"}
                   style={inputStyle}
                 />
               </div>
@@ -1512,13 +1499,18 @@ export default function DashboardLayout({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={networkPassword}
-                    onChange={(e) => setNetworkPassword(e.target.value)}
-                    placeholder="Password for auto-login"
+                    onChange={(e) => {
+                      setNetworkPassword(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, password: true}))
+                    }}
+                    placeholder={editingNetwork?.login_password ? "Configured ✓ (enter new to change)" : "Password for auto-login"}
                     style={{ ...inputStyle, paddingRight: '50px' }}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => {
+                      if (networkPassword !== '********') setShowPassword(!showPassword)
+                    }}
                     style={{
                       position: 'absolute',
                       right: '12px',
@@ -1528,12 +1520,52 @@ export default function DashboardLayout({
                       border: 'none',
                       color: '#64748b',
                       cursor: 'pointer',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      display: networkPassword === '********' ? 'none' : 'block'
                     }}
                   >
                     {showPassword ? '🙈' : '👁️'}
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>TOTP Secret (optional - for 2FA)</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTotpSecret ? 'text' : 'password'}
+                    value={totpSecret}
+                    onChange={(e) => {
+                      setTotpSecret(e.target.value)
+                      setCredentialsChanged(prev => ({...prev, totp: true}))
+                    }}
+                    placeholder={editingNetwork?.totp_secret ? "Configured ✓ (enter new to change)" : "TOTP secret for 2FA"}
+                    style={{ ...inputStyle, paddingRight: '50px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (totpSecret !== '********') setShowTotpSecret(!showTotpSecret)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      display: totpSecret === '********' ? 'none' : 'block'
+                    }}
+                  >
+                    {showTotpSecret ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  Enter the TOTP secret key (not the QR code) for automated 2FA login
+                </p>
               </div>
             </div>
             
@@ -1582,276 +1614,6 @@ export default function DashboardLayout({
         </div>
       )}
 
-      {/* Theme Selector Modal */}
-      {showThemeModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: getTheme().colors.headerBg,
-            borderRadius: '28px',
-            width: '900px',
-            maxHeight: '85vh',
-            overflow: 'hidden',
-            border: `2px solid ${getTheme().colors.cardBorder}`,
-            boxShadow: `${getTheme().colors.borderGlow}, 0 30px 100px rgba(0,0,0,0.5)`,
-            animation: 'fadeIn 0.3s ease'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '28px 36px',
-              borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}20, ${getTheme().colors.accentSecondary}15)`
-            }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '26px', color: getTheme().colors.textPrimary, fontWeight: 700 }}>
-                  🎨 Choose Your Theme
-                </h2>
-                <p style={{ margin: '8px 0 0', fontSize: '15px', color: getTheme().colors.textSecondary }}>
-                  Select a color scheme for your dashboard
-                </p>
-              </div>
-              <button
-                onClick={() => setShowThemeModal(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  padding: '12px 16px',
-                  color: getTheme().colors.textPrimary,
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div style={{ padding: '32px', overflowY: 'auto', maxHeight: 'calc(85vh - 120px)' }}>
-              {/* Elegant Themes */}
-              <div style={{ marginBottom: '36px' }}>
-                <h3 style={{ 
-                  color: getTheme().colors.textPrimary, 
-                  fontSize: '18px', 
-                  fontWeight: 700, 
-                  marginBottom: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}>
-                  <span>✨</span> Elegant Themes
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-                  {Object.entries(themes).filter(([_, t]) => t.category === 'elegant').map(([id, theme]) => (
-                    <div
-                      key={id}
-                      onClick={() => changeTheme(id)}
-                      style={{
-                        background: theme.colors.cardBg,
-                        border: currentTheme === id 
-                          ? `3px solid ${theme.colors.accentPrimary}` 
-                          : `2px solid ${theme.colors.cardBorder}`,
-                        borderRadius: '20px',
-                        padding: '20px',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        boxShadow: currentTheme === id 
-                          ? theme.colors.buttonGlow 
-                          : theme.colors.cardGlow,
-                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
-                      }}
-                    >
-                      {/* Mini Preview */}
-                      <div style={{
-                        background: theme.colors.bgGradient,
-                        borderRadius: '12px',
-                        padding: '16px',
-                        marginBottom: '16px',
-                        border: `1px solid ${theme.colors.cardBorder}`
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          marginBottom: '12px'
-                        }}>
-                          <div style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '8px',
-                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
-                            boxShadow: `0 0 15px ${theme.colors.accentGlow}`
-                          }} />
-                          <div style={{
-                            height: '8px',
-                            flex: 1,
-                            borderRadius: '4px',
-                            background: theme.colors.cardBorder
-                          }} />
-                        </div>
-                        <div style={{
-                          display: 'flex',
-                          gap: '8px'
-                        }}>
-                          <div style={{
-                            height: '24px',
-                            flex: 1,
-                            borderRadius: '6px',
-                            background: theme.colors.cardBg,
-                            border: `1px solid ${theme.colors.cardBorder}`
-                          }} />
-                          <div style={{
-                            width: '50px',
-                            height: '24px',
-                            borderRadius: '6px',
-                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
-                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
-                          }} />
-                        </div>
-                      </div>
-                      {/* Theme Name */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        color: theme.colors.textPrimary
-                      }}>
-                        <span style={{ fontSize: '22px' }}>{theme.emoji}</span>
-                        <span style={{ fontWeight: 600, fontSize: '15px' }}>{theme.name}</span>
-                        {currentTheme === id && (
-                          <span style={{ 
-                            marginLeft: 'auto', 
-                            background: theme.colors.accentPrimary,
-                            color: '#fff',
-                            padding: '4px 10px',
-                            borderRadius: '8px',
-                            fontSize: '12px',
-                            fontWeight: 700
-                          }}>
-                            ✓ Active
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Neon Themes */}
-              <div>
-                <h3 style={{ 
-                  color: getTheme().colors.textPrimary, 
-                  fontSize: '18px', 
-                  fontWeight: 700, 
-                  marginBottom: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}>
-                  <span>⚡</span> Ultra Bright Neon Themes
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-                  {Object.entries(themes).filter(([_, t]) => t.category === 'neon').map(([id, theme]) => (
-                    <div
-                      key={id}
-                      onClick={() => changeTheme(id)}
-                      style={{
-                        background: theme.colors.cardBg,
-                        border: currentTheme === id 
-                          ? `3px solid ${theme.colors.accentPrimary}` 
-                          : `2px solid ${theme.colors.cardBorder}`,
-                        borderRadius: '18px',
-                        padding: '16px',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        boxShadow: currentTheme === id 
-                          ? theme.colors.buttonGlow 
-                          : theme.colors.cardGlow,
-                        transform: currentTheme === id ? 'scale(1.02)' : 'scale(1)'
-                      }}
-                    >
-                      {/* Mini Preview */}
-                      <div style={{
-                        background: theme.colors.bgGradient,
-                        borderRadius: '10px',
-                        padding: '12px',
-                        marginBottom: '12px',
-                        border: `1px solid ${theme.colors.cardBorder}`,
-                        boxShadow: `inset 0 0 20px ${theme.colors.accentGlow}`
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginBottom: '10px'
-                        }}>
-                          <div style={{
-                            width: '22px',
-                            height: '22px',
-                            borderRadius: '6px',
-                            background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
-                            boxShadow: `0 0 20px ${theme.colors.accentPrimary}`
-                          }} />
-                          <div style={{
-                            height: '6px',
-                            flex: 1,
-                            borderRadius: '3px',
-                            background: theme.colors.cardBorder,
-                            boxShadow: `0 0 10px ${theme.colors.accentGlow}`
-                          }} />
-                        </div>
-                        <div style={{
-                          height: '18px',
-                          borderRadius: '5px',
-                          background: `linear-gradient(135deg, ${theme.colors.accentPrimary}, ${theme.colors.accentSecondary})`,
-                          boxShadow: `0 0 15px ${theme.colors.accentPrimary}`
-                        }} />
-                      </div>
-                      {/* Theme Name */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        color: theme.colors.textPrimary
-                      }}>
-                        <span style={{ fontSize: '18px' }}>{theme.emoji}</span>
-                        <span style={{ fontWeight: 600, fontSize: '13px', textShadow: theme.colors.textGlow }}>{theme.name}</span>
-                        {currentTheme === id && (
-                          <span style={{ 
-                            marginLeft: 'auto', 
-                            background: theme.colors.accentPrimary,
-                            color: '#fff',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            boxShadow: `0 0 10px ${theme.colors.accentPrimary}`
-                          }}>
-                            ✓
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

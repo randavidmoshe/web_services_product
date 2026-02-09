@@ -24,7 +24,7 @@ import secrets
 from models.database import get_db, CrawlSession
 from models.agent_models import Agent, AgentTask
 from services.agent_service import AgentService
-from utils.jwt_utils import create_jwt_token, decode_jwt_token, get_token_expiry_seconds
+from utils.agent_jwt_utils import create_jwt_token, decode_jwt_token, get_token_expiry_seconds
 from jose import JWTError
 from utils.auth_helpers import get_current_user_from_request
 
@@ -547,6 +547,7 @@ async def create_task(task_data: dict, request: Request, db: Session = Depends(g
         'user_id': user_id
     })
     redis_client.rpush(queue_name, redis_message)
+    redis_client.ltrim(queue_name, 0, 49)
     
     return {"success": True, "task_id": task_id, "queue": queue_name}
 

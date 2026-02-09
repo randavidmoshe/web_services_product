@@ -22,14 +22,18 @@ logging.basicConfig(
 )
 
 
-# Redis URL
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+# Broker: SQS in production, Redis in dev
+# Set CELERY_BROKER_URL=sqs:// for AWS SQS
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+
+# Result backend: always Redis (SQS cannot store results)
+REDIS_STATE_URL = os.getenv("REDIS_STATE_URL", "redis://redis:6379/0")
 
 # Create Celery app
 celery = Celery(
     "form_discoverer",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=CELERY_BROKER_URL,
+    backend=REDIS_STATE_URL,
     include=['tasks.form_mapper_tasks', 'tasks.forms_runner_tasks', 'tasks.form_pages_tasks', 'tasks.user_requirements_tasks', 'tasks.pom_generator_tasks', 'tasks.spec_compliance_tasks', 'tasks.s3_tasks', 'tasks.test_page_verification_assets_tasks', 'tasks.email_tasks']
 )
 
@@ -47,6 +51,19 @@ celery.conf.update(
     worker_hijack_root_logger=False,  # Don't override JSON logging
 )
 
+# SQS-specific config (only applies when broker is SQS)
+if CELERY_BROKER_URL.startswith("sqs"):
+    celery.conf.update(
+        broker_transport_options={
+            "region": os.getenv("AWS_REGION", "us-east-1"),
+            "visibility_timeout": 3600,  # Match task_time_limit
+            "polling_interval": 1,
+            "queue_name_prefix": os.getenv("SQS_QUEUE_PREFIX", "quattera-"),
+        },
+        task_default_queue="celery",
+        broker_connection_retry_on_startup=True,
+    )
+
 celery.conf.beat_schedule = {
     'cleanup-stale-sessions-hourly': {
         'task': 'tasks.cleanup_stale_mapper_sessions',
@@ -55,6 +72,10 @@ celery.conf.beat_schedule = {
     'cleanup-stale-crawl-sessions-hourly': {
         'task': 'tasks.cleanup_stale_crawl_sessions',
         'schedule': 3600.0,
+    },
+    'detect-stuck-mapper-sessions': {
+        'task': 'tasks.detect_stuck_mapper_sessions',
+        'schedule': 60.0,  # Every 60 seconds
     },
 }
 

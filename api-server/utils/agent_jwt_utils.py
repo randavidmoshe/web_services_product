@@ -1,5 +1,5 @@
 # JWT Utilities for Agent Authentication
-# Location: api-server/utils/jwt_utils.py
+# Location: api-server/utils/agent_jwt_utils.py
 #
 # Level 3 Security: Short-lived JWT tokens with session enforcement
 # - Tokens expire after 30 minutes
