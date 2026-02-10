@@ -13,6 +13,8 @@ import redis
 import json
 import uuid
 import os
+import logging
+logger = logging.getLogger(__name__)
 
 from services.encryption_service import mask_credential
 
@@ -161,42 +163,116 @@ async def locate_form_pages(
     
     if not task_params:
         raise HTTPException(status_code=400, detail="Failed to prepare crawl task")
-    
+
     # Generate task ID
     task_id = str(uuid.uuid4())
-    
-    # Create agent_task record in database
-    agent_task = AgentTask(
-        task_id=task_id,
-        company_id=task_params["company_id"],
-        user_id=user_id,
-        task_type="discover_form_pages",
-        parameters=task_params,
-        status="pending"
-    )
-    db.add(agent_task)
-    db.commit()
-    db.refresh(agent_task)
-    
-    # Push to user's Redis queue
-    queue_name = f'agent:{user_id}'
-    redis_message = json.dumps({
-        'task_id': task_id,
-        'task_type': 'discover_form_pages',
-        'company_id': task_params["company_id"],
-        'user_id': user_id
-    })
-    redis_client.rpush(queue_name, redis_message)
-    redis_client.ltrim(queue_name, 0, 49)
-    
-    return {
-        "crawl_session_id": task_params["crawl_session_id"],
-        "task_id": task_id,
-        "status": "pending",
-        "message": "Form page discovery task created and queued",
-        "agent_id": agent.agent_id,
-        "queue": queue_name
-    }
+
+    # Check if network has login credentials → chain through login mapper first
+    has_credentials = bool(network.login_username and network.login_password)
+
+    if has_credentials:
+        # === LOGIN MAPPER → DISCOVERY CHAIN ===
+        # 1. Add skip_login flag so agent skips old inline login
+        task_params["skip_login"] = True
+
+        # 2. Create AgentTask in DB (but DON'T push to Redis yet — login mapper goes first)
+        agent_task = AgentTask(
+            task_id=task_id,
+            company_id=task_params["company_id"],
+            user_id=user_id,
+            task_type="discover_form_pages",
+            parameters=task_params,
+            status="pending"
+        )
+        db.add(agent_task)
+        db.commit()
+        db.refresh(agent_task)
+
+        # 3. Start login mapper session via orchestrator
+        from services.form_mapper_orchestrator import FormMapperOrchestrator
+        from models.form_mapper_models import FormMapperSession
+
+        orchestrator = FormMapperOrchestrator(db)
+
+        mapper_db_session = FormMapperSession(
+            network_id=network_id,
+            user_id=user_id,
+            company_id=task_params["company_id"],
+            status="initializing",
+            config={
+                "mapping_type": "login_mapping",
+                "discovery_chain": {
+                    "task_id": task_id,
+                    "user_id": user_id,
+                    "company_id": task_params["company_id"],
+                    "crawl_session_id": task_params["crawl_session_id"]
+                }
+            }
+        )
+        db.add(mapper_db_session)
+        db.commit()
+        db.refresh(mapper_db_session)
+
+        orchestrator.create_session(
+            session_id=str(mapper_db_session.id),
+            user_id=user_id,
+            network_id=network_id,
+            company_id=task_params["company_id"],
+            product_id=network.product_id,
+            project_id=network.project_id,
+            mapping_type="login_mapping",
+            base_url=network.url
+        )
+
+        mapper_result = orchestrator.start_login_phase(session_id=str(mapper_db_session.id))
+
+        if not mapper_result.get("success"):
+            raise HTTPException(status_code=500, detail="Failed to start login mapping")
+
+        logger.info(f"[API] Started login mapper → discovery chain for network {network_id}")
+
+        return {
+            "crawl_session_id": task_params["crawl_session_id"],
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Login mapping started, discovery will follow automatically",
+            "agent_id": agent.agent_id,
+            "queue": f'agent:{user_id}'
+        }
+
+    else:
+        # === NO CREDENTIALS — PUSH DISCOVERY DIRECTLY ===
+        agent_task = AgentTask(
+            task_id=task_id,
+            company_id=task_params["company_id"],
+            user_id=user_id,
+            task_type="discover_form_pages",
+            parameters=task_params,
+            status="pending"
+        )
+        db.add(agent_task)
+        db.commit()
+        db.refresh(agent_task)
+
+        # Push to user's Redis queue
+        queue_name = f'agent:{user_id}'
+        redis_message = json.dumps({
+            'task_id': task_id,
+            'task_type': 'discover_form_pages',
+            'company_id': task_params["company_id"],
+            'user_id': user_id
+        })
+        redis_client.rpush(queue_name, redis_message)
+        redis_client.ltrim(queue_name, 0, 49)
+
+        return {
+            "crawl_session_id": task_params["crawl_session_id"],
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Form page discovery task created and queued",
+            "agent_id": agent.agent_id,
+            "queue": queue_name
+        }
 
 
 @router.get("/sessions/{session_id}")

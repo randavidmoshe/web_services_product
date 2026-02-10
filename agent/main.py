@@ -632,7 +632,7 @@ class FormDiscovererAgent:
             return nav_result
         
         return self._handle_execute_steps({'steps': test_steps})
-
+    '''
     def _handle_discover_form_pages(self, params: Dict) -> Dict:
         """Handle form page discovery task."""
         self.logger.info("🔍 Starting form page discovery...")
@@ -683,6 +683,8 @@ class FormDiscovererAgent:
         api_client.update_crawl_session(status='running')
 
         try:
+
+
             # Always close existing browser and create fresh session
             if self.selenium_agent.driver:
                 self.logger.info("Closing existing browser session...")
@@ -690,7 +692,7 @@ class FormDiscovererAgent:
                     self.selenium_agent.close_browser()
                 except Exception as e:
                     self.logger.warning(f"Error closing old browser: {e}")
-            
+
             # Create fresh browser
             self.selenium_agent.initialize_browser(
                 browser_type=browser,
@@ -700,7 +702,7 @@ class FormDiscovererAgent:
             driver = self.selenium_agent.driver
             driver.get(login_url)
             time.sleep(2)
-            
+
             # Check for page error after initial load
             page_error = detect_page_error(driver)
             if page_error:
@@ -718,15 +720,15 @@ class FormDiscovererAgent:
             login_successful = False
             if login_username and login_password:
                 self.logger.info(f"Logging in as: {login_username}")
-                
+
                 from selenium.webdriver.common.by import By
                 from selenium.webdriver.support.ui import WebDriverWait
                 from selenium.webdriver.support import expected_conditions as EC
-                
+
                 max_login_attempts = 3
                 for attempt in range(1, max_login_attempts + 1):
                     self.logger.info(f"Login attempt {attempt}/{max_login_attempts}")
-                    
+
                     try:
                         # Get fresh page state for each attempt
                         page_html = driver.execute_script("return document.documentElement.outerHTML")
@@ -739,7 +741,7 @@ class FormDiscovererAgent:
                             password=login_password,
                             login_url = login_url
                         )
-                        
+
                         if not login_steps:
                             # AI returned no steps - not a login page (or already logged in)
                             # Assume we're on the dashboard and continue to crawl
@@ -776,7 +778,7 @@ class FormDiscovererAgent:
                                 self.logger.warning(f"Login step failed: {action} on '{selector}': {step_error}")
                                 step_failed = True
                                 break
-                        
+
                         if step_failed:
                             if attempt < max_login_attempts:
                                 self.logger.info(f"Retrying login...")
@@ -787,7 +789,7 @@ class FormDiscovererAgent:
 
                         # Wait for page to load after login
                         time.sleep(2)
-                        
+
                         # Check if login succeeded (not on login page anymore, no error)
                         page_error = detect_page_error(driver)
                         if page_error:
@@ -797,13 +799,13 @@ class FormDiscovererAgent:
                                 time.sleep(2)
                                 continue
                             break
-                        
+
                         # Login succeeded
                         login_successful = True
                         self.logger.info(f"✅ Login successful on attempt {attempt}")
                         self.activity_logger.info("✅ Login successful")
                         break
-                        
+
                     except Exception as login_error:
                         self.logger.error(f"Login attempt {attempt} failed: {login_error}")
                         if attempt < max_login_attempts:
@@ -811,7 +813,7 @@ class FormDiscovererAgent:
                             time.sleep(2)
                             continue
                         break
-                
+
                 # Check if all login attempts failed
                 if not login_successful:
                     error_msg = f"Login failed after {max_login_attempts} attempts"
@@ -917,6 +919,198 @@ class FormDiscovererAgent:
                     self.selenium_agent.close_browser()
                 except Exception as e:
                     self.logger.warning(f"Error closing browser: {e}")
+    '''
+
+    def _handle_discover_form_pages(self, params: Dict) -> Dict:
+        """Handle form page discovery task.
+
+        If skip_login=True: browser is already open and logged in by the login mapper.
+        If skip_login=False: opens fresh browser, navigates to URL (no login — no credentials).
+        """
+        self.logger.info("🔍 Starting form page discovery...")
+
+        crawl_session_id = params.get('crawl_session_id')
+        self.current_crawl_session_id = crawl_session_id
+        # Start activity logging session
+        self.activity_logger.start_session(
+            activity_type='discovery',
+            session_id=crawl_session_id,
+            project_id=params.get('project_id'),
+            company_id=params.get('company_id'),
+            user_id=params.get('user_id', 0),
+            network_id=params.get('network_id')
+        )
+        self.activity_logger.info("🔍 Discovery started")
+        network_url = params.get('network_url')
+        login_url = params.get('login_url', network_url)
+        login_username = params.get('login_username')
+        login_password = params.get('login_password')
+        project_name = params.get('project_name', 'default')
+        max_depth = params.get('max_depth', 20)
+        max_form_pages = params.get('max_form_pages')
+        slow_mode = params.get('slow_mode', True)
+        skip_login = params.get('skip_login', False)
+
+        # Re-read browser settings from .env file (allows changes without restart)
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+        headless = os.getenv('DEFAULT_HEADLESS', 'false').lower() == 'true'
+        browser = os.getenv('BROWSER', 'chrome')
+        self.logger.info(f"[Browser Config] browser={browser}, headless={headless} (fresh from .env)")
+
+        api_client = FormPagesAPIClient(
+            api_url=self.config.api_url,
+            agent_token=self.config.agent_token,
+            company_id=params.get('company_id'),
+            product_id=params.get('product_id'),
+            project_id=params.get('project_id'),
+            network_id=params.get('network_id'),
+            crawl_session_id=crawl_session_id,
+            user_id=params.get('user_id', 0),
+            ssl_verify=self.ssl_verify,
+            api_key=self.api_key,
+            jwt_token=self.jwt_token
+        )
+        api_client.max_form_pages = max_form_pages
+
+        api_client.update_crawl_session(status='running')
+
+        try:
+            if skip_login:
+                # === BROWSER ALREADY OPEN — LOGIN DONE BY LOGIN MAPPER ===
+                self.logger.info("⏭️ skip_login=True — browser already logged in via login mapper")
+                self.activity_logger.info("✅ Login completed by login mapper")
+
+                if not self.selenium_agent.driver:
+                    error_msg = "skip_login=True but no browser session found"
+                    self.logger.error(error_msg)
+                    api_client.update_crawl_session(
+                        status='failed',
+                        error_message=error_msg
+                    )
+                    return {"success": False, "error": error_msg}
+
+                driver = self.selenium_agent.driver
+            else:
+                # === NO CREDENTIALS — OPEN FRESH BROWSER, NAVIGATE, NO LOGIN ===
+                if self.selenium_agent.driver:
+                    self.logger.info("Closing existing browser session...")
+                    try:
+                        self.selenium_agent.close_browser()
+                    except Exception as e:
+                        self.logger.warning(f"Error closing old browser: {e}")
+
+                self.selenium_agent.initialize_browser(
+                    browser_type=browser,
+                    headless=headless
+                )
+
+                driver = self.selenium_agent.driver
+                driver.get(login_url)
+                time.sleep(2)
+
+                # Check for page error after initial load
+                page_error = detect_page_error(driver)
+                if page_error:
+                    error_msg = get_error_message(page_error)
+                    self.logger.error(f"Initial page error: {error_msg}")
+                    self.activity_logger.error(f"❌ PAGE ERROR: {error_msg}")
+                    api_client.update_crawl_session(
+                        status='failed',
+                        error_code=page_error,
+                        error_message=f"Cannot access site: {error_msg}"
+                    )
+                    return {"success": False, "error": error_msg, "error_code": page_error}
+
+            # === CRAWL (same for both paths) ===
+            base_url = driver.current_url
+            skip_form_crawl = params.get('skip_form_crawl', False)
+
+            # Reset cancel flag before starting crawl
+            self.cancel_requested = False
+
+            if not skip_form_crawl:
+                crawler = FormPagesCrawler(
+                    driver=driver,
+                    start_url=base_url,
+                    base_url=base_url,
+                    project_name=project_name,
+                    max_depth=max_depth,
+                    target_form_pages=[],
+                    discovery_only=True,
+                    slow_mode=slow_mode,
+                    server=api_client,
+                    username=login_username,
+                    login_url=login_url,
+                    agent=self.selenium_agent,
+                    form_agent=self
+                )
+
+                crawler.crawl()
+            else:
+                self.logger.info("⏭️ Skipping form crawl (login/logout only mode)")
+                self.activity_logger.info("⏭️ Skipping form crawl - dynamic content project")
+
+            # Generate logout steps after discovery completes
+            self._generate_logout_steps(driver, api_client)
+
+            # Check for page error after crawl completes
+            page_error = detect_page_error(driver)
+            forms_found = api_client.new_form_pages_count
+
+            if forms_found == 0 and page_error:
+                error_msg = get_error_message(page_error)
+                self.logger.warning(f"Crawl ended on error page: {error_msg}")
+                api_client.update_crawl_session(
+                    status='failed',
+                    error_code=page_error,
+                    error_message=f"Discovery failed: {error_msg}",
+                    forms_found=0
+                )
+                return {"success": False, "error": error_msg, "error_code": page_error}
+
+            api_client.update_crawl_session(
+                status='completed',
+                forms_found=forms_found
+            )
+
+            self.activity_logger.info(f"✅ Discovery complete - {forms_found} forms found")
+            self.activity_logger.complete()
+
+            return {
+                "success": True,
+                "forms_found": forms_found,
+                "crawl_session_id": crawl_session_id
+            }
+
+        except Exception as e:
+            self.logger.error(f"Form discovery failed: {e}")
+            self.activity_logger.error(f"❌ DISCOVERY FAILED: {e}")
+            self.activity_logger.complete()
+            error_code = PageErrorCode.UNKNOWN
+            try:
+                if self.selenium_agent.driver:
+                    detected_error = detect_page_error(self.selenium_agent.driver)
+                    if detected_error:
+                        error_code = detected_error
+            except:
+                pass
+            api_client.update_crawl_session(
+                status='failed',
+                error_code=error_code,
+                error_message=str(e)
+            )
+            return {"success": False, "error": str(e), "error_code": error_code}
+
+        finally:
+            self.current_crawl_session_id = None
+            if self.selenium_agent.driver:
+                self.logger.info("Closing browser after discovery...")
+                try:
+                    self.selenium_agent.close_browser()
+                except Exception as e:
+                    self.logger.warning(f"Error closing browser: {e}")
+
 
     def _generate_logout_steps(self, driver, api_client):
         """Generate and execute logout steps after discovery (same pattern as login)"""

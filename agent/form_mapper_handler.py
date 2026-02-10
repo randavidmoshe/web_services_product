@@ -4,7 +4,7 @@
 # Handles form_mapper_* tasks on the desktop agent.
 # Uses existing AgentSelenium for browser operations.
 # ============================================================================
-
+import os
 import json
 import logging
 import hashlib
@@ -264,7 +264,21 @@ class FormMapperTaskHandler:
 
         Payload:
             use_full_dom: Extract full page DOM vs form container only
+            base_url: Optional URL — if provided, opens browser and navigates first (login/logout mapping)
         """
+        # Auto-initialize browser and navigate if base_url provided (login/logout mapping)
+        base_url = payload.get("base_url")
+        if base_url:
+            if not self.selenium.driver:
+                from dotenv import load_dotenv
+                load_dotenv(override=True)
+                headless = os.getenv('DEFAULT_HEADLESS', 'false').lower() == 'true'
+                browser_type = os.getenv('BROWSER', 'chrome')
+                self.selenium.initialize_browser(browser_type=browser_type, headless=headless)
+            self.selenium.navigate_to_url(base_url)
+            self.active_sessions[session_id] = {"url": base_url, "started_at": time.time()}
+            time.sleep(2)  # Let page load
+
         use_full_dom = payload.get("use_full_dom", True)
 
         try:

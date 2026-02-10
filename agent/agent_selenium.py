@@ -491,7 +491,7 @@ class AgentSelenium:
             #dom_html = self.driver.execute_script("return document.documentElement.outerHTML")
             dom_html = self.driver.execute_script("""
                 const clone = document.documentElement.cloneNode(true);
-                clone.querySelectorAll('svg').forEach(svg => svg.innerHTML = '');
+                clone.querySelectorAll('svg').forEach(svg => { while(svg.firstChild) svg.removeChild(svg.firstChild); });
                 return clone.outerHTML;
             """)
             dom_hash = hashlib.md5(dom_html.encode('utf-8')).hexdigest()

@@ -22,14 +22,26 @@ def generate_steps_for_mapping(
         user_provided_inputs: dict = None,
         is_first_iteration: bool = True,
         # Dynamic content params
-        test_case_description: str = None
+        test_case_description: str = None,
+        # Login/logout mapping params
+        login_credentials: dict = None
 ) -> dict:
     """
     Factory: generates steps using the appropriate AI helper based on mapping_type.
     To add a new mapping type, add an elif block here.
     """
 
-    if mapping_type == "dynamic_content":
+    if mapping_type in ("login_mapping", "logout_mapping"):
+        from services.ai_login_mapper_prompter import LoginMapperAIHelper
+        ai_helper = LoginMapperAIHelper(api_key, session_logger=session_logger)
+        mode = "login" if mapping_type == "login_mapping" else "logout"
+        return ai_helper.generate_test_steps(
+            dom_html=dom_html,
+            screenshot_base64=screenshot_base64,
+            login_credentials=login_credentials,
+            mode=mode
+        )
+    elif mapping_type == "dynamic_content":
         from services.ai_dynamic_content_prompter import DynamicContentAIHelper
         ai_helper = DynamicContentAIHelper(api_key, session_logger=session_logger)
         return ai_helper.generate_test_steps(
@@ -113,13 +125,26 @@ def regenerate_steps_for_mapping(
         user_provided_inputs: dict = None,
         retry_message: str = "",
         # Dynamic content params
-        test_case_description: str = None
+        test_case_description: str = None,
+        # Login/logout mapping params
+        login_credentials: dict = None
 ) -> dict:
     """
     Factory: regenerates steps using the appropriate AI helper based on mapping_type.
     """
 
-    if mapping_type == "dynamic_content":
+    if mapping_type in ("login_mapping", "logout_mapping"):
+        from services.ai_login_mapper_prompter import LoginMapperAIHelper
+        ai_helper = LoginMapperAIHelper(api_key, session_logger=session_logger)
+        mode = "login" if mapping_type == "login_mapping" else "logout"
+        return ai_helper.regenerate_remaining_steps(
+            dom_html=dom_html,
+            executed_steps=executed_steps,
+            screenshot_base64=screenshot_base64,
+            login_credentials=login_credentials,
+            mode=mode
+        )
+    elif mapping_type == "dynamic_content":
         from services.ai_dynamic_content_prompter import DynamicContentAIHelper
         ai_helper = DynamicContentAIHelper(api_key, session_logger=session_logger)
         return ai_helper.regenerate_remaining_steps(
@@ -167,7 +192,20 @@ def recover_from_failure_for_mapping(
     Factory: recovery from failure using the appropriate AI helper based on mapping_type.
     """
 
-    if mapping_type == "dynamic_content":
+    if mapping_type in ("login_mapping", "logout_mapping"):
+        from services.ai_login_mapper_prompter import LoginMapperAIHelper
+        ai_helper = LoginMapperAIHelper(api_key, session_logger=session_logger)
+        mode = "login" if mapping_type == "login_mapping" else "logout"
+        return ai_helper.analyze_failure_and_recover(
+            failed_step=failed_step,
+            executed_steps=executed_steps,
+            fresh_dom=fresh_dom,
+            screenshot_base64=screenshot_base64,
+            mode=mode,
+            attempt_number=attempt_number,
+            error_message=error_message
+        )
+    elif mapping_type == "dynamic_content":
         from services.ai_dynamic_content_prompter import DynamicContentAIHelper
         ai_helper = DynamicContentAIHelper(api_key, session_logger=session_logger)
         return ai_helper.analyze_failure_and_recover(

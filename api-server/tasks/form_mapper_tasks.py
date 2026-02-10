@@ -347,8 +347,29 @@ def analyze_form_page(
         msg = f"!!!! Generating steps: test_cases: {test_cases}"
         print(msg)
         log.debug(msg, category="debug_trace")
+
+        # Login mapping: load credentials from DB (SECURITY: never in Redis/Celery kwargs)
+        login_credentials = None
+        mapping_type = ctx.get("mapping_type", "form")
+        if mapping_type == "login_mapping" and ctx.get("network_id"):
+            try:
+                from models.database import Network
+                from services.encryption_service import decrypt_credential
+                network = db.query(Network).filter(Network.id == ctx["network_id"]).first()
+                if network:
+                    login_credentials = {
+                        "username": decrypt_credential(network.login_username, network.company_id,
+                               network.id, "login_username") if network.login_username else "", "password": decrypt_credential(network.login_password, network.company_id,
+                               network.id, "login_password") if network.login_password else "", "site_url": network.url or ""
+                    }
+                    log.debug(
+                        f"!!!! Credentials loaded: username_len={len(login_credentials.get('username', ''))}, password_len={len(login_credentials.get('password', ''))}",
+                        category="debug_trace")
+            except Exception as e:
+                logger.error(f"[FormMapperTask] Failed to load credentials: {e}")
+
         ai_result = generate_steps_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
+            mapping_type=mapping_type,
             api_key=api_key,
             session_logger=log,
             dom_html=dom_html,
@@ -360,7 +381,8 @@ def analyze_form_page(
                 junction_instructions) if junction_instructions else None,
             user_provided_inputs=user_provided_inputs or {},
             is_first_iteration=True,
-            test_case_description=ctx.get("test_case_description", "")
+            test_case_description=ctx.get("test_case_description", ""),
+            login_credentials=login_credentials
         )
 
         #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
@@ -396,7 +418,10 @@ def analyze_form_page(
             "no_more_paths": ai_result.get("no_more_paths", False),
             "form_fields": ai_result.get("form_fields", []),
             "page_error_detected": ai_result.get("page_error_detected", False),
-            "error_type": ai_result.get("error_type", "")
+            "error_type": ai_result.get("error_type", ""),
+            "already_logged_in": ai_result.get("already_logged_in", False),
+            "login_failed": ai_result.get("login_failed", False),
+            "error_message": ai_result.get("error_message", "")
         }
         
 
@@ -1077,8 +1102,26 @@ def regenerate_steps(
         print(msg)
         log.debug(msg, category="debug_trace")
 
+        # Login mapping: load credentials for regeneration (e.g., 2FA page appeared)
+        login_credentials = None
+        mapping_type = ctx.get("mapping_type", "form")
+        if mapping_type == "login_mapping" and ctx.get("network_id"):
+            try:
+                from models.database import Network
+                from services.encryption_service import decrypt_credential
+                network = db.query(Network).filter(Network.id == ctx["network_id"]).first()
+                if network:
+                    login_credentials = {
+                        "username": decrypt_credential(network.login_username, network.company_id,
+                               network.id, "login_username") if network.login_username else "", "password": decrypt_credential(network.login_password, network.company_id,
+                               network.id, "login_password") if network.login_password else "", "site_url": network.url or ""
+                    }
+            except Exception as e:
+                logger.error(f"[FormMapperTask] Failed to load credentials for regen: {e}")
+
+
         ai_result = regenerate_steps_for_mapping(
-            mapping_type=ctx.get("mapping_type", "form"),
+            mapping_type=mapping_type,
             api_key=api_key,
             session_logger=log,
             dom_html=dom_html,
@@ -1091,7 +1134,8 @@ def regenerate_steps(
             junction_instructions=_build_junction_instructions_text(junction_instructions),
             user_provided_inputs=user_provided_inputs or {},
             retry_message=regenerate_retry_message,
-            test_case_description=ctx.get("test_case_description", "")
+            test_case_description=ctx.get("test_case_description", ""),
+            login_credentials=login_credentials
         )
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
@@ -1123,7 +1167,9 @@ def regenerate_steps(
             "no_more_paths": ai_result.get("no_more_paths", False),
             "validation_errors_detected": ai_result.get("validation_errors_detected", False),
             "page_error_detected": ai_result.get("page_error_detected", False),
-            "error_type": ai_result.get("error_type", "")
+            "error_type": ai_result.get("error_type", ""),
+            "login_failed": ai_result.get("login_failed", False),
+            "error_message": ai_result.get("error_message", "")
         }
         
 

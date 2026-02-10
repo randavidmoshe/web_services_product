@@ -163,6 +163,7 @@ class Network(Base):
     totp_secret = Column(Text, nullable=True)  # Encrypted TOTP secret for 2FA
     login_stages = Column(JSON, default=list)  # Login steps for Form Mapper
     logout_stages = Column(JSON, default=list)  # Logout steps for Form Mapper
+    dashboard_url = Column(String, nullable=True)  # Captured after successful login mapping
     form_pages_use_screenshot_for_button_check = Column(Boolean, default=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)

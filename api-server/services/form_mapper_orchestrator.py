@@ -369,12 +369,16 @@ class FormMapperOrchestrator:
         test_context = {"filled_fields": {}, "clicked_elements": [], "selected_options": {},
                        "credentials": {}, "reported_ui_issues": []}
 
-        # Single path mode if using test scenario
-        single_path_mode = test_scenario_id is not None
+        # Single path mode if using test scenario or login/logout mapping
+        single_path_mode = test_scenario_id is not None or mapping_type in ("login_mapping", "logout_mapping")
 
         # Don't delete existing paths when mapping with test scenario
         if single_path_mode:
             skip_cleanup = True
+
+        # Login/logout mapping: no junctions, no UI verification
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            final_config["max_junction_paths"] = 1
 
         session_state = {
             "session_id": session_id, "user_id": user_id or 0, "company_id": company_id or 0, "company_name": company_name or "",
@@ -382,6 +386,8 @@ class FormMapperOrchestrator:
             "form_route_id": form_route_id or 0, "form_page_url": form_page_url, "form_name": form_name or "Unknown Form", "project_id": project_id or 0,
             "test_page_route_id": test_page_route_id or 0,
             "mapping_type": mapping_type or "form",
+            "discovery_chain": json.dumps(config.get("discovery_chain", {})) if config and config.get(
+                "discovery_chain") else "{}",
             "test_case_description": test_case_description or "",
             "state": MapperState.INITIALIZING.value, "previous_state": "",
             "current_step_index": 0, "all_steps": "[]", "executed_steps": "[]",
@@ -535,6 +541,16 @@ class FormMapperOrchestrator:
     def start_login_phase(self, session_id: str) -> Dict:
         session = self.get_session(session_id)
         if not session: return {"success": False, "error": "Session not found"}
+
+        # Login/logout mapping: skip login/nav phases — WE are the login/logout
+        mapping_type = session.get("mapping_type", "form")
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            label = "Login" if mapping_type == "login_mapping" else "Logout"
+            return self.start_mapping_phase(
+                session_id, is_first_phase=True,
+                log_message=f"🔐 {label} mapping started"
+            )
+
         network_id = session.get("network_id")
         if not network_id: return self.start_navigation_phase(session_id, is_first_phase=True)
         login_stages = self._load_login_stages(network_id)
@@ -671,6 +687,14 @@ class FormMapperOrchestrator:
                 "user_id": session.get("user_id"),
                 "upload_urls": json.loads(session.get("upload_urls", "{}"))
             }
+
+        # Login/logout mapping first phase: include URL so agent opens browser and navigates
+        mapping_type = session.get("mapping_type", "form")
+        if is_first_phase and mapping_type in ("login_mapping", "logout_mapping"):
+            login_url = session.get("form_page_url", "")
+            if login_url:
+                payload["base_url"] = login_url
+
         task = self._push_agent_task(session_id, "form_mapper_extract_dom", payload)
 
         return {"success": True, "phase": "mapping", "agent_task": task}
@@ -799,6 +823,30 @@ class FormMapperOrchestrator:
             })
             return self._fail_session(session_id, f"Page error: {error_type}")
 
+        # Login/logout mapping: handle special AI responses
+        mapping_type = session.get("mapping_type", "form")
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            # Login failed (bad credentials, account locked, etc.)
+            if result.get("login_failed"):
+                error_msg = result.get("error_message", "Login failed")
+                logger.error(f"[Orchestrator] Login failed: {error_msg}")
+                log = self._get_logger(session_id)
+                log.error(f"Login failed: {error_msg}", category="error")
+                return self._fail_session(session_id, f"Login failed: {error_msg}")
+
+            # Already logged in / already logged out — no steps needed
+            if result.get("already_logged_in") is not None and not result.get("steps"):
+                logger.info(f"[Orchestrator] Already in target state — no steps needed")
+                self._save_login_logout_to_network(session_id, [], already_done=True)
+                self.transition_to(session_id, MapperState.COMPLETED,
+                                   completed_at=datetime.utcnow().isoformat())
+                self._sync_session_status_to_db(session_id, "completed")
+                self._push_agent_task(session_id, "form_mapper_close", {
+                    "log_message": "✅ Already in target state — no steps needed",
+                    "complete_logging": True
+                })
+                return {"success": True, "state": "completed", "already_done": True}
+
         if result.get("no_more_paths", False) and session.get("current_path", 1) > 1:
             self.transition_to(session_id, MapperState.NO_MORE_PATHS)
             return self._complete_all_paths(session_id)
@@ -891,6 +939,11 @@ class FormMapperOrchestrator:
             return {"success": True, "state": "junction_getting_before_screenshot", "agent_task": task}
 
         self.transition_to(session_id, MapperState.EXECUTING_STEP)
+
+        # TOTP injection: generate fresh code right before sending to agent
+        if step.get("is_totp") and session.get("mapping_type") == "login_mapping":
+            step = self._inject_totp_code(session_id, dict(step))
+
         task = self._push_agent_task(session_id, "form_mapper_exec_step", {
             "step": step, "step_index": current_index, "total_steps": len(all_steps),
             "current_dom_hash": session.get("current_dom_hash", "")})
@@ -1659,7 +1712,7 @@ class FormMapperOrchestrator:
             task = self._push_agent_task(session_id, "form_mapper_get_screenshot",
                                         {"encode_base64": True, "save_to_folder": False})
             return {"success": True, "state": "dom_change_getting_screenshot", "agent_task": task}
-        return self._trigger_regenerate_steps(session_id, None)
+        return self._trigger_regenerate_steps(session_id)
 
     def _should_regenerate(self, session_id: str, step: Dict, result: Dict, config: Dict) -> tuple:
         """
@@ -1900,6 +1953,14 @@ class FormMapperOrchestrator:
                 "bug_type": "page_error"
             })
             return self._fail_session(session_id, f"Page error: {error_type}")
+
+        # Login failed (bad credentials, account locked, etc.)
+        if result.get("login_failed"):
+            error_msg = result.get("error_message", "Login failed")
+            logger.error(f"[Orchestrator] Login failed: {error_msg}")
+            log = self._get_logger(session_id)
+            log.error(f"Login failed: {error_msg}", category="error")
+            return self._fail_session(session_id, f"Login failed: {error_msg}")
 
         config = session.get("config", {})
         if config.get("enable_junction_discovery", True) and result.get("no_more_paths", False):
@@ -2346,6 +2407,12 @@ class FormMapperOrchestrator:
             return self._restart_for_next_path(session_id)
 
         final_stages = result.get("stages", session.get("executed_steps", []))
+
+        # Login/logout mapping: save steps to Network (not FormMapResult)
+        mapping_type = session.get("mapping_type", "form")
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            self._save_login_logout_to_network(session_id, final_stages)
+
         self.transition_to(session_id, MapperState.COMPLETED, final_steps=final_stages,
                            completed_at=datetime.utcnow().isoformat())
         self._sync_session_status_to_db(session_id, "completed")
@@ -2353,6 +2420,21 @@ class FormMapperOrchestrator:
         # Structured logging
         log = self._get_logger(session_id)
         log.session_completed(total_steps=len(final_stages))
+
+        # Login/logout mapping: DON'T close browser — discovery needs it open
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            # Check if this login mapping is chained to a discovery task
+            discovery_chain = session.get("discovery_chain", {})
+            if isinstance(discovery_chain, str):
+                try:
+                    discovery_chain = json.loads(discovery_chain)
+                except:
+                    discovery_chain = {}
+            if discovery_chain:
+                self._trigger_discovery_after_login(session_id, discovery_chain)
+            return {"success": True, "state": "completed", "total_steps": len(final_stages),
+                    "mapping_type": mapping_type}
+
         self._push_agent_task(session_id, "form_mapper_close", {
             "log_message": f"✅ Mapping complete - {len(final_stages)} steps",
             "complete_logging": True
@@ -2935,7 +3017,33 @@ class FormMapperOrchestrator:
             if not network or not network.login_stages: return []
             return network.login_stages if isinstance(network.login_stages, list) else []
         except: return []
-    
+
+    def _trigger_discovery_after_login(self, session_id: str, discovery_chain: dict):
+        """After login mapping completes, push the deferred discovery task to agent queue."""
+        try:
+            task_id = discovery_chain.get("task_id")
+            user_id = discovery_chain.get("user_id")
+            company_id = discovery_chain.get("company_id")
+
+            if not task_id or not user_id:
+                logger.error(f"[Orchestrator] Discovery chain missing task_id or user_id: {discovery_chain}")
+                return
+
+            # Push the pre-created discovery task to agent queue
+            redis_message = json.dumps({
+                'task_id': task_id,
+                'task_type': 'discover_form_pages',
+                'company_id': company_id,
+                'user_id': user_id
+            })
+            queue_name = f"agent:{user_id}"
+            self.redis.rpush(queue_name, redis_message)
+            self.redis.ltrim(queue_name, 0, 49)
+
+            logger.info(f"[Orchestrator] Login mapping complete → pushed discovery task {task_id} to {queue_name}")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to trigger discovery after login: {e}")
+
     def _load_navigation_stages(self, form_route_id: int) -> List[Dict]:
         if not self.db: return []
         try:
@@ -2944,6 +3052,114 @@ class FormMapperOrchestrator:
             if not route or not route.navigation_steps: return []
             return route.navigation_steps if isinstance(route.navigation_steps, list) else []
         except: return []
+
+    # ============================================================
+    # LOGIN/LOGOUT MAPPING HELPERS
+    # ============================================================
+
+    def _inject_totp_code(self, session_id: str, step: Dict) -> Dict:
+        """Inject fresh TOTP code into step, waiting if code is about to expire.
+        Security: TOTP secret loaded from DB server-side, only 6-digit code sent to agent."""
+        try:
+            session = self.get_session(session_id)
+            network_id = session.get("network_id") if session else None
+            if not network_id or not self.db:
+                logger.warning(f"[Orchestrator] Cannot inject TOTP: no network_id or db")
+                return step
+
+            from models.database import Network
+            from services.encryption_service import generate_totp_code
+            network = self.db.query(Network).filter(Network.id == network_id).first()
+            if not network or not network.totp_secret:
+                logger.warning(f"[Orchestrator] No TOTP secret for network {network_id}")
+                return step
+
+            # Check remaining time — if < 5 seconds, wait for next code
+            import time as time_module
+            remaining = 30 - (int(time_module.time()) % 30)
+            if remaining < 5:
+                wait = remaining + 1
+                logger.info(f"[Orchestrator] TOTP expiring in {remaining}s, waiting {wait}s for fresh code")
+                time_module.sleep(wait)
+
+            code = generate_totp_code(
+                network.totp_secret,
+                network.company_id,
+                network_id
+            )
+            if code:
+                step["value"] = code
+                logger.info(
+                    f"[Orchestrator] TOTP code injected (expires in {30 - (int(time_module.time()) % 30)}s)")
+            else:
+                logger.warning(f"[Orchestrator] Failed to generate TOTP code")
+        except Exception as e:
+            logger.error(f"[Orchestrator] TOTP injection failed: {e}")
+        return step
+
+    def _save_login_logout_to_network(self, session_id: str, steps: List[Dict],
+                                      auth_type: str = None, already_done: bool = False) -> None:
+        """Save login/logout mapping results to Network model.
+        Security: credentials replaced with placeholders before saving."""
+        try:
+            session = self.get_session(session_id)
+            if not session:
+                return
+            network_id = session.get("network_id")
+            mapping_type = session.get("mapping_type", "")
+            if not network_id or not self.db:
+                return
+
+            from models.database import Network
+            network = self.db.query(Network).filter(Network.id == network_id).first()
+            if not network:
+                return
+
+            if mapping_type == "login_mapping":
+
+                if already_done:
+                    logger.info(
+                        f"[Orchestrator] Already logged in — no login stages to save for Network {network_id}")
+                    return
+
+                # Strip credentials from steps before saving
+                safe_steps = []
+                for s in steps:
+                    safe_step = dict(s)
+                    field_lower = (safe_step.get("field_name") or "").lower()
+                    if field_lower in ("password",):
+                        safe_step["value"] = "{{PASSWORD}}"
+                    if field_lower in ("username", "email", "user", "login"):
+                        safe_step["value"] = "{{USERNAME}}"
+                    if safe_step.get("is_totp"):
+                        safe_step["value"] = "{{TOTP}}"
+                    safe_steps.append(safe_step)
+
+                # Prepend navigate step
+                if network.url:
+                    navigate_step = {"action": "navigate", "selector": "", "value": network.url}
+                    safe_steps = [navigate_step] + safe_steps
+
+                network.login_stages = safe_steps
+                logger.info(f"[Orchestrator] Saved {len(safe_steps)} login stages to Network {network_id}")
+
+            elif mapping_type == "logout_mapping":
+                if already_done:
+                    logger.info(
+                        f"[Orchestrator] Already logged out — no logout stages to save for Network {network_id}")
+                    return
+
+                network.logout_stages = list(steps)
+                logger.info(f"[Orchestrator] Saved {len(steps)} logout stages to Network {network_id}")
+
+            self.db.commit()
+
+        except Exception as e:
+            logger.error(f"[Orchestrator] Failed to save login/logout to network: {e}")
+            try:
+                self.db.rollback()
+            except:
+                pass
 
     # ============================================================
     # SESSION CONTROL

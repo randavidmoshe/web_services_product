@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from models.database import get_db, FormPageRoute
+from models.database import get_db, FormPageRoute, Network
 from models.form_mapper_models import FormMapperSession, FormMapResult, FormMapperSessionLog
 from services.form_mapper_orchestrator import FormMapperOrchestrator, SessionStatus
 from celery.result import AsyncResult
@@ -301,6 +301,125 @@ async def start_form_mapping(
             sync_mapper_session_status.delay(str(db_session.id), "failed", f"Start error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/networks/{network_id}/map-login", status_code=202)
+async def start_login_mapping(
+    network_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Start login mapping session for a network using the orchestrator."""
+    current_user = get_current_user_from_request(request)
+    user_id = current_user["user_id"]
+    company_id = current_user["company_id"]
+
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+    if current_user["type"] != "super_admin" and company_id != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    agent = db.query(Agent).filter(
+        Agent.user_id == user_id,
+        Agent.status.in_(['online', 'idle', 'busy'])
+    ).first()
+    if not agent:
+        raise HTTPException(status_code=400, detail="No online agent found")
+
+    orchestrator = FormMapperOrchestrator(db)
+
+    db_session = FormMapperSession(
+        network_id=network_id,
+        user_id=user_id,
+        company_id=company_id,
+        status="initializing",
+        config={"mapping_type": "login_mapping"}
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+
+    orchestrator.create_session(
+        session_id=str(db_session.id),
+        user_id=user_id,
+        network_id=network_id,
+        company_id=company_id,
+        product_id=network.product_id,
+        project_id=network.project_id,
+        mapping_type="login_mapping",
+        base_url=network.url
+    )
+
+    result = orchestrator.start_login_phase(session_id=str(db_session.id))
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail="Failed to start login mapping")
+
+    return {
+        "session_id": str(db_session.id),
+        "status": "initializing",
+        "message": "Login mapping started"
+    }
+
+
+@router.post("/networks/{network_id}/map-logout", status_code=202)
+async def start_logout_mapping(
+    network_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Start logout mapping session for a network using the orchestrator."""
+    current_user = get_current_user_from_request(request)
+    user_id = current_user["user_id"]
+    company_id = current_user["company_id"]
+
+    network = db.query(Network).filter(Network.id == network_id).first()
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+    if current_user["type"] != "super_admin" and company_id != network.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    agent = db.query(Agent).filter(
+        Agent.user_id == user_id,
+        Agent.status.in_(['online', 'idle', 'busy'])
+    ).first()
+    if not agent:
+        raise HTTPException(status_code=400, detail="No online agent found")
+
+    orchestrator = FormMapperOrchestrator(db)
+
+    db_session = FormMapperSession(
+        network_id=network_id,
+        user_id=user_id,
+        company_id=company_id,
+        status="initializing",
+        config={"mapping_type": "logout_mapping"}
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+
+    orchestrator.create_session(
+        session_id=str(db_session.id),
+        user_id=user_id,
+        network_id=network_id,
+        company_id=company_id,
+        product_id=network.product_id,
+        project_id=network.project_id,
+        mapping_type="logout_mapping",
+        base_url=network.url
+    )
+
+    result = orchestrator.start_login_phase(session_id=str(db_session.id))
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail="Failed to start logout mapping")
+
+    return {
+        "session_id": str(db_session.id),
+        "status": "initializing",
+        "message": "Logout mapping started"
+    }
 
 @router.post("/routes/{form_page_route_id}/continue-mapping", response_model=ContinueMappingResponse, status_code=202)
 async def continue_form_mapping(
