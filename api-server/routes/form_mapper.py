@@ -1831,6 +1831,46 @@ async def delete_verification_instructions(
         "message": "Verification instructions deleted successfully"
     }
 
+# ============================================================================
+# Mapping Hints Endpoints
+# ============================================================================
+
+class UpdateMappingHintsRequest(BaseModel):
+    mapping_hints: str = ""
+
+@router.get("/routes/{form_page_route_id}/mapping-hints")
+async def get_mapping_hints(
+        form_page_route_id: int,
+        request: Request,
+        db: Session = Depends(get_db)
+):
+    """Get mapping hints for a form page"""
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return {"mapping_hints": form_page.mapping_hints or ""}
+
+@router.put("/routes/{form_page_route_id}/mapping-hints")
+async def update_mapping_hints(
+        form_page_route_id: int,
+        body: UpdateMappingHintsRequest,
+        request: Request,
+        db: Session = Depends(get_db)
+):
+    """Update mapping hints for a form page"""
+    form_page = db.query(FormPageRoute).filter(FormPageRoute.id == form_page_route_id).first()
+    if not form_page:
+        raise HTTPException(status_code=404, detail="Form page not found")
+    current_user = get_current_user_from_request(request)
+    if current_user["type"] != "super_admin" and current_user["company_id"] != form_page.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    form_page.mapping_hints = body.mapping_hints
+    db.commit()
+    return {"success": True, "message": "Mapping hints updated successfully"}
+
 
 # ============================================================================
 # Test Scenarios Endpoints

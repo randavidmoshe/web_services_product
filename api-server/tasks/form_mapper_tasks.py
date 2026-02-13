@@ -283,7 +283,8 @@ def analyze_form_page(
     critical_fields_checklist: dict = None,
     field_requirements: str = "",
     junction_instructions: dict = None,
-    user_provided_inputs: dict = None
+    user_provided_inputs: dict = None,
+    mapping_hints: str = ""
 ) -> Dict:
     """Celery task: Analyze form page with AI (initial step generation)."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -351,7 +352,7 @@ def analyze_form_page(
         # Login mapping: load credentials from DB (SECURITY: never in Redis/Celery kwargs)
         login_credentials = None
         mapping_type = ctx.get("mapping_type", "form")
-        if mapping_type == "login_mapping" and ctx.get("network_id"):
+        if mapping_type in ("login_mapping", "logout_mapping") and ctx.get("network_id"):
             try:
                 from models.database import Network
                 from services.encryption_service import decrypt_credential
@@ -383,7 +384,8 @@ def analyze_form_page(
             user_provided_inputs=user_provided_inputs or {},
             is_first_iteration=True,
             test_case_description=ctx.get("test_case_description", ""),
-            login_credentials=login_credentials
+            login_credentials=login_credentials,
+            mapping_hints=mapping_hints
         )
 
         #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
@@ -1022,7 +1024,8 @@ def regenerate_steps(
     enable_junction_discovery: bool = True,
     junction_instructions: str = None,
     user_provided_inputs: dict = None,
-    regenerate_retry_message: str = ""
+    regenerate_retry_message: str = "",
+    mapping_hints: str = ""
 ) -> Dict:
     """Celery task: Regenerate remaining steps after DOM change."""
     from services.ai_budget_service import AIOperationType, BudgetExceededError
@@ -1106,7 +1109,7 @@ def regenerate_steps(
         # Login mapping: load credentials for regeneration (e.g., 2FA page appeared)
         login_credentials = None
         mapping_type = ctx.get("mapping_type", "form")
-        if mapping_type == "login_mapping" and ctx.get("network_id"):
+        if mapping_type in ("login_mapping", "logout_mapping") and ctx.get("network_id"):
             try:
                 from models.database import Network
                 from services.encryption_service import decrypt_credential
@@ -1136,7 +1139,8 @@ def regenerate_steps(
             user_provided_inputs=user_provided_inputs or {},
             retry_message=regenerate_retry_message,
             test_case_description=ctx.get("test_case_description", ""),
-            login_credentials=login_credentials
+            login_credentials=login_credentials,
+            mapping_hints=mapping_hints
         )
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"

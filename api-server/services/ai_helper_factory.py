@@ -24,7 +24,8 @@ def generate_steps_for_mapping(
         # Dynamic content params
         test_case_description: str = None,
         # Login/logout mapping params
-        login_credentials: dict = None
+        login_credentials: dict = None,
+        mapping_hints: str = ""
 ) -> dict:
     """
     Factory: generates steps using the appropriate AI helper based on mapping_type.
@@ -62,7 +63,8 @@ def generate_steps_for_mapping(
             field_requirements=field_requirements or "",
             junction_instructions=junction_instructions,
             user_provided_inputs=user_provided_inputs or {},
-            is_first_iteration=is_first_iteration
+            is_first_iteration=is_first_iteration,
+            mapping_hints=mapping_hints
         )
 
 
@@ -127,7 +129,8 @@ def regenerate_steps_for_mapping(
         # Dynamic content params
         test_case_description: str = None,
         # Login/logout mapping params
-        login_credentials: dict = None
+        login_credentials: dict = None,
+        mapping_hints: str = ""
 ) -> dict:
     """
     Factory: regenerates steps using the appropriate AI helper based on mapping_type.
@@ -168,7 +171,8 @@ def regenerate_steps_for_mapping(
             field_requirements=field_requirements or "",
             junction_instructions=junction_instructions,
             user_provided_inputs=user_provided_inputs or {},
-            retry_message=retry_message
+            retry_message=retry_message,
+            mapping_hints=mapping_hints
         )
 
 def recover_from_failure_for_mapping(

@@ -304,6 +304,16 @@ export default function FormPageEditPanel({
   const [verificationEditContent, setVerificationEditContent] = useState<string>('')
   const [showVerificationInstructionsPanel, setShowVerificationInstructionsPanel] = useState(false)
   const verificationFileInputRef = useRef<HTMLInputElement>(null)
+
+
+  // Mapping Hints state
+  const [mappingHintsContent, setMappingHintsContent] = useState<string>('')
+  const [mappingHintsFilename, setMappingHintsFilename] = useState<string>('')
+  const [mappingHintsLoading, setMappingHintsLoading] = useState(false)
+  const [mappingHintsEditing, setMappingHintsEditing] = useState(false)
+  const [mappingHintsEditContent, setMappingHintsEditContent] = useState<string>('')
+  const [showMappingHintsPanel, setShowMappingHintsPanel] = useState(false)
+  const mappingHintsFileInputRef = useRef<HTMLInputElement>(null)
   
   // Rediscover confirmation modal state
   const [showRediscoverModal, setShowRediscoverModal] = useState(false)
@@ -997,6 +1007,99 @@ export default function FormPageEditPanel({
         setVerificationFilename('')
         setVerificationEditing(false)
         setMessage('Verification instructions deleted')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete')
+    }
+  }
+
+  // Mapping Hints functions
+  const loadMappingHints = async () => {
+    try {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/mapping-hints`)
+      const data = await response.json()
+      if (data.mapping_hints) {
+        setMappingHintsContent(data.mapping_hints)
+        setMappingHintsFilename('mapping_hints.txt')
+      } else {
+        setMappingHintsContent('')
+        setMappingHintsFilename('')
+      }
+    } catch (err) {
+      console.error('Failed to load mapping hints:', err)
+    }
+  }
+
+  useEffect(() => {
+    loadMappingHints()
+  }, [editingFormPage.id])
+
+  const handleMappingHintsFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setMappingHintsLoading(true)
+    try {
+      const content = await file.text()
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/mapping-hints`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapping_hints: content })
+      })
+      if (response.ok) {
+        setMappingHintsContent(content)
+        setMappingHintsFilename(file.name)
+        setMessage('Mapping hints uploaded successfully!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to upload mapping hints')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload mapping hints')
+    } finally {
+      setMappingHintsLoading(false)
+      if (mappingHintsFileInputRef.current) {
+        mappingHintsFileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleMappingHintsSave = async () => {
+    setMappingHintsLoading(true)
+    try {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/mapping-hints`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapping_hints: mappingHintsEditContent })
+      })
+      if (response.ok) {
+        setMappingHintsContent(mappingHintsEditContent)
+        setMappingHintsEditing(false)
+        setMessage('Mapping hints saved!')
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to save mapping hints')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save mapping hints')
+    } finally {
+      setMappingHintsLoading(false)
+    }
+  }
+
+  const handleMappingHintsDelete = async () => {
+    if (!confirm('Delete mapping hints?')) return
+    try {
+      const response = await fetchWithAuth(`/api/form-mapper/routes/${editingFormPage.id}/mapping-hints`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapping_hints: '' })
+      })
+      if (response.ok) {
+        setMappingHintsContent('')
+        setMappingHintsFilename('')
+        setMappingHintsEditing(false)
+        setMessage('Mapping hints deleted')
       }
     } catch (err: any) {
       setError(err.message || 'Failed to delete')
@@ -1814,6 +1917,42 @@ export default function FormPageEditPanel({
                                 fontSize: '12px',
                                 marginLeft: 'auto'
                               }}>{testScenarios.length}</span>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => { setShowMappingHintsPanel(true); setShowMoreDropdown(false); }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              width: '100%',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.15s ease',
+                              marginTop: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
+                          >
+                            <span style={{ fontSize: '18px' }}>💡</span>
+                            <span>Mapping Hints</span>
+                            {mappingHintsContent && (
+                              <span style={{
+                                background: isLightTheme() ? '#8b5cf6' : 'rgba(139, 92, 246, 0.6)',
+                                color: '#fff',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '12px',
+                                marginLeft: 'auto'
+                              }}>✓</span>
                             )}
                           </button>
                         </div>
@@ -4578,6 +4717,147 @@ export default function FormPageEditPanel({
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                   <button onClick={handleVerificationSave} disabled={verificationLoading || !verificationEditContent.trim()} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!verificationEditContent.trim() || verificationLoading) ? 0.5 : 1 }}>{verificationLoading ? 'Saving...' : '💾 Save'}</button>
                   <button onClick={() => { setVerificationEditing(false); setVerificationEditContent(''); }} disabled={verificationLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mapping Hints Panel */}
+      {showMappingHintsPanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowMappingHintsPanel(false)}>
+          <div style={{
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '700px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
+                💡 Mapping Hints
+              </h3>
+              <button
+                onClick={() => setShowMappingHintsPanel(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '21px' }}>
+              Provide guidance notes for the AI when mapping this form page (e.g., "Skip the newsletter checkbox", "The submit button is inside an iframe", "Use the second Save button not the first").
+            </p>
+
+            <input
+              ref={mappingHintsFileInputRef}
+              type="file"
+              accept=".txt,.md"
+              onChange={handleMappingHintsFileUpload}
+              style={{ display: 'none' }}
+            />
+
+            {!mappingHintsContent ? (
+              <div style={{
+                border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                borderRadius: '12px',
+                padding: '48px 24px',
+                textAlign: 'center',
+                background: isLightTheme() ? 'rgba(139, 92, 246, 0.05)' : 'rgba(139, 92, 246, 0.1)'
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>💡</div>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
+                  No mapping hints
+                </p>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '15px' }}>
+                  Upload a file or type hints directly
+                </p>
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => mappingHintsFileInputRef.current?.click()}
+                    disabled={mappingHintsLoading}
+                    style={{
+                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: mappingHintsLoading ? 'not-allowed' : 'pointer',
+                      opacity: mappingHintsLoading ? 0.7 : 1
+                    }}
+                  >
+                    {mappingHintsLoading ? 'Uploading...' : '📤 Upload File'}
+                  </button>
+                  <button
+                    onClick={() => { setMappingHintsEditing(true); setMappingHintsEditContent(''); }}
+                    style={{
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✍️ Type Manually
+                  </button>
+                </div>
+              </div>
+            ) : !mappingHintsEditing ? (
+              <div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px',
+                  padding: '12px 16px',
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.15)',
+                  borderRadius: '8px',
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
+                }}>
+                  <span style={{ color: getTheme().colors.textPrimary, fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    📎 {mappingHintsFilename || 'mapping_hints.txt'}
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => mappingHintsFileInputRef.current?.click()} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={() => { setMappingHintsEditing(true); setMappingHintsEditContent(mappingHintsContent); }} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={handleMappingHintsDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
+                  </div>
+                </div>
+
+                <div style={{ background: isLightTheme() ? '#f8fafc' : 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '16px', color: getTheme().colors.textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{mappingHintsContent}</pre>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <textarea
+                  value={mappingHintsEditContent}
+                  onChange={(e) => setMappingHintsEditContent(e.target.value)}
+                  placeholder="Enter mapping hints...&#10;&#10;Examples:&#10;- Skip the newsletter checkbox&#10;- The submit button is inside an iframe&#10;- Use the second Save button not the first&#10;- After selecting Country, wait for State dropdown to load"
+                  style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${getTheme().colors.cardBorder}`, background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)', color: getTheme().colors.textPrimary, fontSize: '16px', fontFamily: 'monospace', resize: 'vertical' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                  <button onClick={handleMappingHintsSave} disabled={mappingHintsLoading || !mappingHintsEditContent.trim()} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!mappingHintsEditContent.trim() || mappingHintsLoading) ? 0.5 : 1 }}>{mappingHintsLoading ? 'Saving...' : '💾 Save'}</button>
+                  <button onClick={() => { setMappingHintsEditing(false); setMappingHintsEditContent(''); }} disabled={mappingHintsLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}

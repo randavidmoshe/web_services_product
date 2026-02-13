@@ -159,12 +159,14 @@ When generating selectors for click actions, ALWAYS include the element's visibl
         if mode == "login":
             prompt = self._build_login_prompt(dom_html, login_credentials or {})
         else:
-            prompt = self._build_logout_prompt(dom_html)
+            prompt = self._build_logout_prompt(dom_html, (login_credentials or {}).get("login_hints", ""))
 
         content = self._build_multimodal_content(prompt, screenshot_base64)
         response = self._call_api_with_retry_multimodal(content, max_tokens=4000)
 
         if not response:
+            if self.session_logger:
+                self.session_logger.error("!!!!! AI raw response: None (call failed)", category="ai_response")
             return {"steps": [], "error": "AI call failed"}
 
         try:
@@ -172,6 +174,9 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             if result.get("page_error_detected"):
                 print(f"[LoginMapperAI] ⚠️ Page error detected: {result.get('error_type')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!! AI raw response (page_error): {response}",
+                                              category="ai_response")
                 return {
                     "steps": [],
                     "page_error_detected": True,
@@ -180,6 +185,9 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             if result.get("login_failed"):
                 print(f"[LoginMapperAI] ❌ Login failed: {result.get('error_message')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!!!!! AI raw response (login_failed): {response}",
+                                              category="ai_response")
                 return {
                     "steps": [],
                     "login_failed": True,
@@ -195,10 +203,18 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             steps = result.get("steps", [])
             print(f"[LoginMapperAI] Generated {len(steps)} {mode} steps")
+            if not steps and self.session_logger:
+                self.session_logger.error(f"!!!!!! AI raw response (0 steps): {response}", category="ai_response")
             return {"steps": steps}
 
+
         except json.JSONDecodeError as e:
+
             logger.error(f"[LoginMapperAI] Failed to parse response: {e}")
+
+            if self.session_logger:
+                self.session_logger.error(f"!!!!! AI raw response (parse_error): {response}", category="ai_response")
+
             return {"steps": [], "error": f"Parse error: {e}"}
 
     # ================================================================
@@ -233,13 +249,15 @@ When generating selectors for click actions, ALWAYS include the element's visibl
             )
         else:
             prompt = self._build_logout_regenerate_prompt(
-                dom_html, executed_summary, len(executed_steps)
+                dom_html, executed_summary, len(executed_steps), (login_credentials or {}).get("login_hints", "")
             )
 
         content = self._build_multimodal_content(prompt, screenshot_base64)
         response = self._call_api_with_retry_multimodal(content, max_tokens=4000)
 
         if not response:
+            if self.session_logger:
+                self.session_logger.error("!!!! AI raw response: None (call failed)", category="ai_response")
             return {"steps": []}
 
         try:
@@ -247,6 +265,9 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             if result.get("page_error_detected"):
                 print(f"[LoginMapperAI] ⚠️ Page error detected: {result.get('error_type')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!! AI raw response (page_error): {response}",
+                                              category="ai_response")
                 return {
                     "steps": [],
                     "page_error_detected": True,
@@ -255,6 +276,9 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             if result.get("login_failed"):
                 print(f"[LoginMapperAI] ❌ Login failed: {result.get('error_message')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!! AI raw response (login_failed): {response}",
+                                              category="ai_response")
                 return {
                     "steps": [],
                     "login_failed": True,
@@ -263,16 +287,28 @@ When generating selectors for click actions, ALWAYS include the element's visibl
 
             if result.get("validation_errors_detected"):
                 print(f"[LoginMapperAI] ⚠️ Validation errors detected: {result.get('explanation', '')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!! AI raw response (validation_errors): {response}",
+                                              category="ai_response")
                 return {
                     "steps": [],
                     "validation_errors_detected": True,
                     "explanation": result.get("explanation", "")
                 }
 
-            return {"steps": result.get("steps", [])}
+            steps = result.get("steps", [])
+            if not steps and self.session_logger:
+                self.session_logger.error(f"!!!!! AI raw response (0 steps): {response}", category="ai_response")
+            return {"steps": steps}
+
 
         except json.JSONDecodeError as e:
+
             logger.error(f"[LoginMapperAI] Failed to parse regenerate response: {e}")
+
+            if self.session_logger:
+                self.session_logger.error(f"!!!!!AI raw response (parse_error): {response}", category="ai_response")
+
             return {"steps": []}
 
     # ================================================================
@@ -398,6 +434,8 @@ Return ONLY valid JSON:
         response = self._call_api_with_retry_multimodal(content, max_tokens=2000)
 
         if not response:
+            if self.session_logger:
+                self.session_logger.error("AI raw response: None (call failed)", category="ai_response")
             return []
 
         try:
@@ -405,14 +443,24 @@ Return ONLY valid JSON:
 
             if result.get("page_error_detected"):
                 print(f"[LoginMapperAI] ⚠️ Page error detected during recovery: {result.get('error_type')}")
+                if self.session_logger:
+                    self.session_logger.error(f"!!!!! AI raw response (page_error recovery): {response}",
+                                              category="ai_response")
                 return []
 
             recovery_steps = result.get("recovery_steps", [])
             print(f"[LoginMapperAI] Generated {len(recovery_steps)} recovery steps")
             return recovery_steps
 
+
         except json.JSONDecodeError as e:
+
             logger.error(f"[LoginMapperAI] Failed to parse recovery response: {e}")
+
+            if self.session_logger:
+                self.session_logger.error(f"!!!! AI raw response (parse_error recovery): {response}",
+                                          category="ai_response")
+
             return []
 
     # ================================================================
@@ -422,13 +470,47 @@ Return ONLY valid JSON:
     def _build_login_prompt(self, dom_html: str, credentials: Dict[str, str]) -> str:
         username = credentials.get("username", "")
         password = credentials.get("password", "")
+        login_hints = credentials.get("login_hints", "")
+        hints_section = f"## AI GUIDANCE NOTES FROM USER\n{login_hints}\n\n" if login_hints else ""
 
         return f"""You are a test automation expert. Your task is to log into a web application.
 
-## FIRST: CHECK FOR PAGE ISSUES
+{hints_section}## FIRST: CHECK FOR PAGE ISSUES
+
+**IMPORTANT — HTTP Basic Auth Detection:**
+If the page appears blank/empty AND the AI Guidance Notes above mention "Basic Auth", "server auth", "HTTP auth", or "server authentication" — this is HTTP Basic Auth.
+Selenium cannot interact with native auth dialogs.
+Do NOT return page_error_detected.
+Instead return ONLY:
+
+```json
+{{{{
+  "steps": [
+    {{{{
+      "step_number": 1,
+      "action": "navigate",
+      "selector": "",
+      "value": "",
+      "is_basic_auth": true,
+      "description": "Navigate with HTTP Basic Auth credentials",
+      "force_regenerate": true
+    }}}},
+    {{{{
+      "step_number": 2,
+      "action": "wait",
+      "selector": "body",
+      "value": "",
+      "description": "Wait for page to load after Basic Auth"
+    }}}}
+  ]
+}}}}
+```
+Do NOT put any credentials in the URL — the system will inject them server-side.
+
+**If none of the above apply, continue below.**
 
 Scan DOM and screenshot for blocking issues:
-- "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
+- "Page Not Found", "404", "Error", "Session Expired", "Access Denied"
 - "This site can't be reached", "refused to connect", "took too long to respond"
 - "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED", "DNS_PROBE_FINISHED_NXDOMAIN"
 
@@ -446,12 +528,6 @@ Scan DOM and screenshot for blocking issues:
   "already_logged_in": true
 }}}}
 ```
-
-**If the screenshot shows a browser authentication dialog (a small native popup asking for username and password — NOT an HTML form), this is HTTP Basic Auth. Selenium cannot interact with this native dialog. Instead, generate:**
-1. A `navigate` step with the site URL containing embedded credentials: `https://USERNAME:PASSWORD@hostname/path` (use the credentials and site URL provided below)
-2. A `wait` step for any page element with `"force_regenerate": true`
-Do NOT return any special flag — return normal steps.
-The site URL is: `{credentials.get("site_url", "")}`
 
 **If NO issues:** Continue below.
 
@@ -497,13 +573,9 @@ If this is a standard login page (no 2FA visible yet), just generate the normal 
 ## CURRENT PAGE DOM
 {dom_html}
 
-{f"""## AI GUIDANCE NOTES FROM USER
-{credentials.get("login_hints", "")}
-""" if credentials.get("login_hints") else ""}
+
 
 {self.SELECTOR_RULES}
-
-## AVAILABLE ACTIONS
 
 ## AVAILABLE ACTIONS
 
@@ -520,46 +592,51 @@ If this is a standard login page (no 2FA visible yet), just generate the normal 
 
 Return ONLY valid JSON:
 ```json
-{{
+{{{{
   "steps": [
-    {{
+    {{{{
       "step_number": 1,
       "action": "fill",
       "selector": "#username",
       "value": "{username}",
       "description": "Enter username",
       "field_name": "Username",
-      "full_xpath": "/html/body/div[@id='app']//input[@name='username']"
-    }},
-    {{
+      "full_xpath": "/html/body/div[@id='app']//input[@name='username']",
+      "dont_regenerate": true
+    }}}},
+    {{{{
       "step_number": 2,
       "action": "fill",
       "selector": "#password",
       "value": "{password}",
       "description": "Enter password",
       "field_name": "Password",
-      "full_xpath": "/html/body/div[@id='app']//input[@type='password']"
-    }},
-    {{
+      "full_xpath": "/html/body/div[@id='app']//input[@type='password']",
+      "dont_regenerate": true
+    }}}},
+    {{{{
       "step_number": 3,
       "action": "click",
       "selector": "//button[contains(text(), 'Sign In')]",
       "description": "Click login button",
       "field_name": "Sign In",
       "full_xpath": "/html/body/div[@id='app']//button[@type='submit']",
-      "force_regenerate": true
-    }},
-    {{
+      "force_regenerate": true,
+      "dont_regenerate": false
+    }}}},
+    {{{{
       "step_number": 4,
       "action": "wait",
       "selector": ".dashboard-sidebar",
       "value": "15",
       "description": "Wait for dashboard to load after login",
       "field_name": "Dashboard",
-      "full_xpath": "/html/body/div[@id='app']//nav[contains(@class,'sidebar')]"
-    }}
+      "full_xpath": "/html/body/div[@id='app']//nav[contains(@class,'sidebar')]",
+      "dont_regenerate": true
+    }}}}
   ]
-}}
+}}}}
+```
 ```
 
 **field_name (REQUIRED for all action steps):**
@@ -576,12 +653,17 @@ Return ONLY valid JSON:
 5. Include full_xpath as fallback for every action step
 6. Do NOT add unnecessary steps - just what's needed to log in
 7. The click step that submits the login form (or any form like 2FA) MUST include `"force_regenerate": true` — this tells the system to re-analyze the page after clicking
+8. **dont_regenerate field (REQUIRED):**
+   - Set to `true` for: fill actions, wait actions, hover, scroll
+   - Set to `false` for: click actions that submit a form (login button, verify button, 2FA submit)
+   - This tells the system NOT to re-analyze the page after this step
 """
 
-    def _build_logout_prompt(self, dom_html: str) -> str:
+    def _build_logout_prompt(self, dom_html: str, login_hints: str = "") -> str:
+        hints_section = f"## AI GUIDANCE NOTES FROM USER\n{login_hints}\n\n" if login_hints else ""
         return f"""You are a test automation expert. Your task is to log out of a web application.
 
-## FIRST: CHECK FOR PAGE ISSUES
+{hints_section}## FIRST: CHECK FOR PAGE ISSUES
 
 Scan DOM and screenshot for blocking issues:
 - "Page Not Found", "404", "Error", "Session Expired", "Access Denied", empty page
@@ -677,10 +759,12 @@ Return ONLY valid JSON:
     ) -> str:
         username = credentials.get("username", "")
         password = credentials.get("password", "")
+        login_hints = credentials.get("login_hints", "")
+        hints_section = f"## AI GUIDANCE NOTES FROM USER\n{login_hints}\n\n" if login_hints else ""
 
         return f"""You are a test automation expert. Continue generating login steps for a partially completed login process.
 
-## FIRST: CHECK FOR PAGE ISSUES
+{hints_section}## FIRST: CHECK FOR PAGE ISSUES
 
 Scan DOM and screenshot for blocking issues:
 - "Page Not Found", "404", "Error", "Session Expired", "Access Denied"
@@ -695,15 +779,26 @@ Scan DOM and screenshot for blocking issues:
 
 **If NO page errors:** Continue below.
 
-## SECOND: CHECK FOR LOGIN ERROR MESSAGES
+## SECOND: CHECK FOR 2FA/TOTP ERRORS
+
+If the current page is a TOTP/2FA/MFA verification page (code input fields visible) AND there is any error message on the page — "Invalid code", "Code expired", "Connection error", server error, or ANY other error — this is NOT a login failure. The system will retry with a fresh code.
+
+**Return ONLY:**
+```json
+{{{{
+  "validation_errors_detected": true,
+  "explanation": "The exact error text shown on the 2FA page"
+}}}}
+```
+**If NO 2FA/TOTP errors:** Continue below.
+
+## THIRD: CHECK FOR LOGIN ERROR MESSAGES
 
 Look at the DOM and screenshot for red/colored error messages indicating login failure:
 - "Invalid credentials", "Wrong password", "Incorrect username or password"
 - "Login failed", "Authentication failed", "Account locked"
 - "Too many attempts", "Account disabled", "User not found"
 - Any red/orange banner, toast, or inline error near the login form
-
-**IMPORTANT: TOTP/2FA/verification code errors (e.g., "Invalid verification code", "Incorrect code", "Code expired") are NOT login failures. These are time-sensitive codes that expire quickly. Skip this check for any 2FA/TOTP related errors and continue below.**
 
 **If login error message detected, return ONLY:**
 ```json
@@ -715,7 +810,7 @@ Look at the DOM and screenshot for red/colored error messages indicating login f
 
 **If NO login errors:** Continue below.
 
-## THIRD: CHECK FOR LOADING SPINNER
+## FOURTH: CHECK FOR LOADING SPINNER
 
 Look at the screenshot for any rotating/spinning loading indicator.
 
@@ -740,7 +835,7 @@ Find the spinner element in the DOM. Common patterns: spinner, loader, loading, 
 
 **If no spinner visible:** Continue below.
 
-## FOURTH: CHECK IF LOGIN FORM IS STILL VISIBLE (nothing happened)
+## FIFTH: CHECK IF LOGIN FORM IS STILL VISIBLE (nothing happened)
 
 If the login form is still showing (username/password fields, login button still present) and there is NO spinner and NO error message, it means the login button click had no effect.
 
@@ -749,20 +844,6 @@ If the login form is still showing (username/password fields, login button still
 {{{{
   "login_failed": true,
   "error_message": "Login button click had no effect - form still visible with no error or loading indicator"
-}}}}
-```
-
-## FIFTH: CHECK IF PREVIOUS ACTION FAILED (same page still showing)
-
-If the page shows the same input field(s) that were already filled in the executed steps 
-(e.g., TOTP code input still visible after you already entered code and clicked verify), 
-this means the previous attempt failed (wrong code, expired, etc.).
-
-**Return ONLY:**
-```json
-{{{{
-  "validation_errors_detected": true,
-  "explanation": "Previous action failed - same input still showing after submission"
 }}}}
 ```
 
@@ -794,9 +875,7 @@ this means the previous attempt failed (wrong code, expired, etc.).
 ## CURRENT PAGE DOM (after executed steps)
 {dom_html}
 
-{f"""## AI GUIDANCE NOTES FROM USER
-{credentials.get("login_hints", "")}
-""" if credentials.get("login_hints") else ""}## YOUR TASK
+## YOUR TASK
 
 The page changed after executing the steps above. Generate the REMAINING steps to complete login.
 Do NOT repeat already executed steps.
@@ -843,7 +922,8 @@ Return ONLY valid JSON:
       "is_totp": true,
       "description": "Enter 2FA verification code",
       "field_name": "Verification Code",
-      "full_xpath": "/html/body//input[@name='totp']"
+      "full_xpath": "/html/body//input[@name='totp']",
+      "dont_regenerate": true
     }},
     {{
       "step_number": {executed_count + 2},
@@ -852,7 +932,8 @@ Return ONLY valid JSON:
       "description": "Click verify button",
       "field_name": "Verify",
       "full_xpath": "//button[@type='submit']",
-      "force_regenerate": true
+      "force_regenerate": true,
+      "dont_regenerate": false
     }},
     {{
       "step_number": {executed_count + 3},
@@ -861,19 +942,27 @@ Return ONLY valid JSON:
       "value": "15",
       "description": "Wait for dashboard after verification",
       "field_name": "Dashboard",
-      "full_xpath": "/html/body/div[@id='app']//div[contains(@class,'dashboard')]"
+      "full_xpath": "/html/body/div[@id='app']//div[contains(@class,'dashboard')]",
+      "dont_regenerate": true
     }}
   ]
 }}
 ```
+
+**dont_regenerate field (REQUIRED):**
+- Set to `true` for: fill actions, wait actions, hover, scroll
+- Set to `false` for: click actions that submit a form (verify button, 2FA submit)
+- This tells the system NOT to re-analyze the page after this step
+
 """
 
     def _build_logout_regenerate_prompt(
-        self, dom_html: str, executed_summary: str, executed_count: int
+            self, dom_html: str, executed_summary: str, executed_count: int, login_hints: str = ""
     ) -> str:
+        hints_section = f"## AI GUIDANCE NOTES FROM USER\n{login_hints}\n\n" if login_hints else ""
         return f"""You are a test automation expert. Continue generating logout steps.
 
-## FIRST: CHECK FOR PAGE ISSUES
+{hints_section}## FIRST: CHECK FOR PAGE ISSUES
 
 Scan DOM and screenshot for blocking issues.
 

@@ -466,6 +466,7 @@ async def list_networks(project_id: int, request: Request, db: Session = Depends
             "login_username": mask_credential(network.login_username, "username") if network.login_username else None,
             "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
             "totp_secret": mask_credential(network.totp_secret, "totp_secret") if network.totp_secret else None,
+            "login_hints": network.login_hints,
             "has_totp": bool(network.totp_secret),
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,

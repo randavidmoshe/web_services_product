@@ -179,7 +179,8 @@ class AIHelper:
             previous_steps: Optional[List[Dict]] = None,
             step_where_dom_changed: Optional[int] = None,
             test_context=None,
-            is_first_iteration: bool = False
+            is_first_iteration: bool = False,
+            mapping_hints: str = ""
     ) -> Dict[str, Any]:
         """
         Generate Selenium test steps based on DOM and test cases.
@@ -193,6 +194,9 @@ class AIHelper:
 
         # Build UI verification section - simplified intro without UI verification task
         ui_task_section = "You are a test automation expert. Your task is to generate Selenium WebDriver test steps for the form page.\n\n"
+
+        # Mapping hints from user
+        hints_section = f"## AI GUIDANCE NOTES FROM USER\n{mapping_hints}\n\n" if mapping_hints else ""
         
         # Build critical fields checklist section (for Scenario B recovery)
         critical_fields_section = ""
@@ -300,7 +304,7 @@ Use these field values when filling the form:
             """
 
         prompt = f"""{ui_task_section}
-{screenshot_section}
+{hints_section}{screenshot_section}
 {critical_fields_section}
 {route_planning_section}
 {user_inputs_section}
@@ -1356,7 +1360,8 @@ Use these field values when filling the form:
             field_requirements: Optional[str] = None,
             junction_instructions: Optional[str] = None,
             user_provided_inputs: Optional[Dict] = None,
-            retry_message: Optional[str] = None
+            retry_message: Optional[str] = None,
+            mapping_hints: str = ""
     ) -> Dict[str, Any]:
         """
         Regenerate remaining steps after DOM change
@@ -1503,12 +1508,14 @@ Use these field values when filling matching fields:
 ⚠️⚠️⚠️ END CRITICAL MESSAGE ⚠️⚠️⚠️
 
 """
+            # Mapping hints from user
+            hints_section = f"## AI GUIDANCE NOTES FROM USER\n{mapping_hints}\n\n" if mapping_hints else ""
 
             # ==================== BUILD THE PROMPT ====================
 
             prompt = f"""You are a web automation expert generating Selenium WebDriver test steps.
 
-## FIRST: CHECK FOR VALIDATION ERRORS
+{hints_section}## FIRST: CHECK FOR VALIDATION ERRORS
 
 Scan DOM and SCREENSHOT for validation errors (red boxes, error messages like "Please fill in", "required", "invalid", error classes).
 

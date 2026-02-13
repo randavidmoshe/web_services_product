@@ -1574,7 +1574,7 @@ export default function DashboardLayout({
                 </p>
               </div>
               <div style={{ marginTop: '16px' }}>
-                <label style={labelStyle}>AI Guidance Notes (optional — if login automation needs help)</label>
+                <label style={labelStyle}>AI Guidance Notes (optional — if login/logout automation needs help)</label>
                 <textarea
                   value={loginHints}
                   onChange={(e) => {
@@ -1586,7 +1586,7 @@ export default function DashboardLayout({
                   rows={3}
                 />
                 <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Free-text hints to help the AI navigate your login process
+                  Free-text hints to help the AI navigate your login/logout process
                 </p>
               </div>
             </div>

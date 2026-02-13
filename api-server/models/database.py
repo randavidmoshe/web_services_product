@@ -210,6 +210,8 @@ class FormPageRoute(Base):
     url = Column(String)  # URL where form appears
     login_url = Column(String)  # Login page URL
     username = Column(String)  # Which test user credentials were used
+
+    mapping_hints = Column(Text, nullable=True)  # AI guidance notes for form mapping
     
     # Navigation data
     navigation_steps = Column(JSON)  # Array of steps to reach the form

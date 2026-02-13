@@ -314,6 +314,7 @@ class FormMapperOrchestrator:
         user_provided_inputs = None
         form_name = None
         company_name = None
+        mapping_hints = ""
         if form_route_id and self.db:
             try:
                 from models.database import FormPageRoute
@@ -323,6 +324,7 @@ class FormMapperOrchestrator:
                         form_page_url = route.url or ""
                     project_id = route.project_id
                     form_name = route.form_name
+                    mapping_hints = route.mapping_hints or ""
                     if route.user_provided_inputs and route.user_provided_inputs.get("status") == "ready":
                         user_provided_inputs = route.user_provided_inputs
             except Exception as e:
@@ -389,6 +391,7 @@ class FormMapperOrchestrator:
             "discovery_chain": json.dumps(config.get("discovery_chain", {})) if config and config.get(
                 "discovery_chain") else "{}",
             "test_case_description": test_case_description or "",
+            "mapping_hints": mapping_hints,
             "state": MapperState.INITIALIZING.value, "previous_state": "",
             "current_step_index": 0, "all_steps": "[]", "executed_steps": "[]",
             "current_dom_hash": "", "current_path": 1,
@@ -795,7 +798,8 @@ class FormMapperOrchestrator:
                     "critical_fields_checklist": session.get("critical_fields_checklist", {}),
                     "field_requirements": session.get("field_requirements_for_recovery", ""),
                     "junction_instructions": session.get("junction_instructions", "{}"),
-                    "user_provided_inputs": session.get("user_provided_inputs", {})}}
+                    "user_provided_inputs": session.get("user_provided_inputs", {}),
+                    "mapping_hints": session.get("mapping_hints", "")}}
     
     def handle_generate_initial_steps_result(self, session_id: str, result: Dict) -> Dict:
         session = self.get_session(session_id)
@@ -942,7 +946,21 @@ class FormMapperOrchestrator:
 
         # TOTP injection: generate fresh code right before sending to agent
         if step.get("is_totp") and session.get("mapping_type") == "login_mapping":
-            step = self._inject_totp_code(session_id, dict(step))
+            # Count total TOTP steps to handle multi-digit inputs
+            totp_steps = [s for s in all_steps if s.get("is_totp")]
+            totp_count = len(totp_steps)
+            if totp_count <= 1:
+                # Single TOTP step - inject full code
+                step = self._inject_totp_code(session_id, dict(step))
+            else:
+                # Multiple TOTP digit steps - distribute one digit per step
+                totp_index = next(
+                    i for i, s in enumerate(totp_steps) if s.get("step_number") == step.get("step_number"))
+                step = self._inject_totp_digit(session_id, dict(step), totp_index, totp_count)
+
+        # Basic Auth injection: build URL with credentials server-side
+        if step.get("is_basic_auth") and session.get("mapping_type") == "login_mapping":
+            step = self._inject_basic_auth_url(session_id, dict(step))
 
         task = self._push_agent_task(session_id, "form_mapper_exec_step", {
             "step": step, "step_index": current_index, "total_steps": len(all_steps),
@@ -1053,7 +1071,8 @@ class FormMapperOrchestrator:
             f"!!!! Full XPath: {step.get('full_xpath', '')}",
             f"!!!! Description: {step.get('description', '')}",
             f"!!!! Field Name: {step.get('field_name', '')}" if step.get('field_name') else None,
-            f"!!!! Value: {step.get('value', '')}" if step.get('value') else None
+            f"!!!! Value: {'***REDACTED***' if step.get('is_totp') or step.get('is_basic_auth') or (step.get('field_name') or '').lower() in ('password',) else step.get('value', '')}" if step.get(
+                'value') else None
         ]
         if not result.get('success'):
             log_messages.append(f"!!!! Error: {result.get('error', 'unknown')}")
@@ -1902,7 +1921,8 @@ class FormMapperOrchestrator:
                     "enable_junction_discovery": config.get("enable_junction_discovery", True),
                     "junction_instructions": session.get("junction_instructions", "{}"),
                     "user_provided_inputs": session.get("user_provided_inputs", {}),
-                    "regenerate_retry_message": session.get("regenerate_retry_message", "")}}
+                    "regenerate_retry_message": session.get("regenerate_retry_message", ""),
+                    "mapping_hints": session.get("mapping_hints", "")}}
 
     def _trigger_regenerate_verify_steps(self, session_id: str) -> Dict:
         session = self.get_session(session_id)
@@ -3111,6 +3131,105 @@ class FormMapperOrchestrator:
             logger.error(f"[Orchestrator] TOTP injection failed: {e}")
         return step
 
+    def _inject_totp_digit(self, session_id: str, step: Dict, digit_index: int, total_digits: int) -> Dict:
+        """Inject a single TOTP digit for multi-input TOTP layouts.
+        Generates code once on first digit and caches it for remaining digits."""
+        try:
+            cache_key = f"mapper_totp_code:{session_id}"
+
+            if digit_index == 0:
+                # First digit - generate fresh code with extra time buffer
+                session = self.get_session(session_id)
+                network_id = session.get("network_id") if session else None
+                if not network_id or not self.db:
+                    logger.warning(f"[Orchestrator] Cannot inject TOTP digit: no network_id or db")
+                    return step
+
+                from models.database import Network
+                from services.encryption_service import generate_totp_code
+                network = self.db.query(Network).filter(Network.id == network_id).first()
+                if not network or not network.totp_secret:
+                    logger.warning(f"[Orchestrator] No TOTP secret for network {network_id}")
+                    return step
+
+                # Need enough time for all digit steps - wait if < 16 seconds remaining
+                import time as time_module
+                remaining = 30 - (int(time_module.time()) % 30)
+                if remaining < 18:
+                    wait = remaining + 3
+                    logger.info(
+                        f"[Orchestrator] TOTP multi-digit: expiring in {remaining}s, waiting {wait}s for fresh code")
+                    time_module.sleep(wait)
+
+                code = generate_totp_code(network.totp_secret, network.company_id, network_id)
+                if not code:
+                    logger.warning(f"[Orchestrator] Failed to generate TOTP code")
+                    return step
+
+                # Cache code for remaining digits (TTL 30s)
+                self.redis.setex(cache_key, 30, code)
+                logger.info(
+                    f"[Orchestrator] TOTP multi-digit: generated code, distributing across {total_digits} steps")
+            else:
+                # Subsequent digits - read cached code
+                code = self.redis.get(cache_key)
+                if isinstance(code, bytes):
+                    code = code.decode()
+                if not code:
+                    logger.warning(f"[Orchestrator] TOTP cached code expired for digit {digit_index + 1}")
+                    return step
+
+            # Inject single digit
+            if digit_index < len(code):
+                step["value"] = code[digit_index]
+                logger.info(f"[Orchestrator] TOTP digit {digit_index + 1}/{total_digits} injected")
+            else:
+                logger.warning(
+                    f"[Orchestrator] TOTP digit index {digit_index} out of range for code length {len(code)}")
+
+        except Exception as e:
+            logger.error(f"[Orchestrator] TOTP digit injection failed: {e}")
+        return step
+
+    def _inject_basic_auth_url(self, session_id: str, step: Dict) -> Dict:
+        """Inject Basic Auth URL with credentials into navigate step.
+        Security: credentials loaded from DB server-side, embedded in URL only for agent execution."""
+        try:
+            session = self.get_session(session_id)
+            network_id = session.get("network_id") if session else None
+            if not network_id or not self.db:
+                logger.warning(f"[Orchestrator] Cannot inject Basic Auth: no network_id or db")
+                return step
+
+            from models.database import Network
+            from services.encryption_service import decrypt_credential
+            network = self.db.query(Network).filter(Network.id == network_id).first()
+            if not network or not network.login_username or not network.login_password:
+                logger.warning(f"[Orchestrator] No credentials for Basic Auth on network {network_id}")
+                return step
+
+            username = decrypt_credential(network.login_username, network.company_id, network_id, "login_username")
+            password = decrypt_credential(network.login_password, network.company_id, network_id, "login_password")
+            site_url = network.url or ""
+
+            if not site_url:
+                logger.warning(f"[Orchestrator] No site URL for Basic Auth on network {network_id}")
+                return step
+
+            from urllib.parse import urlparse, urlunparse, quote
+            parsed = urlparse(site_url)
+            netloc = f"{quote(username, safe='')}:{quote(password, safe='')}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            basic_auth_url = urlunparse(parsed._replace(netloc=netloc))
+
+            step["value"] = basic_auth_url
+            step["url"] = basic_auth_url
+            logger.info(f"[Orchestrator] Basic Auth URL injected for network {network_id}")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Basic Auth injection failed: {e}")
+        return step
+
     def _save_login_logout_to_network(self, session_id: str, steps: List[Dict],
                                       auth_type: str = None, already_done: bool = False) -> None:
         """Save login/logout mapping results to Network model.
@@ -3147,6 +3266,10 @@ class FormMapperOrchestrator:
                         safe_step["value"] = "{{USERNAME}}"
                     if safe_step.get("is_totp"):
                         safe_step["value"] = "{{TOTP}}"
+                    if safe_step.get("is_basic_auth"):
+                        safe_step["value"] = "{{BASIC_AUTH_URL}}"
+                        safe_step["url"] = "{{BASIC_AUTH_URL}}"
+
                     safe_steps.append(safe_step)
 
                 # Prepend navigate step
