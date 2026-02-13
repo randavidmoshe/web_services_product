@@ -213,6 +213,12 @@ async def locate_form_pages(
         db.commit()
         db.refresh(mapper_db_session)
 
+        # Link mapper session to crawl session so frontend can track login progress
+        crawl_session_obj = db.query(CrawlSession).filter(CrawlSession.id == task_params["crawl_session_id"]).first()
+        if crawl_session_obj:
+            crawl_session_obj.mapper_session_id = mapper_db_session.id
+            db.commit()
+
         orchestrator.create_session(
             session_id=str(mapper_db_session.id),
             user_id=user_id,
@@ -221,7 +227,15 @@ async def locate_form_pages(
             product_id=network.product_id,
             project_id=network.project_id,
             mapping_type="login_mapping",
-            base_url=network.url
+            base_url=network.url,
+            config={
+                "discovery_chain": {
+                    "task_id": task_id,
+                    "user_id": user_id,
+                    "company_id": task_params["company_id"],
+                    "crawl_session_id": task_params["crawl_session_id"]
+                }
+            }
         )
 
         mapper_result = orchestrator.start_login_phase(session_id=str(mapper_db_session.id))
@@ -319,6 +333,20 @@ async def update_crawl_session(
         error_message=data.get("error_message"),
         error_code=data.get("error_code")
     )
+
+    # Discovery completed → trigger logout mapping if network has credentials
+    status = data.get("status")
+    if status == "completed":
+        session = db.query(CrawlSession).filter(CrawlSession.id == session_id).first()
+        if session and session.network_id:
+            network = db.query(Network).filter(Network.id == session.network_id).first()
+            if network and network.login_username and network.login_password:
+                from tasks.form_pages_tasks import trigger_logout_mapping_after_discovery
+                trigger_logout_mapping_after_discovery.delay(
+                    network_id=network.id,
+                    user_id=session.user_id,
+                    company_id=session.company_id
+                )
     
     return {"success": True}
 
@@ -359,7 +387,27 @@ async def get_discovery_status(session_id: int, request: Request, db: Session = 
             session.error_message = 'Agent disconnected - no heartbeat received'
             session.completed_at = datetime.utcnow()
             db.commit()
-    
+
+    # If session is pending and has a linked login mapper, check mapper status
+    if session.status == 'pending' and session.mapper_session_id:
+        from models.form_mapper_models import FormMapperSession
+        mapper = db.query(FormMapperSession).filter(
+            FormMapperSession.id == session.mapper_session_id
+        ).first()
+        if mapper:
+            if mapper.status == 'failed':
+                session.status = 'failed'
+                session.error_code = 'LOGIN_MAPPING_FAILED'
+                session.error_message = f'Login mapping failed: {mapper.last_error or "Unknown error"}'
+                session.completed_at = datetime.utcnow()
+                db.commit()
+            elif mapper.status == 'cancelled':
+                session.status = 'cancelled'
+                session.error_code = 'LOGIN_MAPPING_CANCELLED'
+                session.error_message = 'Login mapping was cancelled'
+                session.completed_at = datetime.utcnow()
+                db.commit()
+
     # Get discovered forms for this session
     forms = db.query(FormPageRoute).filter(
         FormPageRoute.crawl_session_id == session_id
@@ -414,7 +462,21 @@ async def cancel_discovery_session(session_id: int, request: Request, db: Sessio
     session.error_message = 'Cancelled by user'
     session.completed_at = datetime.utcnow()
     db.commit()
-    
+
+    # If there's a linked login mapper session, cancel it too
+    if session.mapper_session_id:
+        from models.form_mapper_models import FormMapperSession
+        from services.form_mapper_orchestrator import FormMapperOrchestrator
+        mapper = db.query(FormMapperSession).filter(
+            FormMapperSession.id == session.mapper_session_id
+        ).first()
+        if mapper and mapper.status not in ('completed', 'failed', 'cancelled') and mapper.company_id == session.company_id:
+            orchestrator = FormMapperOrchestrator(db)
+            orchestrator.cancel_session(str(mapper.id))
+            mapper.status = 'cancelled'
+            mapper.completed_at = datetime.utcnow()
+            db.commit()
+
     return {"success": True, "message": "Discovery cancelled"}
 
 
@@ -436,18 +498,49 @@ async def get_active_sessions(project_id: int, request: Request, db: Session = D
         CrawlSession.project_id == project_id,
         CrawlSession.status.in_(['pending', 'running'])
     ).all()
-    
-    return [
-        {
+
+    HEARTBEAT_TIMEOUT_SECONDS = 60
+    result = []
+    for s in sessions:
+        # Self-healing: if running but agent is offline, mark as failed
+        if s.status == 'running':
+            agent = db.query(Agent).filter(Agent.user_id == s.user_id).first()
+            agent_offline = True
+            if agent and agent.last_heartbeat:
+                timeout_threshold = datetime.utcnow() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
+                agent_offline = agent.last_heartbeat < timeout_threshold
+            if agent_offline:
+                s.status = 'failed'
+                s.error_code = 'AGENT_DISCONNECTED'
+                s.error_message = 'Agent disconnected - no heartbeat received'
+                s.completed_at = datetime.utcnow()
+                db.commit()
+                continue
+
+        # Self-healing: if pending with failed/cancelled login mapper, mark as failed
+        if s.status == 'pending' and s.mapper_session_id:
+            from models.form_mapper_models import FormMapperSession
+            mapper = db.query(FormMapperSession).filter(
+                FormMapperSession.id == s.mapper_session_id
+            ).first()
+            if mapper and mapper.status in ('failed', 'cancelled'):
+                s.status = 'failed'
+                s.error_code = 'LOGIN_MAPPING_FAILED'
+                s.error_message = f'Login mapping failed: {mapper.last_error or "Unknown"}'
+                s.completed_at = datetime.utcnow()
+                db.commit()
+                continue
+
+        result.append({
             "id": s.id,
             "network_id": s.network_id,
             "status": s.status,
             "pages_crawled": s.pages_crawled,
             "forms_found": s.forms_found,
             "started_at": s.started_at.isoformat() if s.started_at else None
-        }
-        for s in sessions
-    ]
+        })
+
+    return result
 
 
 @router.get("/routes")

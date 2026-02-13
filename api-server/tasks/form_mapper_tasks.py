@@ -360,7 +360,8 @@ def analyze_form_page(
                     login_credentials = {
                         "username": decrypt_credential(network.login_username, network.company_id,
                                network.id, "login_username") if network.login_username else "", "password": decrypt_credential(network.login_password, network.company_id,
-                               network.id, "login_password") if network.login_password else "", "site_url": network.url or ""
+                               network.id, "login_password") if network.login_password else "", "site_url": network.url or "", "login_hints": network.login_hints or ""
+
                     }
                     log.debug(
                         f"!!!! Credentials loaded: username_len={len(login_credentials.get('username', ''))}, password_len={len(login_credentials.get('password', ''))}",
@@ -1114,7 +1115,7 @@ def regenerate_steps(
                     login_credentials = {
                         "username": decrypt_credential(network.login_username, network.company_id,
                                network.id, "login_username") if network.login_username else "", "password": decrypt_credential(network.login_password, network.company_id,
-                               network.id, "login_password") if network.login_password else "", "site_url": network.url or ""
+                               network.id, "login_password") if network.login_password else "", "site_url": network.url or "", "login_hints": network.login_hints or ""
                     }
             except Exception as e:
                 logger.error(f"[FormMapperTask] Failed to load credentials for regen: {e}")
@@ -1973,6 +1974,14 @@ def save_mapping_result(self, session_id: str, stages: List[Dict], path_junction
         # Check how many paths already exist for this form_page_route
         form_page_route_id = ctx.get("form_route_id")
         mapping_type = ctx.get("mapping_type", "form")
+
+        # Login/logout mapping: no FormMapResult to save — steps go to Network.login_stages/logout_stages
+        # via handle_mapping_complete → _save_login_logout_to_network
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            result = {"stages": stages, "success": True, "continue_to_next_path": continue_to_next_path}
+            _continue_orchestrator_chain(session_id, "save_mapping_result", result)
+            return result
+
         test_page_route_id = ctx.get("test_page_route_id")
 
         #existing_paths = db.query(FormMapResult).filter(

@@ -161,6 +161,7 @@ class Network(Base):
     login_username = Column(Text, nullable=True)  # Encrypted
     login_password = Column(Text, nullable=True)  # Encrypted
     totp_secret = Column(Text, nullable=True)  # Encrypted TOTP secret for 2FA
+    login_hints = Column(Text, nullable=True)  # AI guidance notes for login automation
     login_stages = Column(JSON, default=list)  # Login steps for Form Mapper
     logout_stages = Column(JSON, default=list)  # Logout steps for Form Mapper
     dashboard_url = Column(String, nullable=True)  # Captured after successful login mapping
@@ -186,7 +187,9 @@ class CrawlSession(Base):
     forms_found = Column(Integer, default=0)
     error_message = Column(Text)
     error_code = Column(String(50))  # Machine-readable error code (e.g., PAGE_NOT_FOUND, LOGIN_FAILED)
+    mapper_session_id = Column(Integer, nullable=True)  # FormMapperSession ID when login mapping runs before discovery
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class FormPageRoute(Base):
     """

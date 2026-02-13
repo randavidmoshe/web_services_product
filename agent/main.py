@@ -975,6 +975,7 @@ class FormDiscovererAgent:
 
         api_client.update_crawl_session(status='running')
 
+        logout_mapping_expected = skip_login  # If login was mapped, logout will be mapped too
         try:
             if skip_login:
                 # === BROWSER ALREADY OPEN — LOGIN DONE BY LOGIN MAPPER ===
@@ -1051,8 +1052,7 @@ class FormDiscovererAgent:
                 self.logger.info("⏭️ Skipping form crawl (login/logout only mode)")
                 self.activity_logger.info("⏭️ Skipping form crawl - dynamic content project")
 
-            # Generate logout steps after discovery completes
-            self._generate_logout_steps(driver, api_client)
+            # Logout mapping will be triggered by backend when it receives status='completed'
 
             # Check for page error after crawl completes
             page_error = detect_page_error(driver)
@@ -1102,14 +1102,23 @@ class FormDiscovererAgent:
             )
             return {"success": False, "error": str(e), "error_code": error_code}
 
+
         finally:
+
             self.current_crawl_session_id = None
-            if self.selenium_agent.driver:
+
+            if self.selenium_agent.driver and not logout_mapping_expected:
+
                 self.logger.info("Closing browser after discovery...")
+
                 try:
+
                     self.selenium_agent.close_browser()
+
                 except Exception as e:
+
                     self.logger.warning(f"Error closing browser: {e}")
+
 
 
     def _generate_logout_steps(self, driver, api_client):

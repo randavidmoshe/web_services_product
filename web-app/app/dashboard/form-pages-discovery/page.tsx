@@ -1253,6 +1253,24 @@ export default function DashboardPage() {
     setMessage(null)
     setIsDiscovering(true)
     shouldContinueRef.current = true
+
+    // Check if agent is online first
+    try {
+      const agentResponse = await fetchWithAuth('/api/agent/status')
+      const agentData = await agentResponse.json()
+      if (agentData.status !== 'online') {
+        setError('⚠️ Agent is offline. Please start your desktop agent before discovery.')
+        setIsDiscovering(false)
+        shouldContinueRef.current = false
+        return
+      }
+    } catch (err) {
+      console.error('Failed to check agent status:', err)
+      setError('⚠️ Cannot verify agent status. Please ensure your desktop agent is running.')
+      setIsDiscovering(false)
+      shouldContinueRef.current = false
+      return
+    }
     
     // Build the queue with all selected networks
     const queue: DiscoveryQueueItem[] = selectedNetworkIds.map(networkId => {
@@ -1430,9 +1448,9 @@ export default function DashboardPage() {
     if (failed > 0) {
       // Build error details for failed networks
       const errorDetails = failedItems.map(f => `${f.networkName}: ${f.errorMessage || 'Unknown error'}`).join('; ')
-      setMessage(`Discovery finished. Completed: ${completed}, Failed: ${failed}. Found ${totalForms} form pages.`)
-      if (failedItems.length > 0 && failedItems[0].errorMessage) {
-        console.error('Error:', errorDetails)
+      setError(`Discovery failed for ${failed} network(s): ${errorDetails}`)
+      if (completed > 0) {
+        setMessage(`Completed: ${completed}. Found ${totalForms} form pages.`)
       }
     } else {
       setMessage(`Discovery completed! Found ${totalForms} new form pages across ${completed} test site(s).`)
@@ -2542,6 +2560,20 @@ export default function DashboardPage() {
                      item.status === 'failed' ? '❌ Failed' :
                      item.status === 'cancelled' ? '⏹ Cancelled' : '⏸ Waiting'}
                   </span>
+                  {item.status === 'failed' && item.errorMessage && (
+                    <span style={{
+                      fontSize: '12px',
+                      color: '#ef4444',
+                      maxWidth: '250px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title={item.errorMessage}
+                    >
+                      {item.errorMessage}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

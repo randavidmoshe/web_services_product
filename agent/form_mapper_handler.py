@@ -697,12 +697,15 @@ class FormMapperTaskHandler:
             else:
                 print(f"!!!!!!! [DEBUG CANCEL TASK] got cancel request, session id: {session_id} isn't in active sessions")
             self.closed_sessions.add(int(session_id))
-            
-            # Only close if no other active sessions
-            if not self.active_sessions:
+
+            # Only close if no other active sessions and not told to keep browser open
+            if payload.get("keep_browser_open"):
+                print(f"[DEBUG] keep_browser_open=True, session {session_id} cleaned up but browser stays open")
+            elif not self.active_sessions:
                 self.selenium.close_browser()
             else:
-                print(f"!!!!!!! [DEBUG CANCEL TASK] got cancel request: not closing browser, we have these active sessions: {self.active_sessions}")
+                print(
+                    f"!!!!!!! [DEBUG CANCEL TASK] got cancel request: not closing browser, we have these active sessions: {self.active_sessions}")
 
             # new fix
             # Clear any stale sessions and close browser

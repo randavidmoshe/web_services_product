@@ -261,6 +261,14 @@ When generating selectors for click actions, ALWAYS include the element's visibl
                     "error_message": result.get("error_message", "Login failed")
                 }
 
+            if result.get("validation_errors_detected"):
+                print(f"[LoginMapperAI] ⚠️ Validation errors detected: {result.get('explanation', '')}")
+                return {
+                    "steps": [],
+                    "validation_errors_detected": True,
+                    "explanation": result.get("explanation", "")
+                }
+
             return {"steps": result.get("steps", [])}
 
         except json.JSONDecodeError as e:
@@ -489,6 +497,10 @@ If this is a standard login page (no 2FA visible yet), just generate the normal 
 ## CURRENT PAGE DOM
 {dom_html}
 
+{f"""## AI GUIDANCE NOTES FROM USER
+{credentials.get("login_hints", "")}
+""" if credentials.get("login_hints") else ""}
+
 {self.SELECTOR_RULES}
 
 ## AVAILABLE ACTIONS
@@ -652,10 +664,11 @@ Return ONLY valid JSON:
 ## RULES
 
 1. Your steps must complete the logout process
-2. Your LAST step MUST be a `wait` action for a login page element (username field, password field, or login button)
+2. Your LAST step MUST be a `wait` action for a login page element (username field, password field, or login button) with a SPECIFIC CSS/XPath selector from the DOM
 3. Keep steps atomic - one action per step
 4. Include full_xpath as fallback for every action step
 5. If logout requires opening a dropdown menu first, include that step
+6. ONLY use actions from the AVAILABLE ACTIONS list above. Do NOT invent custom actions like "verify_login_page" or "check_logout" — use `wait` with a real selector instead
 """
 
     def _build_login_regenerate_prompt(
@@ -689,6 +702,8 @@ Look at the DOM and screenshot for red/colored error messages indicating login f
 - "Login failed", "Authentication failed", "Account locked"
 - "Too many attempts", "Account disabled", "User not found"
 - Any red/orange banner, toast, or inline error near the login form
+
+**IMPORTANT: TOTP/2FA/verification code errors (e.g., "Invalid verification code", "Incorrect code", "Code expired") are NOT login failures. These are time-sensitive codes that expire quickly. Skip this check for any 2FA/TOTP related errors and continue below.**
 
 **If login error message detected, return ONLY:**
 ```json
@@ -737,6 +752,20 @@ If the login form is still showing (username/password fields, login button still
 }}}}
 ```
 
+## FIFTH: CHECK IF PREVIOUS ACTION FAILED (same page still showing)
+
+If the page shows the same input field(s) that were already filled in the executed steps 
+(e.g., TOTP code input still visible after you already entered code and clicked verify), 
+this means the previous attempt failed (wrong code, expired, etc.).
+
+**Return ONLY:**
+```json
+{{{{
+  "validation_errors_detected": true,
+  "explanation": "Previous action failed - same input still showing after submission"
+}}}}
+```
+
 **If CAPTCHA/reCAPTCHA challenge appeared, return ONLY:**
 ```json
 {{{{
@@ -765,7 +794,9 @@ If the login form is still showing (username/password fields, login button still
 ## CURRENT PAGE DOM (after executed steps)
 {dom_html}
 
-## YOUR TASK
+{f"""## AI GUIDANCE NOTES FROM USER
+{credentials.get("login_hints", "")}
+""" if credentials.get("login_hints") else ""}## YOUR TASK
 
 The page changed after executing the steps above. Generate the REMAINING steps to complete login.
 Do NOT repeat already executed steps.
@@ -867,8 +898,9 @@ Scan DOM and screenshot for blocking issues.
 Generate the REMAINING steps to complete logout.
 Continue step numbering from {executed_count + 1}.
 
-- Your LAST step MUST be a `wait` for a login page element
+- Your LAST step MUST be a `wait` for a login page element with a SPECIFIC CSS/XPath selector (e.g., `input[name='username']`)
 - If login page is already visible, just return the `wait` step
+- ONLY use actions from the AVAILABLE ACTIONS list below. Do NOT invent custom actions like "verify_login_page" or "check_logout" — use `wait` with a real selector instead
 
 {self.SELECTOR_RULES}
 

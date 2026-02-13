@@ -2421,8 +2421,8 @@ class FormMapperOrchestrator:
         log = self._get_logger(session_id)
         log.session_completed(total_steps=len(final_stages))
 
-        # Login/logout mapping: DON'T close browser — discovery needs it open
-        if mapping_type in ("login_mapping", "logout_mapping"):
+        # Login mapping with discovery chain: DON'T close browser — discovery needs it open
+        if mapping_type == "login_mapping":
             # Check if this login mapping is chained to a discovery task
             discovery_chain = session.get("discovery_chain", {})
             if isinstance(discovery_chain, str):
@@ -2432,6 +2432,20 @@ class FormMapperOrchestrator:
                     discovery_chain = {}
             if discovery_chain:
                 self._trigger_discovery_after_login(session_id, discovery_chain)
+                # Clean up login session from agent's active_sessions (but keep browser open)
+                self._push_agent_task(session_id, "form_mapper_close", {
+                    "keep_browser_open": True,
+                    "complete_logging": True
+                })
+                return {"success": True, "state": "completed", "total_steps": len(final_stages),
+                        "mapping_type": mapping_type}
+
+        # Logout mapping or login without discovery chain: close browser
+        if mapping_type in ("login_mapping", "logout_mapping"):
+            self._push_agent_task(session_id, "form_mapper_close", {
+                "log_message": f"✅ {mapping_type} complete - {len(final_stages)} steps",
+                "complete_logging": True
+            })
             return {"success": True, "state": "completed", "total_steps": len(final_stages),
                     "mapping_type": mapping_type}
 
@@ -3077,7 +3091,7 @@ class FormMapperOrchestrator:
             # Check remaining time — if < 5 seconds, wait for next code
             import time as time_module
             remaining = 30 - (int(time_module.time()) % 30)
-            if remaining < 5:
+            if remaining < 10:
                 wait = remaining + 1
                 logger.info(f"[Orchestrator] TOTP expiring in {remaining}s, waiting {wait}s for fresh code")
                 time_module.sleep(wait)

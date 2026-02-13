@@ -33,6 +33,7 @@ class NetworkCreate(BaseModel):
     login_username: Optional[str] = None
     login_password: Optional[str] = None
     totp_secret: Optional[str] = None  # TOTP secret for 2FA
+    login_hints: Optional[str] = None  # AI guidance notes
 
 
 class NetworkUpdate(BaseModel):
@@ -42,6 +43,7 @@ class NetworkUpdate(BaseModel):
     login_username: Optional[str] = None
     login_password: Optional[str] = None
     totp_secret: Optional[str] = None  # TOTP secret for 2FA
+    login_hints: Optional[str] = None  # AI guidance notes
 
 
 # =============================================================================
@@ -144,6 +146,7 @@ async def get_project(project_id: int, request: Request, db: Session = Depends(g
             "login_password": mask_credential(network.login_password, "password") if network.login_password else None,
             "totp_secret": mask_credential(network.totp_secret, "totp_secret") if network.totp_secret else None,
             "has_totp": bool(network.totp_secret),
+            "login_hints": network.login_hints,
             "created_by_user_id": network.created_by_user_id,
             "created_at": network.created_at,
             "updated_at": network.updated_at
@@ -317,6 +320,7 @@ async def create_network(
         login_username=encrypt_credential(network_data.login_username, project.company_id) if network_data.login_username else None,
         login_password=encrypt_credential(network_data.login_password, project.company_id) if network_data.login_password else None,
         totp_secret=encrypt_credential(network_data.totp_secret, project.company_id) if network_data.totp_secret else None,
+        login_hints=network_data.login_hints,
         created_by_user_id=current_user["user_id"]
     )
     
@@ -382,6 +386,9 @@ async def update_network(
     if network_data.totp_secret is not None:
         network.totp_secret = encrypt_credential(network_data.totp_secret,
                                                  network.company_id) if network_data.totp_secret else None
+    if network_data.login_hints is not None:
+        network.login_hints = network_data.login_hints or None
+
     # Invalidate credential cache if credentials changed
     if network_data.login_username is not None or network_data.login_password is not None or network_data.totp_secret is not None:
         invalidate_credential_cache(network.company_id, network.id)
