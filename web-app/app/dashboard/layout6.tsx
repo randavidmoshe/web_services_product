@@ -115,23 +115,23 @@ export default function DashboardLayout({
 
   // Theme configuration - Pearl White only (fixed theme)
   const theme = {
-    name: 'Slate',
+    name: 'Pearl White',
     emoji: '🤍',
     category: 'elegant',
     colors: {
-      bgGradient: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
-      headerBg: '#ffffff',
-      sidebarBg: '#0f172a',
-      cardBg: '#ffffff',
-      cardBorder: '#e2e8f0',
+      bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
+      headerBg: 'rgba(248, 250, 252, 0.98)',
+      sidebarBg: 'rgba(241, 245, 249, 0.95)',
+      cardBg: 'rgba(242, 246, 250, 0.98)',
+      cardBorder: 'rgba(100, 116, 139, 0.3)',
       cardGlow: 'none',
-      accentPrimary: '#6366f1',
-      accentSecondary: '#818cf8',
+      accentPrimary: '#0369a1',
+      accentSecondary: '#0ea5e9',
       accentGlow: 'none',
       iconGlow: 'none',
       buttonGlow: 'none',
-      textPrimary: '#0f172a',
-      textSecondary: '#64748b',
+      textPrimary: '#1e293b',
+      textSecondary: '#475569',
       textGlow: 'none',
       statusOnline: '#16a34a',
       statusGlow: '0 0 8px rgba(22, 163, 74, 0.5)',
@@ -660,72 +660,75 @@ export default function DashboardLayout({
         }
       `}</style>
       
-      {/* Top Bar */}
+      {/* Top Bar - Sleek Dark Glass Design */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '12px 28px',
-        background: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
+        padding: '16px 36px',
+        background: getTheme().colors.headerBg,
+        backdropFilter: 'blur(20px)',
+        borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+        boxShadow: `${getTheme().colors.borderGlow}, 0 4px 30px rgba(0,0,0,0.3)`
       }}>
         {/* Left side - Logo only */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
-            width: '36px',
-            height: '36px',
-            background: '#6366f1',
-            borderRadius: '8px',
+            width: '52px',
+            height: '52px',
+            background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary} 0%, ${getTheme().colors.accentSecondary} 100%)`,
+            borderRadius: '14px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            boxShadow: getTheme().colors.buttonGlow
           }}>
-            <span style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>Q</span>
+            <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>Q</span>
           </div>
           <span style={{ 
-            fontSize: '20px', 
+            fontSize: '32px', 
             fontWeight: 700, 
-            color: '#0f172a',
-            letterSpacing: '-0.3px'
+            color: getTheme().colors.textPrimary,
+            textShadow: getTheme().colors.textGlow,
+            letterSpacing: '-0.5px'
           }}>
             Quattera AI
           </span>
         </div>
         
         {/* Right side - Project selector + all controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {/* Project Selector */}
           <div className="project-dropdown" style={{ position: 'relative' }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowProjectDropdown(!showProjectDropdown) }}
               style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '8px 14px',
-                color: '#0f172a',
-                fontSize: '14px',
-                fontWeight: 500,
+                background: `linear-gradient(135deg, ${getTheme().colors.accentPrimary}30, ${getTheme().colors.accentSecondary}25)`,
+                border: `2px solid ${getTheme().colors.accentPrimary}80`,
+                borderRadius: '14px',
+                padding: '12px 20px',
+                color: getTheme().colors.textPrimary,
+                fontSize: '17px',
+                fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.2s ease',
+                boxShadow: `0 0 25px ${getTheme().colors.accentGlow}`
               }}
             >
               <span style={{ 
-                background: '#6366f1',
-                color: '#fff',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                marginRight: '10px',
-                fontSize: '12px'
+                background: 'linear-gradient(135deg, #00F5D4, #00BBF9)',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                marginRight: '14px',
+                fontSize: '18px'
               }}>📁</span>
-              <span style={{ fontSize: '14px' }}>{activeProject ? activeProject.name : 'Select Project'}</span>
-              <span style={{ marginLeft: '10px', opacity: 0.5, fontSize: '12px' }}>▼</span>
+              <span style={{ fontSize: '17px' }}>{activeProject ? activeProject.name : 'Select Project'}</span>
+              <span style={{ marginLeft: '12px', opacity: 0.7, fontSize: '14px' }}>▼</span>
             </button>
             
             {showProjectDropdown && (
@@ -751,18 +754,18 @@ export default function DashboardLayout({
                     </div>
                   ))
                 )}
-                <div style={{ height: '1px', background: '#e2e8f0', margin: '8px 0' }} />
+                <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '12px 0' }} />
                 <div
                   onClick={() => { setShowProjectDropdown(false); setShowAddProjectModal(true) }}
                   className="dropdown-item"
-                  style={{ ...dropdownItemStyle, color: '#6366f1', fontSize: '14px' }}
+                  style={{ ...dropdownItemStyle, color: '#00BBF9', fontSize: '16px' }}
                 >
                   <span>＋</span> Add Project
                 </div>
                 <div
                   onClick={() => { setShowProjectDropdown(false); setShowProjectsModal(true) }}
                   className="dropdown-item"
-                  style={{ ...dropdownItemStyle, fontSize: '14px' }}
+                  style={{ ...dropdownItemStyle, fontSize: '16px' }}
                 >
                   <span>⚙️</span> Manage Projects
                 </div>
@@ -770,7 +773,7 @@ export default function DashboardLayout({
             )}
           </div>
           
-          <div style={{ width: '1px', height: '32px', background: '#e2e8f0' }} />
+          <div style={{ width: '1px', height: '40px', background: isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' }} />
           
           {/* AI Usage Indicator - Only for Early Access (not BYOK) */}
           {userRole === 'admin' && !isByok && aiUsed !== null && aiBudget !== null && (
@@ -779,23 +782,23 @@ export default function DashboardLayout({
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
-                padding: '6px 12px',
-                background: '#f8fafc',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0'
+                padding: '8px 16px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '10px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`
               }}
               title={`AI Usage: ${Math.round(aiUsed)} / ${aiBudget} actions`}
             >
               <span style={{
-                fontSize: '11px',
-                color: '#64748b',
+                fontSize: '12px',
+                color: getTheme().colors.textSecondary,
                 fontWeight: 600,
-                marginBottom: '1px'
+                marginBottom: '2px'
               }}>AI Trial Usage</span>
               <span style={{
                 color: aiUsed >= aiBudget ? '#ef4444' : aiUsed >= aiBudget * 0.8 ? '#f59e0b' : '#10b981',
-                fontWeight: 600,
-                fontSize: '13px'
+                fontWeight: 700,
+                fontSize: '14px'
               }}>
                 Used: {Math.round(aiUsed)} of {aiBudget} actions
               </span>
@@ -807,31 +810,33 @@ export default function DashboardLayout({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
+              gap: '10px',
+              padding: agentStatus === 'online' ? '0' : '14px 22px',
               background: agentStatus === 'online' 
-                ? '#f0fdf4'
-                : '#f8fafc',
-              borderRadius: '8px',
-              border: `1px solid ${agentStatus === 'online' ? '#bbf7d0' : '#e2e8f0'}`,
-              fontSize: '13px'
+                ? 'transparent'
+                : isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+              borderRadius: '12px',
+              border: agentStatus === 'online' 
+                ? 'none'
+                : `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
+              fontSize: '15px'
             }}
             title={agentLastSeen ? `Last seen: ${new Date(agentLastSeen + 'Z').toLocaleString()}` : 'No agent connected'}
           >
             <div style={{
-              width: '8px',
-              height: '8px',
+              width: '12px',
+              height: '12px',
               borderRadius: '50%',
               background: agentStatus === 'online' 
                 ? '#22c55e' 
-                : '#94a3b8',
-              boxShadow: agentStatus === 'online' ? '0 0 6px rgba(34, 197, 94, 0.5)' : 'none',
+                : '#6b7280',
+              boxShadow: agentStatus === 'online' ? '0 0 12px rgba(34, 197, 94, 0.8)' : 'none',
               animation: agentStatus === 'online' ? 'pulse 1.5s infinite' : 'none'
             }} />
             <span style={{ 
-              color: agentStatus === 'online' ? '#16a34a' : '#64748b', 
-              fontWeight: 600, 
-              fontSize: '13px'
+              color: agentStatus === 'online' ? '#16a34a' : (isLightTheme() ? '#4b5563' : '#9ca3af'), 
+              fontWeight: 700, 
+              fontSize: '16px'
             }}>
               Agent {agentStatus === 'online' ? 'Online' : 'Offline'}
             </span>
@@ -842,18 +847,18 @@ export default function DashboardLayout({
             onClick={() => window.open('/api/installer/download/linux', '_blank')}
             className="top-btn"
             style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              padding: '8px 14px',
-              fontSize: '13px',
-              fontWeight: 500,
+              background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+              borderRadius: '12px',
+              padding: '12px 22px',
+              fontSize: '16px',
+              fontWeight: 600,
               cursor: 'pointer',
-              color: '#0f172a',
+              color: getTheme().colors.textPrimary,
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
+              gap: '10px',
+              transition: 'all 0.2s ease'
             }}
           >
             <span>⬇️</span> Download Agent
@@ -866,21 +871,21 @@ export default function DashboardLayout({
               onBlur={() => setTimeout(() => setShowUserDropdown(false), 200)}
               className="top-btn"
               style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '8px 14px',
-                fontSize: '13px',
-                fontWeight: 500,
+                background: isLightTheme() ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '12px',
+                padding: '12px 22px',
+                fontSize: '16px',
+                fontWeight: 600,
                 cursor: 'pointer',
-                color: '#0f172a',
+                color: getTheme().colors.textPrimary,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
+                gap: '10px',
+                transition: 'all 0.2s ease'
               }}
             >
-              <span style={{ fontSize: '14px' }}>👤</span>
+              <span style={{ fontSize: '18px' }}>👤</span>
               <span>Account</span>
               <span style={{ opacity: 0.7, fontSize: '12px' }}>▼</span>
             </button>
@@ -890,12 +895,13 @@ export default function DashboardLayout({
                 position: 'absolute',
                 top: '100%',
                 right: 0,
-                marginTop: '6px',
-                background: '#ffffff',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                minWidth: '170px',
+                marginTop: '8px',
+                background: isLightTheme() ? 'rgba(255,255,255,0.98)' : 'rgba(30,41,59,0.98)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '12px',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                minWidth: '180px',
                 overflow: 'hidden',
                 zIndex: 1000
               }}>
@@ -905,39 +911,39 @@ export default function DashboardLayout({
                     router.push('/settings')
                   }}
                   style={{
-                    padding: '10px 16px',
+                    padding: '14px 20px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    color: '#0f172a',
-                    fontSize: '14px',
+                    gap: '12px',
+                    color: getTheme().colors.textPrimary,
+                    fontSize: '15px',
                     fontWeight: 500,
-                    transition: 'background 0.15s ease'
+                    transition: 'background 0.2s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <span>⚙️</span> Settings
                 </div>
-                <div style={{ height: '1px', background: '#e2e8f0' }} />
+                <div style={{ height: '1px', background: isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }} />
                 <div
                   onClick={() => {
                     setShowUserDropdown(false)
                     handleLogout()
                   }}
                   style={{
-                    padding: '10px 16px',
+                    padding: '14px 20px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '12px',
                     color: '#ef4444',
-                    fontSize: '14px',
+                    fontSize: '15px',
                     fontWeight: 500,
-                    transition: 'background 0.15s ease'
+                    transition: 'background 0.2s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.1)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <span>🚪</span> Logout
@@ -1672,103 +1678,105 @@ const topBarStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '12px 28px',
-  background: '#ffffff',
-  borderBottom: '1px solid #e2e8f0',
+  padding: '16px 36px',
+  background: 'rgba(75, 85, 99, 0.9)',
+  backdropFilter: 'blur(20px)',
+  borderBottom: '2px solid rgba(156, 163, 175, 0.3)',
   position: 'sticky',
   top: 0,
   zIndex: 100,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.15), 0 4px 30px rgba(0,0,0,0.3)'
 }
 
 const projectButtonStyle: React.CSSProperties = {
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '8px',
-  padding: '8px 14px',
-  color: '#0f172a',
-  fontSize: '14px',
-  fontWeight: 500,
+  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))',
+  border: '2px solid rgba(99, 102, 241, 0.5)',
+  borderRadius: '14px',
+  padding: '12px 20px',
+  color: '#fff',
+  fontSize: '17px',
+  fontWeight: 600,
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease',
+  boxShadow: '0 0 25px rgba(99, 102, 241, 0.3)'
 }
 
 const dropdownMenuStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 'calc(100% + 6px)',
+  top: 'calc(100% + 10px)',
   left: 0,
-  background: '#ffffff',
-  border: '1px solid #e2e8f0',
-  borderRadius: '8px',
-  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-  minWidth: '280px',
+  background: 'rgba(75, 85, 99, 0.98)',
+  backdropFilter: 'blur(20px)',
+  border: '2px solid rgba(156, 163, 175, 0.35)',
+  borderRadius: '18px',
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.2), 0 20px 60px rgba(0,0,0,0.5)',
+  minWidth: '320px',
   zIndex: 1000,
   overflow: 'hidden',
   animation: 'fadeIn 0.2s ease'
 }
 
 const dropdownHeaderStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  fontSize: '11px',
-  fontWeight: 600,
+  padding: '16px 22px',
+  fontSize: '12px',
+  fontWeight: 700,
   color: '#64748b',
-  letterSpacing: '0.05em',
-  borderBottom: '1px solid #f1f5f9'
+  letterSpacing: '1.5px',
+  borderBottom: '1px solid rgba(255,255,255,0.05)'
 }
 
 const dropdownItemStyle: React.CSSProperties = {
-  padding: '10px 16px',
+  padding: '16px 22px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
-  color: '#0f172a',
-  fontSize: '14px',
+  gap: '12px',
+  color: '#e2e8f0',
+  fontSize: '16px',
   transition: 'all 0.15s ease'
 }
 
 const topBarBadgeStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '8px',
-  padding: '6px 12px',
-  background: '#f8fafc',
-  borderRadius: '8px',
-  border: '1px solid #e2e8f0',
-  fontSize: '13px'
+  gap: '12px',
+  padding: '12px 18px',
+  background: 'rgba(255,255,255,0.05)',
+  borderRadius: '12px',
+  border: '1px solid rgba(255,255,255,0.08)',
+  fontSize: '15px'
 }
 
 const topBarButtonStyle: React.CSSProperties = {
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '8px',
-  padding: '8px 14px',
-  fontSize: '13px',
-  fontWeight: 500,
+  background: 'rgba(255,255,255,0.05)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '12px',
+  padding: '12px 22px',
+  fontSize: '16px',
+  fontWeight: 600,
   cursor: 'pointer',
-  color: '#0f172a',
+  color: '#e2e8f0',
   display: 'flex',
   alignItems: 'center',
-  gap: '6px',
-  transition: 'all 0.15s ease'
+  gap: '10px',
+  transition: 'all 0.2s ease'
 }
 
 const errorToastStyle: React.CSSProperties = {
   position: 'fixed',
-  top: '70px',
-  right: '24px',
-  background: '#fef2f2',
-  color: '#dc2626',
-  padding: '12px 20px',
-  borderRadius: '8px',
+  top: '90px',
+  right: '32px',
+  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(185, 28, 28, 0.95))',
+  color: '#fff',
+  padding: '16px 24px',
+  borderRadius: '12px',
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
+  gap: '12px',
   zIndex: 1000,
-  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-  border: '1px solid #fecaca',
+  boxShadow: '0 10px 40px rgba(239, 68, 68, 0.3)',
   animation: 'fadeIn 0.3s ease',
   fontSize: '14px',
   fontWeight: 500
@@ -1776,32 +1784,31 @@ const errorToastStyle: React.CSSProperties = {
 
 const successToastStyle: React.CSSProperties = {
   position: 'fixed',
-  top: '70px',
-  right: '24px',
-  background: '#f0fdf4',
-  color: '#16a34a',
-  padding: '12px 20px',
-  borderRadius: '8px',
+  top: '90px',
+  right: '32px',
+  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
+  color: '#fff',
+  padding: '16px 24px',
+  borderRadius: '12px',
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
+  gap: '12px',
   zIndex: 1000,
-  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-  border: '1px solid #bbf7d0',
+  boxShadow: '0 10px 40px rgba(16, 185, 129, 0.3)',
   animation: 'fadeIn 0.3s ease',
   fontSize: '14px',
   fontWeight: 500
 }
 
 const toastCloseStyle: React.CSSProperties = {
-  background: 'transparent',
+  background: 'rgba(255,255,255,0.2)',
   border: 'none',
-  color: 'inherit',
-  width: '20px',
-  height: '20px',
-  borderRadius: '4px',
+  color: '#fff',
+  width: '24px',
+  height: '24px',
+  borderRadius: '6px',
   cursor: 'pointer',
-  fontSize: '14px',
+  fontSize: '16px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1829,26 +1836,28 @@ const sidebarHeaderStyle: React.CSSProperties = {
 const sidebarItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
-  padding: '10px 14px',
+  gap: '12px',
+  padding: '10px 12px',
   cursor: 'pointer',
   fontSize: '14px',
   fontWeight: 500,
   transition: 'all 0.15s ease',
   borderRadius: '8px',
-  margin: '1px 0',
+  margin: '2px 0',
   border: '1px solid transparent',
   color: '#94a3b8'
 }
 
 const sidebarIconStyle: React.CSSProperties = {
-  width: '24px',
-  height: '24px',
+  width: '20px',
+  height: '20px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '18px',
-  flexShrink: 0
+  fontSize: '15px',
+  flexShrink: 0,
+  filter: 'grayscale(1)',
+  opacity: 0.7
 }
 
 const sectionLabelStyle: React.CSSProperties = {

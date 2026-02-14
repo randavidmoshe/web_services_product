@@ -98,14 +98,14 @@ export default function CustomTestsPage() {
     name: 'Pearl White',
     colors: {
       bgGradient: 'linear-gradient(180deg, #dbe5f0 0%, #c8d8e8 50%, #b4c8dc 100%)',
-      headerBg: '#f8fafc',
-      sidebarBg: '#f1f5f9',
-      cardBg: '#ffffff',
-      cardBorder: '#e2e8f0',
-      accentPrimary: '#6366f1',
-      accentSecondary: '#818cf8',
-      textPrimary: '#0f172a',
-      textSecondary: '#64748b',
+      headerBg: 'rgba(248, 250, 252, 0.98)',
+      sidebarBg: 'rgba(241, 245, 249, 0.95)',
+      cardBg: 'rgba(242, 246, 250, 0.98)',
+      cardBorder: 'rgba(100, 116, 139, 0.3)',
+      accentPrimary: '#0369a1',
+      accentSecondary: '#0ea5e9',
+      textPrimary: '#1e293b',
+      textSecondary: '#475569',
       statusOnline: '#16a34a',
     }
   }
@@ -115,13 +115,13 @@ export default function CustomTestsPage() {
   
   const getBgColor = (type: string) => {
     if (type === 'header') {
-      return '#f8fafc'
+      return 'rgba(241, 245, 249, 0.98)'
     }
     return theme.colors.cardBg
   }
 
   const getBorderColor = (intensity: string) => {
-    return intensity === 'light' ? '#e2e8f0' : '#cbd5e1'
+    return intensity === 'light' ? 'rgba(100, 116, 139, 0.2)' : 'rgba(100, 116, 139, 0.3)'
   }
 
   useEffect(() => {
@@ -686,12 +686,12 @@ export default function CustomTestsPage() {
     if (isMapping) {
       return (
         <span style={{
-          background: '#fffbeb',
-          color: '#d97706',
-          padding: '4px 12px',
-          borderRadius: '6px',
-          fontSize: '13px',
-          fontWeight: 500
+          background: 'rgba(245, 158, 11, 0.15)',
+          color: '#f59e0b',
+          padding: '8px 16px',
+          borderRadius: '20px',
+          fontSize: '15px',
+          fontWeight: 600
         }}>
           Mapping...
         </span>
@@ -701,12 +701,12 @@ export default function CustomTestsPage() {
     if (pathsCount > 0) {
       return (
         <span style={{
-          background: '#f0fdf4',
-          color: '#16a34a',
-          padding: '4px 12px',
-          borderRadius: '6px',
-          fontSize: '13px',
-          fontWeight: 500
+          background: 'rgba(16, 185, 129, 0.15)',
+          color: '#059669',
+          padding: '8px 16px',
+          borderRadius: '20px',
+          fontSize: '15px',
+          fontWeight: 600
         }}>
           {pathsCount} path{pathsCount > 1 ? 's' : ''}
         </span>
@@ -715,12 +715,12 @@ export default function CustomTestsPage() {
     
     return (
       <span style={{
-        background: '#f1f5f9',
-        color: '#64748b',
-        padding: '4px 12px',
-        borderRadius: '6px',
-        fontSize: '13px',
-        fontWeight: 500
+        background: 'rgba(107, 114, 128, 0.15)',
+        color: '#6b7280',
+        padding: '8px 16px',
+        borderRadius: '20px',
+        fontSize: '15px',
+        fontWeight: 600
       }}>
         Not mapped
       </span>
@@ -758,14 +758,14 @@ export default function CustomTestsPage() {
     return (
       <div style={{ 
         textAlign: 'center', 
-        padding: '80px 60px',
+        padding: '100px 60px',
         background: theme.colors.cardBg,
-        borderRadius: '8px',
+        borderRadius: '20px',
         border: `1px solid ${theme.colors.cardBorder}`
       }}>
-        <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
-        <p style={{ margin: 0, fontSize: '18px', color: theme.colors.textPrimary, fontWeight: 500 }}>No Project Selected</p>
-        <p style={{ margin: '10px 0 0', fontSize: '14px', color: theme.colors.textSecondary }}>Please select a project from the dropdown above</p>
+        <div style={{ fontSize: '64px', marginBottom: '24px' }}>📋</div>
+        <p style={{ margin: 0, fontSize: '22px', color: theme.colors.textPrimary, fontWeight: 500 }}>No Project Selected</p>
+        <p style={{ margin: '14px 0 0', fontSize: '18px', color: theme.colors.textSecondary }}>Please select a project from the dropdown above</p>
       </div>
     )
   }
@@ -775,28 +775,28 @@ export default function CustomTestsPage() {
       {/* Messages */}
       {message && (
         <div style={{
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          color: '#16a34a',
-          padding: '12px 16px',
-          borderRadius: '8px',
+          background: 'rgba(16, 185, 129, 0.1)',
+          border: '1px solid rgba(16, 185, 129, 0.3)',
+          color: '#10b981',
+          padding: '16px 24px',
+          borderRadius: '12px',
           marginBottom: '20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
           <span>✅ {message}</span>
-          <button onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', color: '#16a34a', cursor: 'pointer', fontSize: '18px' }}>×</button>
+          <button onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '18px' }}>×</button>
         </div>
       )}
       
       {error && !showDetailPanel && (
         <div style={{
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
           color: '#ef4444',
-          padding: '12px 16px',
-          borderRadius: '8px',
+          padding: '16px 24px',
+          borderRadius: '12px',
           marginBottom: '20px',
           display: 'flex',
           justifyContent: 'space-between',
@@ -849,10 +849,10 @@ export default function CustomTestsPage() {
           <div style={{
             background: theme.colors.cardBg,
             border: `1px solid ${theme.colors.cardBorder}`,
-            borderRadius: '12px',
+            borderRadius: '16px',
             padding: '24px',
             marginBottom: '24px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
           }}>
             <div style={{
               display: 'flex',
@@ -865,18 +865,18 @@ export default function CustomTestsPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: '40px',
-                  height: '40px',
-                  background: '#6366f1',
-                  borderRadius: '8px',
-                  boxShadow: 'none'
+                  width: '44px',
+                  height: '44px',
+                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                  borderRadius: '10px',
+                  boxShadow: '0 2px 6px rgba(139, 92, 246, 0.3)'
                 }}>
                   <span style={{ fontSize: '22px' }}>🧪</span>
                 </div>
                 <div>
                   <h1 style={{
                     margin: 0,
-                    fontSize: '20px',
+                    fontSize: '24px',
                     fontWeight: 700,
                     color: theme.colors.textPrimary
                   }}>Custom Tests</h1>
@@ -893,18 +893,18 @@ export default function CustomTestsPage() {
               <button
                 onClick={openAddModal}
                 style={{
-                  background: '#6366f1',
+                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  borderRadius: '12px',
+                  padding: '14px 24px',
+                  fontSize: '16px',
+                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  boxShadow: 'none'
+                  boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)'
                 }}
               >
                 <span>+</span> Add Custom Test
@@ -916,35 +916,35 @@ export default function CustomTestsPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '18px', color: theme.colors.textPrimary, fontWeight: 600, letterSpacing: '-0.3px' }}>
+                <h2 style={{ margin: 0, fontSize: '24px', color: theme.colors.textPrimary, fontWeight: 600, letterSpacing: '-0.3px' }}>
                   <span style={{ marginRight: '10px' }}>📋</span>Your Custom Tests
                 </h2>
-                <p style={{ margin: '6px 0 0', fontSize: '14px', color: theme.colors.textSecondary }}>{testPages.length} custom tests in this project</p>
+                <p style={{ margin: '8px 0 0', fontSize: '16px', color: theme.colors.textSecondary }}>{testPages.length} custom tests in this project</p>
               </div>
             </div>
 
             {loading ? (
-              <p style={{ color: theme.colors.textSecondary, marginTop: '20px', fontSize: '14px' }}>Loading custom tests...</p>
+              <p style={{ color: theme.colors.textSecondary, marginTop: '24px', fontSize: '18px' }}>Loading custom tests...</p>
             ) : testPages.length === 0 ? (
               <div style={{
                 textAlign: 'center',
-                padding: '80px 60px',
+                padding: '100px 60px',
                 background: theme.colors.cardBg,
-                borderRadius: '12px',
+                borderRadius: '20px',
                 border: `1px solid ${theme.colors.cardBorder}`
               }}>
-                <div style={{ fontSize: '48px', marginBottom: '20px' }}>🧪</div>
-                <p style={{ margin: 0, fontSize: '18px', color: theme.colors.textPrimary, fontWeight: 500 }}>No custom tests yet</p>
-                <p style={{ margin: '10px 0 0', fontSize: '14px', color: theme.colors.textSecondary }}>Click "Add Custom Test" to create your first test</p>
+                <div style={{ fontSize: '64px', marginBottom: '24px' }}>🧪</div>
+                <p style={{ margin: 0, fontSize: '22px', color: theme.colors.textPrimary, fontWeight: 500 }}>No custom tests yet</p>
+                <p style={{ margin: '14px 0 0', fontSize: '18px', color: theme.colors.textSecondary }}>Click "Add Custom Test" to create your first test</p>
               </div>
             ) : (
               <div style={{
                 maxHeight: '700px',
                 overflowY: 'auto',
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                background: 'linear-gradient(135deg, rgba(242, 246, 250, 0.98) 0%, rgba(242, 246, 250, 0.95) 100%)',
+                border: '1px solid rgba(100,116,139,0.25)',
+                borderRadius: '12px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08)'
               }}>
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0' }}>
                   <thead>
@@ -952,17 +952,17 @@ export default function CustomTestsPage() {
                       <th 
                         style={{
                           textAlign: 'left',
-                          padding: '12px 20px',
-                          borderBottom: '1px solid #e2e8f0',
+                          padding: '18px 24px',
+                          borderBottom: '2px solid rgba(0,0,0,0.1)',
                           fontWeight: 600,
                           color: theme.colors.textSecondary,
                           background: getBgColor('header'),
                           position: 'sticky',
                           top: 0,
                           zIndex: 1,
-                          fontSize: '12px',
+                          fontSize: '15px',
                           textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
+                          letterSpacing: '1px',
                           cursor: 'pointer',
                           userSelect: 'none'
                         }}
@@ -979,8 +979,8 @@ export default function CustomTestsPage() {
                       </th>
                       <th style={{
                         textAlign: 'left',
-                        padding: '12px 20px',
-                        borderBottom: '1px solid #e2e8f0',
+                        padding: '18px 24px',
+                        borderBottom: '2px solid rgba(0,0,0,0.1)',
                         fontWeight: 600,
                         color: theme.colors.textSecondary,
                         background: getBgColor('header'),
@@ -993,8 +993,8 @@ export default function CustomTestsPage() {
                       }}>Status</th>
                       <th style={{
                         textAlign: 'left',
-                        padding: '12px 20px',
-                        borderBottom: '1px solid #e2e8f0',
+                        padding: '18px 24px',
+                        borderBottom: '2px solid rgba(0,0,0,0.1)',
                         fontWeight: 600,
                         color: theme.colors.textSecondary,
                         background: getBgColor('header'),
@@ -1008,17 +1008,17 @@ export default function CustomTestsPage() {
                       <th 
                         style={{
                           textAlign: 'left',
-                          padding: '12px 20px',
-                          borderBottom: '1px solid #e2e8f0',
+                          padding: '18px 24px',
+                          borderBottom: '2px solid rgba(0,0,0,0.1)',
                           fontWeight: 600,
                           color: theme.colors.textSecondary,
                           background: getBgColor('header'),
                           position: 'sticky',
                           top: 0,
                           zIndex: 1,
-                          fontSize: '12px',
+                          fontSize: '15px',
                           textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
+                          letterSpacing: '1px',
                           cursor: 'pointer',
                           userSelect: 'none'
                         }}
@@ -1035,8 +1035,8 @@ export default function CustomTestsPage() {
                       </th>
                       <th style={{
                         textAlign: 'center',
-                        padding: '12px 20px',
-                        borderBottom: '1px solid #e2e8f0',
+                        padding: '18px 24px',
+                        borderBottom: '2px solid rgba(0,0,0,0.1)',
                         fontWeight: 600,
                         color: theme.colors.textSecondary,
                         background: getBgColor('header'),
@@ -1058,18 +1058,18 @@ export default function CustomTestsPage() {
                         style={{
                           transition: 'all 0.2s ease',
                           cursor: 'pointer',
-                          background: index % 2 === 0 ? '#ffffff' : '#f8fafc'
+                          background: index % 2 === 0 ? 'rgba(219, 234, 254, 0.6)' : 'rgba(191, 219, 254, 0.5)'
                         }}
                         onDoubleClick={() => openDetailPanel(testPage)}
                       >
                         <td style={{
-                          padding: '14px 20px',
-                          borderBottom: '1px solid #f1f5f9',
+                          padding: '20px 24px',
+                          borderBottom: '1px solid rgba(100,116,139,0.15)',
                           verticalAlign: 'middle',
                           fontSize: '16px',
                           color: theme.colors.textPrimary
                         }}>
-                          <strong style={{ fontSize: '14px', fontWeight: 600, color: theme.colors.textPrimary }}>{testPage.test_name}</strong>
+                          <strong style={{ fontSize: '17px', color: theme.colors.textPrimary }}>{testPage.test_name}</strong>
                           <div style={{ 
                             fontSize: '14px', 
                             color: theme.colors.textSecondary, 
@@ -1083,16 +1083,16 @@ export default function CustomTestsPage() {
                           </div>
                         </td>
                         <td style={{
-                          padding: '14px 20px',
-                          borderBottom: '1px solid #f1f5f9',
+                          padding: '20px 24px',
+                          borderBottom: '1px solid rgba(100,116,139,0.15)',
                           verticalAlign: 'middle'
                         }}>
                           {getStatusBadge(testPage)}
                         </td>
                         <td style={{ 
-                          padding: '14px 20px', 
-                          borderBottom: '1px solid #f1f5f9', 
-                          color: '#6366f1',
+                          padding: '20px 24px', 
+                          borderBottom: '1px solid rgba(100,116,139,0.15)', 
+                          color: '#0369a1',
                           fontSize: '14px',
                           maxWidth: '250px'
                         }}>
@@ -1100,7 +1100,7 @@ export default function CustomTestsPage() {
                             {testPage.url}
                           </div>
                         </td>
-                        <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', color: theme.colors.textSecondary }}>
+                        <td style={{ padding: '20px 24px', borderBottom: '1px solid rgba(100,116,139,0.15)', color: theme.colors.textSecondary }}>
                           {testPage.created_at ? (
                             <>
                               {new Date(testPage.created_at).toLocaleDateString()}
@@ -1110,18 +1110,18 @@ export default function CustomTestsPage() {
                             </>
                           ) : '-'}
                         </td>
-                        <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
+                        <td style={{ padding: '20px 24px', borderBottom: '1px solid rgba(100,116,139,0.15)', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                             <button 
                               onClick={() => openDetailPanel(testPage)}
                               className="action-btn"
                               style={{
-                                background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
+                                background: 'rgba(59, 130, 246, 0.1)',
+                                border: '2px solid rgba(59, 130, 246, 0.2)',
+                                borderRadius: '12px',
+                                padding: '16px 18px',
                                 cursor: 'pointer',
-                                fontSize: '16px',
+                                fontSize: '20px',
                                 transition: 'all 0.2s ease'
                               }}
                               title="View custom test"
@@ -1132,12 +1132,12 @@ export default function CustomTestsPage() {
                               onClick={() => { setTestPageToDelete(testPage); setShowDeleteConfirm(true) }}
                               className="action-btn"
                               style={{
-                                background: '#fef2f2',
-                                border: '1px solid #fecaca',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '2px solid rgba(239, 68, 68, 0.15)',
+                                borderRadius: '12px',
+                                padding: '16px 18px',
                                 cursor: 'pointer',
-                                fontSize: '16px',
+                                fontSize: '20px',
                                 transition: 'all 0.2s ease'
                               }}
                               title="Delete custom test"
@@ -1164,7 +1164,7 @@ export default function CustomTestsPage() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0, 0, 0, 0.5)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
@@ -1172,22 +1172,22 @@ export default function CustomTestsPage() {
           zIndex: 1000
         }}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: 'white',
+            borderRadius: '20px',
             width: '100%',
             maxWidth: '600px',
             maxHeight: '90vh',
             overflow: 'auto',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
             <div style={{
-              padding: '14px 20px',
-              borderBottom: '1px solid #e2e8f0',
+              padding: '24px 28px',
+              borderBottom: '1px solid #e5e7eb',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h2 style={{ margin: 0, fontSize: '18px', color: theme.colors.textPrimary }}>
+              <h2 style={{ margin: 0, fontSize: '22px', color: theme.colors.textPrimary }}>
                 {editingTestPage ? '✏️ Edit Custom Test' : '➕ Add Custom Test'}
               </h2>
               <button
@@ -1195,16 +1195,16 @@ export default function CustomTestsPage() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  fontSize: '20px',
+                  fontSize: '24px',
                   cursor: 'pointer',
-                  color: '#94a3b8'
+                  color: '#9ca3af'
                 }}
               >
                 ×
               </button>
             </div>
 
-            <div style={{ padding: '24px' }}>
+            <div style={{ padding: '28px' }}>
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: theme.colors.textPrimary }}>
                   Test Name *
@@ -1216,10 +1216,10 @@ export default function CustomTestsPage() {
                   placeholder="e.g., Login Flow Test"
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '14px',
+                    padding: '14px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    fontSize: '16px',
                     boxSizing: 'border-box'
                   }}
                 />
@@ -1234,10 +1234,10 @@ export default function CustomTestsPage() {
                   onChange={(e) => setFormData({ ...formData, network_id: parseInt(e.target.value) })}
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '14px',
+                    padding: '14px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    fontSize: '16px',
                     boxSizing: 'border-box',
                     background: 'white'
                   }}
@@ -1262,10 +1262,10 @@ export default function CustomTestsPage() {
                   placeholder="e.g., https://myapp.com/login"
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '14px',
+                    padding: '14px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    fontSize: '16px',
                     boxSizing: 'border-box'
                   }}
                 />
@@ -1282,10 +1282,10 @@ export default function CustomTestsPage() {
                   rows={5}
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '14px',
+                    padding: '14px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    fontSize: '16px',
                     boxSizing: 'border-box',
                     resize: 'vertical'
                   }}
@@ -1294,8 +1294,8 @@ export default function CustomTestsPage() {
             </div>
 
             <div style={{
-              padding: '16px 24px',
-              borderTop: '1px solid #e2e8f0',
+              padding: '20px 28px',
+              borderTop: '1px solid #e5e7eb',
               display: 'flex',
               justifyContent: 'flex-end',
               gap: '12px'
@@ -1303,13 +1303,13 @@ export default function CustomTestsPage() {
               <button
                 onClick={() => setShowAddModal(false)}
                 style={{
-                  background: '#f8fafc',
+                  background: '#f3f4f6',
                   color: theme.colors.textPrimary,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '14px 28px',
+                  fontSize: '16px',
+                  fontWeight: 600,
                   cursor: 'pointer'
                 }}
               >
@@ -1319,13 +1319,13 @@ export default function CustomTestsPage() {
                 onClick={handleSave}
                 disabled={saving}
                 style={{
-                  background: '#6366f1',
+                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  borderRadius: '10px',
+                  padding: '14px 28px',
+                  fontSize: '16px',
+                  fontWeight: 600,
                   cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.7 : 1
                 }}
@@ -1345,7 +1345,7 @@ export default function CustomTestsPage() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0, 0, 0, 0.5)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
@@ -1353,14 +1353,14 @@ export default function CustomTestsPage() {
           zIndex: 1000
         }}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: 'white',
+            borderRadius: '20px',
             width: '100%',
             maxWidth: '450px',
-            padding: '24px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            padding: '28px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: theme.colors.textPrimary }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '20px', color: theme.colors.textPrimary }}>
               🗑️ Delete Custom Test?
             </h3>
             <p style={{ color: theme.colors.textSecondary, margin: '0 0 24px' }}>
@@ -1371,13 +1371,13 @@ export default function CustomTestsPage() {
               <button
                 onClick={() => { setShowDeleteConfirm(false); setTestPageToDelete(null) }}
                 style={{
-                  background: '#f8fafc',
+                  background: '#f3f4f6',
                   color: theme.colors.textPrimary,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  fontWeight: 600,
                   cursor: 'pointer'
                 }}
               >
@@ -1387,13 +1387,13 @@ export default function CustomTestsPage() {
                 onClick={handleDelete}
                 disabled={deleting}
                 style={{
-                  background: '#ef4444',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '8px',
-                  padding: '10px 20px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  borderRadius: '10px',
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  fontWeight: 600,
                   cursor: deleting ? 'not-allowed' : 'pointer',
                   opacity: deleting ? 0.7 : 1
                 }}
@@ -1408,7 +1408,7 @@ export default function CustomTestsPage() {
       {/* CSS for hover effects */}
       <style jsx global>{`
         .table-row:hover {
-          background: #f1f5f9 !important;
+          background: rgba(59, 130, 246, 0.15) !important;
         }
         .action-btn:hover {
           transform: scale(1.05);

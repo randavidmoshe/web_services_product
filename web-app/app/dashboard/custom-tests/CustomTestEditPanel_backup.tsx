@@ -446,11 +446,11 @@ export default function CustomTestEditPanel({
   const isMapping = mappingStatus[editingTestPage.id]?.sessionId ? true : false
 
   // ============ STYLES MATCHING ENTERPRISE ============
-  const cardBg = '#ffffff'
-  const cardBorder = '#e2e8f0'
-  const textPrimary = '#0f172a'
+  const cardBg = 'linear-gradient(135deg, rgba(242, 246, 250, 0.98) 0%, rgba(242, 246, 250, 0.95) 100%)'
+  const cardBorder = 'rgba(100, 116, 139, 0.25)'
+  const textPrimary = '#1e293b'
   const textSecondary = '#64748b'
-  const accentPrimary = '#6366f1'
+  const accentPrimary = '#0369a1'
 
   return (
     <div>
@@ -463,14 +463,14 @@ export default function CustomTestEditPanel({
           gap: '8px',
           background: cardBg,
           border: `1px solid ${cardBorder}`,
-          borderRadius: '8px',
-          padding: '10px 20px',
-          fontSize: '14px',
+          borderRadius: '10px',
+          padding: '14px 24px',
+          fontSize: '16px',
           fontWeight: 500,
           color: textPrimary,
           cursor: 'pointer',
-          marginBottom: '20px',
-          boxShadow: 'none'
+          marginBottom: '24px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
         }}
       >
         ← Back to Custom Tests
@@ -482,13 +482,13 @@ export default function CustomTestEditPanel({
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          padding: '12px 16px',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: '8px',
+          padding: '16px 20px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '12px',
           color: '#dc2626',
-          marginBottom: '16px',
-          fontSize: '14px'
+          marginBottom: '20px',
+          fontSize: '16px'
         }}>
           <span>⚠️</span>
           <span style={{ flex: 1 }}>{error}</span>
@@ -500,13 +500,13 @@ export default function CustomTestEditPanel({
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          padding: '12px 16px',
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          borderRadius: '8px',
+          padding: '16px 20px',
+          background: 'rgba(34, 197, 94, 0.1)',
+          border: '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
           color: '#16a34a',
-          marginBottom: '16px',
-          fontSize: '14px'
+          marginBottom: '20px',
+          fontSize: '16px'
         }}>
           <span>✓</span>
           <span style={{ flex: 1 }}>{message}</span>
@@ -518,19 +518,19 @@ export default function CustomTestEditPanel({
       <div style={{
         background: cardBg,
         border: `1px solid ${cardBorder}`,
-        borderRadius: '8px',
-        padding: '16px 24px',
-        marginBottom: '20px',
+        borderRadius: '12px',
+        padding: '20px 28px',
+        marginBottom: '24px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+        boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <span style={{ fontSize: '20px' }}>🧪</span>
+          <span style={{ fontSize: '28px' }}>🧪</span>
           <div>
-            <span style={{ fontSize: '14px', color: textSecondary }}>Custom Test: </span>
-            <span style={{ fontSize: '18px', fontWeight: 600, color: accentPrimary }}>{editingTestPage.test_name}</span>
+            <span style={{ fontSize: '18px', color: textSecondary }}>Custom Test: </span>
+            <span style={{ fontSize: '22px', fontWeight: 600, color: accentPrimary }}>{editingTestPage.test_name}</span>
           </div>
         </div>
         
@@ -542,19 +542,19 @@ export default function CustomTestEditPanel({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '10px',
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
+                background: 'rgba(245, 158, 11, 0.2)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
                 color: '#d97706',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
+                padding: '12px 20px',
+                borderRadius: '10px',
+                fontSize: '16px',
+                fontWeight: 600,
                 cursor: 'not-allowed'
               }}>
                 <span style={{
                   width: '16px',
                   height: '16px',
-                  border: '2px solid #fde68a',
+                  border: '2px solid rgba(217, 119, 6, 0.3)',
                   borderTopColor: '#d97706',
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite'
@@ -568,15 +568,15 @@ export default function CustomTestEditPanel({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '10px',
-                  background: '#ef4444',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   border: 'none',
                   color: '#fff',
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  padding: '12px 20px',
+                  borderRadius: '10px',
+                  fontSize: '16px',
+                  fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: 'none'
+                  boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
                 }}
               >
                 ⏹️ Stop Mapping
@@ -609,10 +609,10 @@ export default function CustomTestEditPanel({
                   right: 0,
                   marginTop: '8px',
                   background: '#fff',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
                   border: `1px solid ${cardBorder}`,
-                  minWidth: '200px',
+                  minWidth: '220px',
                   zIndex: 100,
                   padding: '8px'
                 }}>
@@ -623,13 +623,13 @@ export default function CustomTestEditPanel({
                       alignItems: 'center',
                       gap: '12px',
                       width: '100%',
-                      padding: '10px 14px',
-                      background: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
-                      borderRadius: '6px',
-                      color: '#16a34a',
-                      fontSize: '14px',
-                      fontWeight: 500,
+                      padding: '14px 18px',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                      borderRadius: '8px',
+                      color: '#059669',
+                      fontSize: '15px',
+                      fontWeight: 600,
                       cursor: 'pointer',
                       textAlign: 'left'
                     }}
@@ -650,12 +650,12 @@ export default function CustomTestEditPanel({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: '#ffffff',
+                background: '#fff',
                 border: `1px solid ${cardBorder}`,
                 color: textPrimary,
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
+                padding: '12px 20px',
+                borderRadius: '10px',
+                fontSize: '16px',
                 fontWeight: 500,
                 cursor: 'pointer'
               }}
@@ -669,10 +669,10 @@ export default function CustomTestEditPanel({
                 right: 0,
                 marginTop: '8px',
                 background: '#fff',
-                borderRadius: '8px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                borderRadius: '12px',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
                 border: `1px solid ${cardBorder}`,
-                minWidth: '220px',
+                minWidth: '240px',
                 zIndex: 100,
                 padding: '8px'
               }}>
@@ -683,16 +683,16 @@ export default function CustomTestEditPanel({
                     alignItems: 'center',
                     gap: '12px',
                     width: '100%',
-                    padding: '10px 14px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    color: '#6366f1',
-                    fontSize: '14px',
-                    fontWeight: 500,
+                    padding: '14px 18px',
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    border: '1px solid rgba(6, 182, 212, 0.25)',
+                    borderRadius: '8px',
+                    color: '#0891b2',
+                    fontSize: '15px',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     textAlign: 'left',
-                    marginBottom: '6px'
+                    marginBottom: '8px'
                   }}
                 >
                   <span>🖼️</span>
@@ -705,16 +705,16 @@ export default function CustomTestEditPanel({
                     alignItems: 'center',
                     gap: '12px',
                     width: '100%',
-                    padding: '10px 14px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    color: '#6366f1',
-                    fontSize: '14px',
-                    fontWeight: 500,
+                    padding: '14px 18px',
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    border: '1px solid rgba(6, 182, 212, 0.25)',
+                    borderRadius: '8px',
+                    color: '#0891b2',
+                    fontSize: '15px',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     textAlign: 'left',
-                    marginBottom: '6px'
+                    marginBottom: '8px'
                   }}
                 >
                   <span>📄</span>
@@ -727,13 +727,13 @@ export default function CustomTestEditPanel({
                     alignItems: 'center',
                     gap: '12px',
                     width: '100%',
-                    padding: '10px 14px',
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    borderRadius: '6px',
+                    padding: '14px 18px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '8px',
                     color: '#dc2626',
-                    fontSize: '14px',
-                    fontWeight: 500,
+                    fontSize: '15px',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     textAlign: 'left'
                   }}
@@ -749,12 +749,12 @@ export default function CustomTestEditPanel({
           <button
             onClick={onClose}
             style={{
-              background: '#ffffff',
+              background: '#fff',
               border: `1px solid ${cardBorder}`,
               color: textPrimary,
-              padding: '10px 20px',
-              borderRadius: '8px',
-              fontSize: '14px',
+              padding: '12px 24px',
+              borderRadius: '10px',
+              fontSize: '16px',
               fontWeight: 500,
               cursor: 'pointer'
             }}
@@ -776,15 +776,15 @@ export default function CustomTestEditPanel({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                color: '#6366f1',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                color: '#2563eb',
+                padding: '12px 20px',
+                borderRadius: '10px',
+                fontSize: '15px',
+                fontWeight: 600,
                 cursor: 'pointer',
-                marginBottom: '16px'
+                marginBottom: '20px'
               }}
             >
               ✏️ Edit Custom Test Info
@@ -798,13 +798,13 @@ export default function CustomTestEditPanel({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: '#10b981',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
                   border: 'none',
                   color: '#fff',
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  padding: '12px 20px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 600,
                   cursor: savingTestPage ? 'not-allowed' : 'pointer',
                   opacity: savingTestPage ? 0.7 : 1
                 }}
@@ -814,12 +814,12 @@ export default function CustomTestEditPanel({
               <button
                 onClick={handleCancelEdit}
                 style={{
-                  background: '#ffffff',
+                  background: '#fff',
                   border: `1px solid ${cardBorder}`,
                   color: textPrimary,
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
+                  padding: '12px 20px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
                   fontWeight: 500,
                   cursor: 'pointer'
                 }}
@@ -831,19 +831,19 @@ export default function CustomTestEditPanel({
 
           {/* TEST NAME Card - Cyan like HIERARCHY */}
           <div style={{
-            background: '#f0fdfa',
-            border: '1px solid #99f6e4',
-            borderRadius: '8px',
-            padding: '16px 20px',
-            marginBottom: '12px'
+            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, rgba(6, 182, 212, 0.15) 100%)',
+            border: '1px solid rgba(6, 182, 212, 0.4)',
+            borderRadius: '12px',
+            padding: '20px 24px',
+            marginBottom: '16px'
           }}>
             <div style={{ 
-              fontSize: '12px', 
-              fontWeight: 600, 
-              color: '#0d9488', 
-              marginBottom: '10px', 
+              fontSize: '14px', 
+              fontWeight: 700, 
+              color: '#0891b2', 
+              marginBottom: '12px', 
               textTransform: 'uppercase', 
-              letterSpacing: '0.5px' 
+              letterSpacing: '1.5px' 
             }}>
               TEST NAME
             </div>
@@ -856,15 +856,15 @@ export default function CustomTestEditPanel({
                   width: '100%',
                   padding: '12px 14px',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '14px',
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  fontSize: '16px',
                   color: textPrimary,
-                  background: '#ffffff',
+                  background: '#fff',
                   boxSizing: 'border-box'
                 }}
               />
             ) : (
-              <div style={{ fontSize: '15px', color: textPrimary, fontWeight: 500 }}>
+              <div style={{ fontSize: '18px', color: textPrimary, fontWeight: 500 }}>
                 {editingTestPage.test_name}
               </div>
             )}
@@ -872,19 +872,19 @@ export default function CustomTestEditPanel({
 
           {/* URL Card - Yellow/Orange like URL in enterprise */}
           <div style={{
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
-            borderRadius: '8px',
-            padding: '16px 20px',
-            marginBottom: '12px'
+            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.22) 0%, rgba(251, 191, 36, 0.15) 100%)',
+            border: '1px solid rgba(251, 191, 36, 0.4)',
+            borderRadius: '12px',
+            padding: '20px 24px',
+            marginBottom: '16px'
           }}>
             <div style={{ 
-              fontSize: '12px', 
-              fontWeight: 600, 
+              fontSize: '14px', 
+              fontWeight: 700, 
               color: '#d97706', 
-              marginBottom: '10px', 
+              marginBottom: '12px', 
               textTransform: 'uppercase', 
-              letterSpacing: '0.5px' 
+              letterSpacing: '1.5px' 
             }}>
               URL
             </div>
@@ -897,10 +897,10 @@ export default function CustomTestEditPanel({
                   width: '100%',
                   padding: '12px 14px',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '14px',
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  fontSize: '16px',
                   color: textPrimary,
-                  background: '#ffffff',
+                  background: '#fff',
                   boxSizing: 'border-box'
                 }}
               />
@@ -909,7 +909,7 @@ export default function CustomTestEditPanel({
                 href={editingTestPage.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: accentPrimary, textDecoration: 'none', fontSize: '14px' }}
+                style={{ color: accentPrimary, textDecoration: 'none', fontSize: '17px' }}
               >
                 {editingTestPage.url}
               </a>
@@ -920,17 +920,17 @@ export default function CustomTestEditPanel({
           <div style={{
             background: cardBg,
             border: `1px solid ${cardBorder}`,
-            borderRadius: '8px',
-            padding: '16px 20px',
-            boxShadow: 'none'
+            borderRadius: '12px',
+            padding: '20px 24px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             <div style={{ 
-              fontSize: '12px', 
-              fontWeight: 600, 
+              fontSize: '14px', 
+              fontWeight: 700, 
               color: textSecondary, 
-              marginBottom: '10px', 
+              marginBottom: '12px', 
               textTransform: 'uppercase', 
-              letterSpacing: '0.5px' 
+              letterSpacing: '1.5px' 
             }}>
               TEST CASE DESCRIPTION
             </div>
@@ -943,10 +943,10 @@ export default function CustomTestEditPanel({
                   width: '100%',
                   padding: '12px 14px',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '14px',
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  fontSize: '16px',
                   color: textPrimary,
-                  background: '#ffffff',
+                  background: '#fff',
                   resize: 'vertical',
                   fontFamily: 'inherit',
                   lineHeight: 1.6,
@@ -955,7 +955,7 @@ export default function CustomTestEditPanel({
               />
             ) : (
               <div style={{ 
-                fontSize: '14px',
+                fontSize: '17px',
                 color: textPrimary, 
                 whiteSpace: 'pre-wrap',
                 lineHeight: 1.6
@@ -970,25 +970,25 @@ export default function CustomTestEditPanel({
         <div style={{
           background: cardBg,
           border: `1px solid ${cardBorder}`,
-          borderRadius: '8px',
-          padding: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+          borderRadius: '12px',
+          padding: '24px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
         }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '20px' }}>📊</span>
-              <span style={{ fontSize: '16px', fontWeight: 600, color: textPrimary }}>
+              <span style={{ fontSize: '24px' }}>📊</span>
+              <span style={{ fontSize: '18px', fontWeight: 600, color: textPrimary }}>
                 Mapping Result
               </span>
               {completedPaths.length > 0 && (
                 <span style={{
-                  background: '#f0fdf4',
-                  color: '#16a34a',
-                  padding: '4px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: 500
+                  background: '#10b981',
+                  color: 'white',
+                  padding: '4px 14px',
+                  borderRadius: '14px',
+                  fontSize: '15px',
+                  fontWeight: 600
                 }}>
                   ✓ Mapped
                 </span>
@@ -1004,9 +1004,9 @@ export default function CustomTestEditPanel({
                 background: '#fff',
                 border: `1px solid ${cardBorder}`,
                 color: textSecondary,
-                padding: '8px 14px',
-                borderRadius: '6px',
-                fontSize: '13px',
+                padding: '10px 18px',
+                borderRadius: '8px',
+                fontSize: '15px',
                 cursor: loadingPaths ? 'not-allowed' : 'pointer',
                 opacity: loadingPaths ? 0.6 : 1
               }}
@@ -1022,17 +1022,17 @@ export default function CustomTestEditPanel({
             </div>
           ) : completedPaths.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
-              <p style={{ margin: 0, color: textSecondary, fontSize: '15px' }}>Not mapped yet.</p>
-              <p style={{ margin: '10px 0 0', color: textSecondary, fontSize: '13px' }}>Click "Map Test" to map this test case.</p>
+              <div style={{ fontSize: '56px', marginBottom: '16px' }}>📋</div>
+              <p style={{ margin: 0, color: textSecondary, fontSize: '18px' }}>Not mapped yet.</p>
+              <p style={{ margin: '10px 0 0', color: textSecondary, fontSize: '15px' }}>Click "Map Test" to map this test case.</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {completedPaths.map(path => (
                 <div key={path.id} style={{
-                  background: '#fafafa',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
+                  background: 'rgba(16, 185, 129, 0.06)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  borderRadius: '10px',
                   overflow: 'hidden'
                 }}>
                   {/* Path Header */}
@@ -1048,21 +1048,21 @@ export default function CustomTestEditPanel({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                       <div style={{
-                        width: '32px',
-                        height: '32px',
+                        width: '36px',
+                        height: '36px',
                         background: '#10b981',
                         color: '#fff',
                         borderRadius: '50%',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '14px',
+                        fontSize: '16px',
                         fontWeight: 700
                       }}>
                         {path.path_number}
                       </div>
                       <div>
-                        <div style={{ fontSize: '15px', fontWeight: 600, color: textPrimary }}>
+                        <div style={{ fontSize: '17px', fontWeight: 600, color: textPrimary }}>
                           Path {path.path_number}
                         </div>
                         <div style={{ fontSize: '14px', color: textSecondary }}>
@@ -1089,7 +1089,7 @@ export default function CustomTestEditPanel({
                         onClick={(e) => { e.stopPropagation(); onDeletePath(path.id); }}
                         style={{
                           background: '#fff',
-                          border: '1px solid #fecaca',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
                           color: '#ef4444',
                           padding: '8px 12px',
                           borderRadius: '6px',
@@ -1111,7 +1111,7 @@ export default function CustomTestEditPanel({
 
                   {/* Expanded Steps */}
                   {expandedPathId === path.id && (
-                    <div style={{ padding: '16px 20px', borderTop: '1px solid #e2e8f0', background: '#ffffff' }}>
+                    <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(16, 185, 129, 0.2)', background: '#fff' }}>
                       <div style={{ fontSize: '15px', fontWeight: 600, color: textSecondary, marginBottom: '14px' }}>
                         Steps:
                       </div>
@@ -1122,14 +1122,14 @@ export default function CustomTestEditPanel({
                             alignItems: 'center',
                             gap: '14px',
                             padding: '14px',
-                            background: '#f8fafc',
+                            background: 'rgba(0,0,0,0.02)',
                             borderRadius: '8px'
                           }}>
                             <div style={{
                               width: '28px',
                               height: '28px',
-                              background: step.action === 'verify' ? '#eef2ff' : '#f1f5f9',
-                              color: step.action === 'verify' ? '#6366f1' : textSecondary,
+                              background: step.action === 'verify' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(156, 163, 175, 0.2)',
+                              color: step.action === 'verify' ? '#2563eb' : textSecondary,
                               borderRadius: '50%',
                               display: 'flex',
                               alignItems: 'center',
@@ -1165,7 +1165,7 @@ export default function CustomTestEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0, 0, 0, 0.5)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
@@ -1174,16 +1174,16 @@ export default function CustomTestEditPanel({
           padding: '24px'
         }} onClick={() => setShowDeleteConfirm(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
-            padding: '24px',
+            background: '#fff',
+            borderRadius: '16px',
+            padding: '32px',
             width: '100%',
             maxWidth: '500px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
             border: `1px solid ${cardBorder}`
           }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: '#dc2626' }}>⚠️ Delete Custom Test</h3>
-            <p style={{ color: textSecondary, marginBottom: '20px', fontSize: '14px', lineHeight: '1.6' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '22px', color: '#dc2626' }}>⚠️ Delete Custom Test</h3>
+            <p style={{ color: textSecondary, marginBottom: '24px', fontSize: '16px', lineHeight: '1.6' }}>
               Are you sure you want to delete "<strong>{editingTestPage.test_name}</strong>"?
               <br /><br />
               This will also delete all {completedPaths.length} completed path(s) and cannot be undone.
@@ -1195,9 +1195,9 @@ export default function CustomTestEditPanel({
                   background: '#fff',
                   border: `1px solid ${cardBorder}`,
                   color: textPrimary,
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '16px',
                   cursor: 'pointer'
                 }}
               >
@@ -1207,13 +1207,13 @@ export default function CustomTestEditPanel({
                 onClick={handleDeleteTestPage}
                 disabled={deletingTestPage}
                 style={{
-                  background: '#ef4444',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   border: 'none',
                   color: '#fff',
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  fontSize: '16px',
+                  fontWeight: 600,
                   cursor: deletingTestPage ? 'not-allowed' : 'pointer',
                   opacity: deletingTestPage ? 0.7 : 1
                 }}
@@ -1227,24 +1227,24 @@ export default function CustomTestEditPanel({
 
       {/* Reference Images Panel */}
       {showReferenceImagesPanel && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }} onClick={() => setShowReferenceImagesPanel(false)}>
-          <div style={{ background: '#ffffff', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '700px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: `1px solid ${cardBorder}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }} onClick={() => setShowReferenceImagesPanel(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '700px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${cardBorder}` }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#6366f1' }}>🖼️ Reference Images</h3>
-              <button onClick={() => setShowReferenceImagesPanel(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: textSecondary }}>×</button>
+              <h3 style={{ margin: 0, fontSize: '22px', color: '#0891b2' }}>🖼️ Reference Images</h3>
+              <button onClick={() => setShowReferenceImagesPanel(false)} style={{ background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: textSecondary }}>×</button>
             </div>
-            <p style={{ color: textPrimary, fontSize: '14px', marginBottom: '16px' }}>Upload reference images showing expected visual states. AI will compare screenshots against these during verification.</p>
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '20px', background: '#f8fafc' }}>
+            <p style={{ color: textPrimary, fontSize: '18px', marginBottom: '20px' }}>Upload reference images showing expected visual states. AI will compare screenshots against these during verification.</p>
+            <div style={{ border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '12px', padding: '20px', marginBottom: '24px', background: 'rgba(6, 182, 212, 0.05)' }}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: textPrimary, marginBottom: '6px' }}>Image Name *</label>
+                <label style={{ display: 'block', fontSize: '18px', fontWeight: 500, color: textPrimary, marginBottom: '6px' }}>Image Name *</label>
                 <input type="text" value={refImageName} onChange={e => setRefImageName(e.target.value)} placeholder="e.g., Homepage Expected State" style={{ width: '100%', padding: '12px 16px', borderRadius: '8px', border: `1px solid ${cardBorder}`, fontSize: '15px', boxSizing: 'border-box' }} />
               </div>
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: textPrimary, marginBottom: '6px' }}>Description (optional)</label>
+                <label style={{ display: 'block', fontSize: '18px', fontWeight: 500, color: textPrimary, marginBottom: '6px' }}>Description (optional)</label>
                 <input type="text" value={refImageDescription} onChange={e => setRefImageDescription(e.target.value)} placeholder="e.g., Shows login form with all fields visible" style={{ width: '100%', padding: '12px 16px', borderRadius: '8px', border: `1px solid ${cardBorder}`, fontSize: '15px', boxSizing: 'border-box' }} />
               </div>
               <input ref={refImageFileInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp" onChange={handleRefImageUpload} style={{ display: 'none' }} />
-              <button onClick={() => refImageFileInputRef.current?.click()} disabled={uploadingRefImage || !refImageName.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: uploadingRefImage || !refImageName.trim() ? 'not-allowed' : 'pointer', opacity: uploadingRefImage || !refImageName.trim() ? 0.6 : 1 }}>{uploadingRefImage ? '⏳ Uploading...' : '📤 Upload Image'}</button>
+              <button onClick={() => refImageFileInputRef.current?.click()} disabled={uploadingRefImage || !refImageName.trim()} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: uploadingRefImage || !refImageName.trim() ? 'not-allowed' : 'pointer', opacity: uploadingRefImage || !refImageName.trim() ? 0.6 : 1 }}>{uploadingRefImage ? '⏳ Uploading...' : '📤 Upload Image'}</button>
               <span style={{ marginLeft: '12px', fontSize: '15px', color: textSecondary }}>Max 5MB • PNG, JPEG, GIF, WebP</span>
             </div>
             {loadingRefImages ? (
@@ -1254,7 +1254,7 @@ export default function CustomTestEditPanel({
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
                 {referenceImages.map(img => (
-                  <div key={img.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: '8px', padding: '12px', background: '#ffffff' }}>
+                  <div key={img.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: '12px', padding: '16px', background: '#fff' }}>
                     {img.presigned_url && (
                       <div style={{ marginBottom: '12px', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: `1px solid ${cardBorder}` }} onClick={() => window.open(img.presigned_url, '_blank')}>
                         <img src={img.presigned_url} alt={img.name} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
@@ -1266,19 +1266,19 @@ export default function CustomTestEditPanel({
                         <input type="text" value={editRefImageDescription} onChange={e => setEditRefImageDescription(e.target.value)} placeholder="Description" style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: `1px solid ${cardBorder}`, fontSize: '14px', marginBottom: '8px', boxSizing: 'border-box' }} />
                         <div style={{ fontSize: '12px', color: textSecondary, marginBottom: '10px' }}>{img.filename}</div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handleUpdateRefImage(img.id)} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>💾 Save</button>
-                          <button onClick={() => setEditingRefImageId(null)} style={{ background: '#f1f5f9', color: textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+                          <button onClick={() => handleUpdateRefImage(img.id)} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>💾 Save</button>
+                          <button onClick={() => setEditingRefImageId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
                         </div>
                       </div>
                     ) : (
                       <div>
-                        <div style={{ fontWeight: 600, color: textPrimary, marginBottom: '6px', fontSize: '15px' }}>{img.name}</div>
-                        {img.description && <div style={{ fontSize: '14px', color: textPrimary, marginBottom: '8px' }}>{img.description}</div>}
+                        <div style={{ fontWeight: 600, color: textPrimary, marginBottom: '6px', fontSize: '18px' }}>{img.name}</div>
+                        {img.description && <div style={{ fontSize: '15px', color: textPrimary, marginBottom: '8px' }}>{img.description}</div>}
                         <div style={{ fontSize: '14px', color: textSecondary, marginBottom: '12px' }}>{img.filename}</div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          {img.presigned_url && <button onClick={() => window.open(img.presigned_url, '_blank')} style={{ background: '#f8fafc', color: '#6366f1', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>👁️ View</button>}
-                          <button onClick={() => startEditRefImage(img)} style={{ background: '#f1f5f9', color: textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>✏️ Edit</button>
-                          <button onClick={() => handleDeleteRefImage(img.id)} style={{ background: '#fef2f2', color: '#dc2626', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>🗑️ Delete</button>
+                          {img.presigned_url && <button onClick={() => window.open(img.presigned_url, '_blank')} style={{ background: 'rgba(6, 182, 212, 0.1)', color: '#0891b2', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>👁️ View</button>}
+                          <button onClick={() => startEditRefImage(img)} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>✏️ Edit</button>
+                          <button onClick={() => handleDeleteRefImage(img.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>🗑️ Delete</button>
                         </div>
                       </div>
                     )}
@@ -1293,54 +1293,54 @@ export default function CustomTestEditPanel({
 
       {/* Verification File Panel */}
       {showVerificationFilePanel && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }} onClick={() => setShowVerificationFilePanel(false)}>
-          <div style={{ background: '#ffffff', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '700px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: `1px solid ${cardBorder}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }} onClick={() => setShowVerificationFilePanel(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '700px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${cardBorder}` }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#6366f1' }}>📄 Verification Instructions</h3>
-              <button onClick={() => setShowVerificationFilePanel(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: textSecondary }}>×</button>
+              <h3 style={{ margin: 0, fontSize: '22px', color: '#0891b2' }}>📄 Verification Instructions</h3>
+              <button onClick={() => setShowVerificationFilePanel(false)} style={{ background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: textSecondary }}>×</button>
             </div>
             <p style={{ color: textPrimary, fontSize: '14px', marginBottom: '20px' }}>Upload a document with custom verification rules. AI will apply these rules during visual verification.</p>
             <input ref={verificationFileInputRef} type="file" accept=".pdf,.docx,.txt" onChange={handleVerificationFileUpload} style={{ display: 'none' }} />
             {loadingVerificationFile ? (
               <div style={{ textAlign: 'center', padding: '40px', color: textSecondary }}>Loading...</div>
             ) : !verificationFile ? (
-              <div style={{ border: '2px dashed #e2e8f0', borderRadius: '8px', padding: '40px 24px', textAlign: 'center', background: '#f8fafc' }}>
-                <div style={{ fontSize: '40px', marginBottom: '12px' }}>📄</div>
-                <p style={{ color: textPrimary, marginBottom: '8px', fontSize: '16px', fontWeight: 600 }}>No verification file uploaded</p>
+              <div style={{ border: '2px dashed rgba(6, 182, 212, 0.3)', borderRadius: '12px', padding: '48px 24px', textAlign: 'center', background: 'rgba(6, 182, 212, 0.05)' }}>
+                <div style={{ fontSize: '56px', marginBottom: '16px' }}>📄</div>
+                <p style={{ color: textPrimary, marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>No verification file uploaded</p>
                 <p style={{ color: textSecondary, marginBottom: '20px', fontSize: '15px' }}>Upload a document with custom verification rules</p>
-                <button onClick={() => verificationFileInputRef.current?.click()} disabled={uploadingVerificationFile} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: 500, cursor: uploadingVerificationFile ? 'not-allowed' : 'pointer', opacity: uploadingVerificationFile ? 0.7 : 1 }}>{uploadingVerificationFile ? '⏳ Processing...' : '📤 Upload File'}</button>
+                <button onClick={() => verificationFileInputRef.current?.click()} disabled={uploadingVerificationFile} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '14px 28px', borderRadius: '10px', fontSize: '16px', fontWeight: 600, cursor: uploadingVerificationFile ? 'not-allowed' : 'pointer', opacity: uploadingVerificationFile ? 0.7 : 1 }}>{uploadingVerificationFile ? '⏳ Processing...' : '📤 Upload File'}</button>
                 <p style={{ color: textSecondary, fontSize: '13px', marginTop: '12px', marginBottom: 0 }}>Supports: PDF, DOCX, TXT (max 2MB)</p>
               </div>
             ) : (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '14px 18px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '14px 18px', background: 'rgba(6, 182, 212, 0.08)', borderRadius: '10px', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
                   <span style={{ color: textPrimary, fontSize: '15px', fontWeight: 500 }}>📎 {verificationFile.filename} <span style={{ marginLeft: '12px', fontSize: '13px', color: textSecondary }}>{verificationFile.status === 'processing' ? '⏳ Extracting...' : verificationFile.status === 'ready' ? '✅ Ready' : verificationFile.status === 'failed' ? '❌ Failed' : ''}</span></span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => verificationFileInputRef.current?.click()} style={{ background: '#f1f5f9', color: textPrimary, border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>Replace</button>
-                    <button onClick={handleDeleteVerificationFile} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>🗑️</button>
+                    <button onClick={() => verificationFileInputRef.current?.click()} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={handleDeleteVerificationFile} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>🗑️</button>
                   </div>
                 </div>
                 {(verificationContent || verificationFile.status === 'processing') && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <div style={{ fontSize: '14px', fontWeight: 600, color: textPrimary }}>{verificationFile.status === 'processing' ? 'Extracting Content...' : 'Extracted Content:'}</div>
-                      {verificationContent && !verificationEditing && <button onClick={() => { setVerificationEditing(true); setVerificationEditContent(verificationContent); }} style={{ background: '#f1f5f9', color: textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>✏️ Edit</button>}
+                      {verificationContent && !verificationEditing && <button onClick={() => { setVerificationEditing(true); setVerificationEditContent(verificationContent); }} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>✏️ Edit</button>}
                     </div>
                     {verificationFile.status === 'processing' ? (
-                      <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '40px', textAlign: 'center', border: `1px solid ${cardBorder}` }}>
-                        <div style={{ fontSize: '20px', marginBottom: '8px' }}>⏳</div>
+                      <div style={{ background: 'rgba(6, 182, 212, 0.05)', borderRadius: '10px', padding: '40px', textAlign: 'center', border: `1px solid ${cardBorder}` }}>
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
                         <div style={{ color: textSecondary }}>Extracting text from document...</div>
                       </div>
                     ) : verificationEditing ? (
                       <div>
                         <textarea value={verificationEditContent} onChange={e => setVerificationEditContent(e.target.value)} style={{ width: '100%', minHeight: '250px', padding: '14px', borderRadius: '10px', border: `1px solid ${cardBorder}`, fontSize: '14px', fontFamily: 'Monaco, Consolas, monospace', resize: 'vertical', boxSizing: 'border-box' }} />
                         <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                          <button onClick={handleSaveVerificationContent} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>💾 Save</button>
-                          <button onClick={() => setVerificationEditing(false)} style={{ background: '#f1f5f9', color: textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                          <button onClick={handleSaveVerificationContent} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: 'pointer' }}>💾 Save</button>
+                          <button onClick={() => setVerificationEditing(false)} style={{ background: 'rgba(0,0,0,0.05)', color: textPrimary, border: 'none', padding: '12px 24px', borderRadius: '10px', fontSize: '15px', cursor: 'pointer' }}>Cancel</button>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '18px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${cardBorder}` }}>
+                      <div style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '10px', padding: '18px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${cardBorder}` }}>
                         <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{verificationContent}</pre>
                       </div>
                     )}

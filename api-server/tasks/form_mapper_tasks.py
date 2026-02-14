@@ -339,6 +339,12 @@ def analyze_form_page(
         msg = f"!!!! Generating steps: critical_fields_checklist: {critical_fields_checklist} steps"
         print(msg)
         log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: mapping_hints: {mapping_hints}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: user_provided_inputs: {user_provided_inputs}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
         msg = f"!!!! Generating steps: field_requirements: {field_requirements}"
         print(msg)
         log.debug(msg, category="debug_trace")
@@ -1103,6 +1109,12 @@ def regenerate_steps(
         print(msg)
         log.debug(msg, category="debug_trace")
         msg = f"!!!! Regen remain steps(regular), field_requirements: {field_requirements} steps"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: mapping_hints: {mapping_hints}"
+        print(msg)
+        log.debug(msg, category="debug_trace")
+        msg = f"!!!! Generating steps: user_provided_inputs: {user_provided_inputs}"
         print(msg)
         log.debug(msg, category="debug_trace")
 

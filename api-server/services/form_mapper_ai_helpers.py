@@ -40,7 +40,8 @@ class AIFormMapperHelper:
         critical_fields_checklist: Optional[Dict[str, str]] = None,
         field_requirements: Optional[str] = None,
         junction_instructions: Optional[str] = None,
-        user_provided_inputs: Optional[Dict] = None
+        user_provided_inputs: Optional[Dict] = None,
+        mapping_hints: str = ""
     ) -> Dict[str, Any]:
         """Generate test steps from DOM and test cases"""
         return self.helper.generate_test_steps(
@@ -54,7 +55,8 @@ class AIFormMapperHelper:
             critical_fields_checklist=critical_fields_checklist,
             field_requirements=field_requirements,
             junction_instructions=junction_instructions,
-            user_provided_inputs=user_provided_inputs
+            user_provided_inputs=user_provided_inputs,
+            mapping_hints=mapping_hints
         )
     
     def regenerate_steps(
@@ -68,7 +70,8 @@ class AIFormMapperHelper:
         field_requirements: Optional[str] = None,
         junction_instructions: Optional[str] = None,
         user_provided_inputs: Optional[Dict] = None,
-        retry_message: Optional[str] = None
+        retry_message: Optional[str] = None,
+        mapping_hints: str = ""
     ) -> Dict[str, Any]:
         """Regenerate remaining steps after DOM change"""
         return self.helper.regenerate_steps(
@@ -81,7 +84,8 @@ class AIFormMapperHelper:
             field_requirements=field_requirements,
             junction_instructions=junction_instructions,
             user_provided_inputs=user_provided_inputs,
-            retry_message=retry_message
+            retry_message=retry_message,
+            mapping_hints=mapping_hints
         )
 
     def regenerate_verify_steps(

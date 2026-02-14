@@ -204,6 +204,88 @@ def _record_usage(db, company_id: int, product_id: int, user_id: int,
     )
 
 
+def _inject_login_credentials(stage: Dict, network_id: int) -> Dict:
+    """
+    Replace credential placeholders in login stages with actual values.
+    Security: credentials decrypted in memory only, never stored in Redis/Celery.
+    """
+    value = stage.get("value", "")
+    if not value or "{{" not in value:
+        return stage
+
+    # Work on a copy - never modify the Redis-stored original
+    stage = dict(stage)
+
+    db = _get_db_session()
+    try:
+        from models.database import Network
+        from services.encryption_service import decrypt_credential
+
+        network = db.query(Network).filter(Network.id == network_id).first()
+        if not network:
+            logger.warning(f"[FormsRunner] No network {network_id} for credential injection")
+            return stage
+
+        if value == "{{USERNAME}}":
+            if network.login_username:
+                stage["value"] = decrypt_credential(
+                    network.login_username, network.company_id, network_id, "login_username"
+                )
+            else:
+                logger.warning(f"[FormsRunner] No username for network {network_id}")
+
+        elif value == "{{PASSWORD}}":
+            if network.login_password:
+                stage["value"] = decrypt_credential(
+                    network.login_password, network.company_id, network_id, "login_password"
+                )
+            else:
+                logger.warning(f"[FormsRunner] No password for network {network_id}")
+
+        elif value == "{{TOTP}}":
+            if network.totp_secret:
+                from services.encryption_service import generate_totp_code
+                import time as time_module
+
+                # Wait if code is about to expire (same logic as orchestrator)
+                remaining = 30 - (int(time_module.time()) % 30)
+                if remaining < 10:
+                    wait = remaining + 1
+                    logger.info(f"[FormsRunner] TOTP expiring in {remaining}s, waiting {wait}s")
+                    time_module.sleep(wait)
+
+                code = generate_totp_code(network.totp_secret, network.company_id, network_id)
+                if code:
+                    stage["value"] = code
+                    logger.info(f"[FormsRunner] TOTP code injected (expires in {30 - (int(time_module.time()) % 30)}s)")
+                else:
+                    logger.warning(f"[FormsRunner] Failed to generate TOTP code")
+            else:
+                logger.warning(f"[FormsRunner] No TOTP secret for network {network_id}")
+
+        elif value == "{{BASIC_AUTH_URL}}":
+            if network.login_username and network.login_password and network.url:
+                username = decrypt_credential(network.login_username, network.company_id, network_id, "login_username")
+                password = decrypt_credential(network.login_password, network.company_id, network_id, "login_password")
+                from urllib.parse import urlparse, urlunparse, quote
+                parsed = urlparse(network.url)
+                netloc = f"{quote(username, safe='')}:{quote(password, safe='')}@{parsed.hostname}"
+                if parsed.port:
+                    netloc += f":{parsed.port}"
+                basic_auth_url = urlunparse(parsed._replace(netloc=netloc))
+                stage["value"] = basic_auth_url
+                stage["url"] = basic_auth_url
+                logger.info(f"[FormsRunner] Basic Auth URL injected for network {network_id}")
+            else:
+                logger.warning(f"[FormsRunner] Missing credentials/URL for Basic Auth on network {network_id}")
+
+    except Exception as e:
+        logger.error(f"[FormsRunner] Credential injection failed: {e}")
+    finally:
+        db.close()
+
+    return stage
+
 # ============================================================
 # MAIN ORCHESTRATION TASKS
 # ============================================================
@@ -297,6 +379,10 @@ def execute_runner_step(self, session_id: str) -> Dict:
     
     current_stage = stages[current_index]
     phase = state["phase"]
+
+    # Inject credentials for login phase (placeholders → actual values, in memory only)
+    if phase == "login":
+        current_stage = _inject_login_credentials(current_stage, int(state["network_id"]))
     
     logger.info(f"[FormsRunner] Executing {phase} step {current_index + 1}/{len(stages)} for session {session_id}")
     

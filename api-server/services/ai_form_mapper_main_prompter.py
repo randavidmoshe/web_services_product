@@ -1580,6 +1580,7 @@ If the last step in "Steps Already Completed" was a save/create/submit/accept/ok
 }}
 ```
 This will trigger verification steps generation (mandatory - make sure you added to this json - "force_regenerate_verify": true).
+CRITICAL: Use `force_regenerate_verify: true` here — NOT `force_regenerate: true`. These are TWO DIFFERENT fields. `force_regenerate_verify` triggers the verification phase. `force_regenerate` triggers regular step regeneration. Do NOT confuse them.
 
 **If more fields/buttons exist:** Continue below to generate remaining steps.
 
@@ -1656,7 +1657,7 @@ If you see multiple Save buttons within the form (one per section):
 ```json
 {{
   "steps": [
-    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false, "dont_regenerate": false}}
+    {{"step_number": N, "action": "action", "selector": "selector", "value": "value", "description": "description", "full_xpath": "/html/body/.../element", "force_regenerate": false, "force_regenerate_verify": false, "dont_regenerate": false}}
   ]
 }}
 ```
@@ -1710,7 +1711,6 @@ If ANY check fails → FIX the xpath before returning.
 
 **force_regenerate field (REQUIRED):**
 - Set to `true` for navigation actions: Next, Continue, Edit, Delete, Back to List buttons
-- Set to `false` for: fill, select, click tab, check, hover, scroll, ALL wait actions, switch_to_frame, switch_to_default
 
 **Mandatory - dont_regenerate field:**
 - Set to `true` ONLY for:
@@ -1723,7 +1723,7 @@ If ANY check fails → FIX the xpath before returning.
 
 
 ** CRITICAL AND MANDATORY - force_regenerate field (for Save/Submit only):**
-- Set to `true` for Save and Submit buttons
+- Set to `true` for Save and Submit buttons 
 
 ---
 
@@ -1780,7 +1780,7 @@ When generating a step, ask yourself:
 
 **The Pattern:**
 1. Trigger action (click/fill) + force_regenerate: true
-2. System executes, waits for DOM to stabilize, re-extracts DOM
+2. System executes, re-extracts DOM
 3. You're called again with updated DOM showing the revealed content
 4. Generate the next step(s) with now-visible elements
 

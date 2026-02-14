@@ -21,6 +21,7 @@ interface Network {
   login_username: string | null
   login_password: string | null
   totp_secret: string | null
+  login_hints: string | null
   has_totp: boolean
   created_at: string
 }
@@ -78,11 +79,13 @@ export default function DashboardLayout({
   const [networkPassword, setNetworkPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [totpSecret, setTotpSecret] = useState('')
+  const [loginHints, setLoginHints] = useState('')
   const [showTotpSecret, setShowTotpSecret] = useState(false)
   const [credentialsChanged, setCredentialsChanged] = useState({
     username: false,
     password: false,
-    totp: false
+    totp: false,
+    hints: false
   })
   const [savingNetwork, setSavingNetwork] = useState(false)
   const [editingNetwork, setEditingNetwork] = useState<Network | null>(null)
@@ -473,9 +476,10 @@ export default function DashboardLayout({
     setAddNetworkType(type)
     setNetworkName('')
     setNetworkUrl('')
-    setNetworkUsername(network.login_username ? '********' : '')
-    setNetworkPassword(network.login_password ? '********' : '')
-    setTotpSecret(network.totp_secret ? '********' : '')
+    setNetworkUsername('')
+    setNetworkPassword('')
+    setTotpSecret('')
+    setLoginHints('')
     setCredentialsChanged({ username: false, password: false, totp: false })
     setShowPassword(false)
     setShowTotpSecret(false)
@@ -491,7 +495,8 @@ export default function DashboardLayout({
     setNetworkUsername(network.login_username ? '********' : '')
     setNetworkPassword(network.login_password ? '********' : '')
     setTotpSecret(network.totp_secret ? '********' : '')
-    setCredentialsChanged({ username: false, password: false, totp: false })
+    setLoginHints(network.login_hints || '')
+    setCredentialsChanged({ username: false, password: false, totp: false, hints: false })
     setShowPassword(false)
     setShowTotpSecret(false)
     setShowAddNetworkModal(true)
@@ -520,7 +525,8 @@ export default function DashboardLayout({
           network_type: addNetworkType,
           ...(credentialsChanged.username && { login_username: networkUsername.trim() || null }),
           ...(credentialsChanged.password && { login_password: networkPassword.trim() || null }),
-          ...(credentialsChanged.totp && { totp_secret: totpSecret.trim() || null })
+          ...(credentialsChanged.totp && { totp_secret: totpSecret.trim() || null }),
+          ...(credentialsChanged.hints && { login_hints: loginHints.trim() || null })
         })
       })
       
@@ -1565,6 +1571,22 @@ export default function DashboardLayout({
                 </div>
                 <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   Enter the TOTP secret key (not the QR code) for automated 2FA login
+                </p>
+              </div>
+              <div style={{ marginTop: '16px' }}>
+                <label style={labelStyle}>AI Guidance Notes (optional — if login/logout automation needs help)</label>
+                <textarea
+                  value={loginHints}
+                  onChange={(e) => {
+                    setLoginHints(e.target.value)
+                    setCredentialsChanged(prev => ({...prev, hints: true}))
+                  }}
+                  placeholder="e.g. This site uses HTTP Basic Auth, Click the Corporate Login tab first, After login wait 10s for redirect..."
+                  style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
+                  rows={3}
+                />
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  Free-text hints to help the AI navigate your login/logout process
                 </p>
               </div>
             </div>

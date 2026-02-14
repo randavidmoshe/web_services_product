@@ -146,26 +146,26 @@ export interface FormPageEditPanelProps {
 const errorBoxStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
-  padding: '12px 16px',
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-  borderRadius: '8px',
-  color: '#dc2626',
-  marginBottom: '16px',
+  gap: '12px',
+  padding: '16px 20px',
+  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.1))',
+  border: '1px solid rgba(239, 68, 68, 0.3)',
+  borderRadius: '12px',
+  color: '#ef4444',
+  marginBottom: '20px',
   animation: 'fadeIn 0.3s ease'
 }
 
 const successBoxStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
-  padding: '12px 16px',
-  background: '#f0fdf4',
-  border: '1px solid #bbf7d0',
-  borderRadius: '8px',
-  color: '#16a34a',
-  marginBottom: '16px',
+  gap: '12px',
+  padding: '16px 20px',
+  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))',
+  border: '1px solid rgba(34, 197, 94, 0.3)',
+  borderRadius: '12px',
+  color: '#86efac',
+  marginBottom: '20px',
   animation: 'fadeIn 0.3s ease'
 }
 
@@ -173,10 +173,10 @@ const closeButtonStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'inherit',
-  fontSize: '18px',
+  fontSize: '20px',
   cursor: 'pointer',
   marginLeft: 'auto',
-  padding: '0 6px',
+  padding: '0 8px',
   opacity: 0.7
 }
 
@@ -186,8 +186,8 @@ const modalOverlayStyle: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: 'rgba(15, 23, 42, 0.5)',
-  backdropFilter: 'blur(4px)',
+  background: 'rgba(0, 0, 0, 0.6)',
+  backdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -196,13 +196,13 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const smallModalContentStyle: React.CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '12px',
-  padding: '32px',
+  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  borderRadius: '24px',
+  padding: '40px',
   width: '100%',
   maxWidth: '500px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-  border: '1px solid #e2e8f0'
+  boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
+  border: '1px solid rgba(255,255,255,0.12)'
 }
 
 // ============ COMPONENT ============
@@ -1444,10 +1444,10 @@ export default function FormPageEditPanel({
           to { opacity: 1; transform: translateY(0); }
         }
         .step-card:hover {
-          border-color: #cbd5e1 !important;
+          border-color: ${getTheme().colors.accentPrimary}66 !important;
         }
         .expand-btn:hover {
-          background: #f1f5f9 !important;
+          background: ${getTheme().colors.accentPrimary}25 !important;
         }
       `}</style>
 
@@ -1461,13 +1461,17 @@ export default function FormPageEditPanel({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          padding: '12px 16px',
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          borderRadius: '8px',
-          color: '#16a34a',
-          marginBottom: '16px',
+          gap: '12px',
+          padding: '16px 20px',
+          background: isLightTheme() 
+            ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))'
+            : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(22, 163, 74, 0.1))',
+          border: isLightTheme() 
+            ? '1px solid rgba(34, 197, 94, 0.4)'
+            : '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
+          color: isLightTheme() ? '#16a34a' : '#86efac',
+          marginBottom: '20px',
           animation: 'fadeIn 0.3s ease'
         }}>
           <span>✅</span> {message}
@@ -1476,57 +1480,64 @@ export default function FormPageEditPanel({
       )}
 
       {/* Back Button and Navigation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
         <button
           onClick={onClose}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            color: '#64748b',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            fontSize: '14px',
+            gap: '10px',
+            background: getTheme().colors.cardBg,
+            border: `2px solid ${getTheme().colors.cardBorder}`,
+            color: getTheme().colors.textSecondary,
+            padding: '14px 24px',
+            borderRadius: '14px',
+            fontSize: '16px',
             fontWeight: 500,
             cursor: 'pointer',
-            transition: 'all 0.15s ease'
+            transition: 'all 0.2s ease',
+            boxShadow: getTheme().colors.cardGlow
           }}
         >
-          <span style={{ fontSize: '16px' }}>←</span>
+          <span style={{ fontSize: '20px' }}>←</span>
           Back to Form Pages
         </button>
 
         {/* Previous / Next Navigation */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={navigateToPreviousFormPage}
             disabled={getCurrentFormPageIndex() <= 0}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              background: getCurrentFormPageIndex() <= 0 ? '#f8fafc' : '#ffffff',
-              border: `1px solid ${getCurrentFormPageIndex() <= 0 ? '#e2e8f0' : '#6366f1'}`,
-              color: getCurrentFormPageIndex() <= 0 ? '#94a3b8' : '#6366f1',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontSize: '13px',
+              gap: '8px',
+              background: getCurrentFormPageIndex() <= 0 
+                ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
+                : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
+              border: `1px solid ${getCurrentFormPageIndex() <= 0 
+                ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
+                : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
+              color: getCurrentFormPageIndex() <= 0 
+                ? getTheme().colors.textSecondary
+                : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontSize: '14px',
               fontWeight: 500,
               cursor: getCurrentFormPageIndex() <= 0 ? 'not-allowed' : 'pointer',
               opacity: getCurrentFormPageIndex() <= 0 ? 0.5 : 1,
-              transition: 'all 0.15s ease'
+              transition: 'all 0.2s ease'
             }}
           >
-            <span style={{ fontSize: '14px' }}>←</span>
+            <span style={{ fontSize: '16px' }}>←</span>
             Previous
           </button>
 
           <span style={{ 
-            fontSize: '13px', 
-            color: '#64748b',
-            padding: '0 4px'
+            fontSize: '14px', 
+            color: getTheme().colors.textSecondary,
+            padding: '0 8px'
           }}>
             {getCurrentFormPageIndex() + 1} / {formPages.length}
           </span>
@@ -1537,31 +1548,39 @@ export default function FormPageEditPanel({
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              background: getCurrentFormPageIndex() >= formPages.length - 1 ? '#f8fafc' : '#ffffff',
-              border: `1px solid ${getCurrentFormPageIndex() >= formPages.length - 1 ? '#e2e8f0' : '#6366f1'}`,
-              color: getCurrentFormPageIndex() >= formPages.length - 1 ? '#94a3b8' : '#6366f1',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontSize: '13px',
+              gap: '8px',
+              background: getCurrentFormPageIndex() >= formPages.length - 1
+                ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)')
+                : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.2)'),
+              border: `1px solid ${getCurrentFormPageIndex() >= formPages.length - 1
+                ? (isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')
+                : (isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)')}`,
+              color: getCurrentFormPageIndex() >= formPages.length - 1
+                ? getTheme().colors.textSecondary
+                : (isLightTheme() ? '#3b82f6' : '#93c5fd'),
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontSize: '14px',
               fontWeight: 500,
               cursor: getCurrentFormPageIndex() >= formPages.length - 1 ? 'not-allowed' : 'pointer',
               opacity: getCurrentFormPageIndex() >= formPages.length - 1 ? 0.5 : 1,
-              transition: 'all 0.15s ease'
+              transition: 'all 0.2s ease'
             }}
           >
             Next
-            <span style={{ fontSize: '14px' }}>→</span>
+            <span style={{ fontSize: '16px' }}>→</span>
           </button>
         </div>
       </div>
 
       {/* Main Content Card */}
       <div style={{
-        background: '#ffffff',
-        borderRadius: '12px',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        background: isLightTheme() ? '#ffffff' : getTheme().colors.cardBg,
+        borderRadius: '24px',
+        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : getTheme().colors.cardBorder}`,
+        boxShadow: isLightTheme() 
+          ? '0 4px 20px rgba(0,0,0,0.08)' 
+          : getTheme().colors.cardGlow,
         overflow: 'hidden'
       }}>
         {/* Header with Form Name and Actions */}
@@ -1569,23 +1588,25 @@ export default function FormPageEditPanel({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '20px 28px',
-          borderBottom: '1px solid #e2e8f0',
-          background: '#f8fafc'
+          padding: '24px 32px',
+          borderBottom: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+          background: isLightTheme() 
+            ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(147, 51, 234, 0.05))'
+            : 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))'
         }}>
           <h2 style={{ 
             margin: 0, 
-            fontSize: '20px', 
-            color: '#0f172a',
+            fontSize: '26px', 
+            color: getTheme().colors.textPrimary,
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '12px'
           }}>
-            <span style={{ fontSize: '22px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
+            <span style={{ fontSize: '28px' }}>{isLoginLogout ? (loginLogoutType === 'login' ? '🔐' : '🚪') : '📄'}</span>
             {isLoginLogout 
               ? <>{loginLogoutType === 'login' ? 'Login' : 'Logout'} Sequence</>
-              : <>Form Page: <span style={{ color: '#6366f1' }}>{editingFormPage.form_name}</span></>
+              : <>Form Page: <span style={{ color: getTheme().colors.accentPrimary }}>{editingFormPage.form_name}</span></>
             }
           </h2>
 
@@ -1597,21 +1618,21 @@ export default function FormPageEditPanel({
                   <button disabled style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    color: '#d97706',
-                    padding: '10px 20px',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: 500,
+                    gap: '10px',
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    color: '#fbbf24',
+                    padding: '14px 28px',
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: 600,
                     cursor: 'not-allowed'
                   }}>
                     <span className="spinner" style={{
-                      width: '14px',
-                      height: '14px',
-                      border: '2px solid #fde68a',
-                      borderTopColor: '#d97706',
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(251, 191, 36, 0.3)',
+                      borderTopColor: '#fbbf24',
                       borderRadius: '50%',
                       animation: 'spin 1s linear infinite'
                     }}></span>
@@ -1623,15 +1644,16 @@ export default function FormPageEditPanel({
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      background: '#ef4444',
+                      gap: '10px',
+                      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                       border: 'none',
                       color: '#fff',
-                      padding: '10px 20px',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      cursor: 'pointer'
+                      padding: '14px 28px',
+                      borderRadius: '12px',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
                     }}
                   >
                     ⏹️ Stop Mapping
@@ -1646,13 +1668,13 @@ export default function FormPageEditPanel({
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        color: '#0f172a',
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        fontSize: '14px',
+                        gap: '8px',
+                        background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                        color: getTheme().colors.textPrimary,
+                        padding: '14px 20px',
+                        borderRadius: '12px',
+                        fontSize: '16px',
                         fontWeight: 500,
                         cursor: 'pointer',
                       }}
@@ -1665,15 +1687,15 @@ export default function FormPageEditPanel({
                         position: 'absolute',
                         top: '100%',
                         left: 0,
-                        marginTop: '6px',
-                        background: '#ffffff',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                        border: '1px solid #e2e8f0',
-                        minWidth: '220px',
+                        marginTop: '8px',
+                        background: isLightTheme() ? '#fff' : '#1f2937',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                        minWidth: '240px',
                         zIndex: 100,
                         overflow: 'hidden',
-                        padding: '4px'
+                        padding: '8px'
                       }}>
                         <button
                           onClick={() => { onStartMapping(editingFormPage.id); setShowMappingDropdown(false); }}
@@ -1683,12 +1705,12 @@ export default function FormPageEditPanel({
                             gap: '12px',
                             width: '100%',
                             padding: '12px 16px',
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '6px',
-                            color: '#0f172a',
+                            background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)',
+                            border: `1px solid ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.4)'}`,
+                            borderRadius: '10px',
+                            color: isLightTheme() ? '#065f46' : '#6ee7b7',
                             fontSize: '14px',
-                            fontWeight: 500,
+                            fontWeight: 600,
                             cursor: 'pointer',
                             textAlign: 'left',
                             marginBottom: '8px'
@@ -1706,12 +1728,12 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#93c5fd' : 'rgba(59, 130, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#1e40af' : '#93c5fd',
                               fontSize: '14px',
-                              fontWeight: 500,
+                              fontWeight: 600,
                               cursor: 'pointer',
                               textAlign: 'left',
                               marginBottom: '8px'
@@ -1730,12 +1752,12 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#92400e' : '#fcd34d',
                               fontSize: '14px',
-                              fontWeight: 500,
+                              fontWeight: 600,
                               cursor: 'pointer',
                               textAlign: 'left',
                               marginBottom: '8px'
@@ -1753,12 +1775,12 @@ export default function FormPageEditPanel({
                             gap: '12px',
                             width: '100%',
                             padding: '12px 16px',
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '6px',
-                            color: '#0f172a',
+                            background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
+                            border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
+                            borderRadius: '10px',
+                            color: isLightTheme() ? '#92400e' : '#fcd34d',
                             fontSize: '14px',
-                            fontWeight: 500,
+                            fontWeight: 600,
                             cursor: 'pointer',
                             textAlign: 'left'
                           }}
@@ -1777,13 +1799,13 @@ export default function FormPageEditPanel({
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        color: '#0f172a',
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        fontSize: '14px',
+                        gap: '8px',
+                        background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                        color: getTheme().colors.textPrimary,
+                        padding: '14px 20px',
+                        borderRadius: '12px',
+                        fontSize: '16px',
                         fontWeight: 500,
                         cursor: 'pointer'
                       }}
@@ -1796,18 +1818,18 @@ export default function FormPageEditPanel({
                         position: 'absolute',
                         top: '100%',
                         right: 0,
-                        marginTop: '6px',
-                        background: '#ffffff',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                        border: '1px solid #e2e8f0',
-                        minWidth: '240px',
+                        marginTop: '8px',
+                        background: isLightTheme() ? '#fff' : '#1f2937',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                        minWidth: '260px',
                         zIndex: 100,
                         overflow: 'hidden'
                       }}>
                         {/* MAPPING */}
-                        <div style={{ padding: '8px 4px' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', padding: '0 12px' }}>
+                        <div style={{ padding: '12px 8px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', padding: '0 12px' }}>
                             Mapping
                           </div>
                           <button
@@ -1818,10 +1840,10 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#065f46' : '#6ee7b7',
                               fontSize: '14px',
                               fontWeight: 600,
                               cursor: 'pointer',
@@ -1830,8 +1852,8 @@ export default function FormPageEditPanel({
                               transition: 'all 0.15s ease',
                               marginBottom: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#a7f3d0' : 'rgba(16, 185, 129, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.25)'}
                           >
                             <span style={{ fontSize: '18px' }}>✏️</span>
                             <span>Configure Field Values</span>
@@ -1844,10 +1866,10 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#cffafe' : 'rgba(6, 182, 212, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#67e8f9' : 'rgba(6, 182, 212, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#0e7490' : '#67e8f9',
                               fontSize: '14px',
                               fontWeight: 600,
                               cursor: 'pointer',
@@ -1855,8 +1877,8 @@ export default function FormPageEditPanel({
                               whiteSpace: 'nowrap',
                               transition: 'all 0.15s ease'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#a5f3fc' : 'rgba(6, 182, 212, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#cffafe' : 'rgba(6, 182, 212, 0.25)'}
                           >
                             <span style={{ fontSize: '18px' }}>📝</span>
                             <span>Verification Instructions</span>
@@ -1869,10 +1891,10 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#92400e' : '#fcd34d',
                               fontSize: '14px',
                               fontWeight: 600,
                               cursor: 'pointer',
@@ -1881,17 +1903,17 @@ export default function FormPageEditPanel({
                               transition: 'all 0.15s ease',
                               marginTop: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'}
                           >
                             <span style={{ fontSize: '18px' }}>🧪</span>
                             <span>Test Scenarios</span>
                             {testScenarios.length > 0 && (
                               <span style={{
-                                background: '#6366f1',
+                                background: isLightTheme() ? '#f59e0b' : 'rgba(245, 158, 11, 0.6)',
                                 color: '#fff',
                                 padding: '2px 8px',
-                                borderRadius: '6px',
+                                borderRadius: '10px',
                                 fontSize: '12px',
                                 marginLeft: 'auto'
                               }}>{testScenarios.length}</span>
@@ -1905,10 +1927,10 @@ export default function FormPageEditPanel({
                               gap: '12px',
                               width: '100%',
                               padding: '12px 16px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
                               fontSize: '14px',
                               fontWeight: 600,
                               cursor: 'pointer',
@@ -1917,17 +1939,17 @@ export default function FormPageEditPanel({
                               transition: 'all 0.15s ease',
                               marginTop: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
                           >
                             <span style={{ fontSize: '18px' }}>💡</span>
                             <span>Mapping Hints</span>
                             {mappingHintsContent && (
                               <span style={{
-                                background: '#6366f1',
+                                background: isLightTheme() ? '#8b5cf6' : 'rgba(139, 92, 246, 0.6)',
                                 color: '#fff',
                                 padding: '2px 8px',
-                                borderRadius: '6px',
+                                borderRadius: '10px',
                                 fontSize: '12px',
                                 marginLeft: 'auto'
                               }}>✓</span>
@@ -1946,13 +1968,19 @@ export default function FormPageEditPanel({
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        background: completedPaths.length === 0 ? '#f8fafc' : '#ffffff',
-                        border: `1px solid ${completedPaths.length === 0 ? '#e2e8f0' : '#6366f1'}`,
-                        color: completedPaths.length === 0 ? '#94a3b8' : '#6366f1',
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        fontSize: '14px',
+                        gap: '8px',
+                        background: completedPaths.length === 0
+                          ? (isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)')
+                          : (isLightTheme() ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.2)'),
+                        border: `1px solid ${completedPaths.length === 0
+                          ? (isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)')
+                          : (isLightTheme() ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.4)')}`,
+                        color: completedPaths.length === 0
+                          ? getTheme().colors.textSecondary
+                          : (isLightTheme() ? '#7c3aed' : '#c4b5fd'),
+                        padding: '14px 20px',
+                        borderRadius: '12px',
+                        fontSize: '16px',
                         fontWeight: 500,
                         cursor: completedPaths.length === 0 ? 'not-allowed' : 'pointer',
                         opacity: completedPaths.length === 0 ? 0.6 : 1
@@ -1966,40 +1994,40 @@ export default function FormPageEditPanel({
                         position: 'absolute',
                         top: '100%',
                         right: 0,
-                        marginTop: '6px',
-                        background: '#ffffff',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                        border: '1px solid #e2e8f0',
-                        minWidth: '220px',
+                        marginTop: '8px',
+                        background: isLightTheme() ? '#fff' : '#1f2937',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                        minWidth: '260px',
                         zIndex: 100,
                         overflow: 'hidden'
                       }}>
-                        <div style={{ padding: '4px' }}>
+                        <div style={{ padding: '12px 8px' }}>
                           <button
                             onClick={() => { setShowSpecCompliancePanel(true); setShowPostMappingDropdown(false); }}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '10px',
+                              gap: '12px',
                               width: '100%',
-                              padding: '10px 14px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#5b21b6' : '#c4b5fd',
                               fontSize: '14px',
-                              fontWeight: 500,
+                              fontWeight: 600,
                               cursor: 'pointer',
                               textAlign: 'left',
                               whiteSpace: 'nowrap',
                               transition: 'all 0.15s ease',
-                              marginBottom: '4px'
+                              marginBottom: '8px'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#ddd6fe' : 'rgba(139, 92, 246, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#ede9fe' : 'rgba(139, 92, 246, 0.25)'}
                           >
-                            <span style={{ fontSize: '16px' }}>📋</span>
+                            <span style={{ fontSize: '18px' }}>📋</span>
                             <span>Check Spec Compliance</span>
                           </button>
                           <button
@@ -2007,22 +2035,22 @@ export default function FormPageEditPanel({
                             style={{
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '10px',
+                              gap: '12px',
                               width: '100%',
-                              padding: '10px 14px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '6px',
-                              color: '#0f172a',
+                              padding: '12px 16px',
+                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)',
+                              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
+                              borderRadius: '10px',
+                              color: isLightTheme() ? '#92400e' : '#fcd34d',
                               fontSize: '14px',
-                              fontWeight: 500,
+                              fontWeight: 600,
                               cursor: 'pointer',
                               textAlign: 'left',
                               whiteSpace: 'nowrap',
                               transition: 'all 0.15s ease'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.4)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.25)'}
                           >
                             <span style={{ fontSize: '18px' }}>📄</span>
                             <span>Export POM</span>
@@ -2038,12 +2066,12 @@ export default function FormPageEditPanel({
             <button
               onClick={onClose}
               style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                color: '#64748b',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
+                background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                color: getTheme().colors.textSecondary,
+                padding: '14px 24px',
+                borderRadius: '12px',
+                fontSize: '16px',
                 fontWeight: 500,
                 cursor: 'pointer'
               }}
@@ -2054,7 +2082,7 @@ export default function FormPageEditPanel({
               onClick={onSave}
               disabled={savingFormPage}
               style={{
-                background: '#6366f1',
+                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
                 border: 'none',
                 color: '#fff',
                 padding: '14px 28px',
@@ -2063,7 +2091,7 @@ export default function FormPageEditPanel({
                 fontWeight: 600,
                 cursor: savingFormPage ? 'not-allowed' : 'pointer',
                 opacity: savingFormPage ? 0.7 : 1,
-                boxShadow: 'none'
+                boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)'
               }}
             >
               {savingFormPage ? 'Saving...' : 'Save Changes'}
@@ -2078,28 +2106,28 @@ export default function FormPageEditPanel({
             flex: 1,
             minWidth: '450px',
             padding: '28px',
-            borderRight: '1px solid #e2e8f0',
-            background: '#ffffff'
+            borderRight: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.08)'}`,
+            background: isLightTheme() ? '#f0fdf4' : 'rgba(16, 185, 129, 0.05)'
           }}>
             {/* Hierarchy Info - hidden for login/logout */}
             {!isLoginLogout && (
               <div style={{
-                background: '#f8fafc',
+                background: isLightTheme() ? '#dcfce7' : 'rgba(16, 185, 129, 0.1)',
                 borderRadius: '10px',
                 padding: '20px',
-                border: '1px solid #e2e8f0',
+                border: `1px solid ${isLightTheme() ? '#86efac' : 'rgba(16, 185, 129, 0.2)'}`,
                 marginBottom: '20px'
               }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
+                <h4 style={{ margin: '0 0 16px', fontSize: '15px', color: isLightTheme() ? '#166534' : '#4ade80', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Hierarchy</h4>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '14px', color: '#64748b', minWidth: '60px' }}>Type:</span>
+                  <span style={{ fontSize: '16px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Type:</span>
                   <span style={{
                     background: editingFormPage.is_root 
-                      ? ('#eef2ff')
-                      : ('#f8fafc'),
+                      ? (isLightTheme() ? '#dbeafe' : 'rgba(99, 102, 241, 0.2)')
+                      : (isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.2)'),
                     color: editingFormPage.is_root 
-                      ? ('#6366f1')
-                      : ('#64748b'),
+                      ? (isLightTheme() ? '#1e40af' : '#a5b4fc')
+                      : (isLightTheme() ? '#92400e' : '#fbbf24'),
                     padding: '8px 14px',
                     borderRadius: '6px',
                     fontSize: '16px',
@@ -2110,18 +2138,18 @@ export default function FormPageEditPanel({
                 </div>
                 {editingFormPage.parent_form_name && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '14px', color: '#64748b', minWidth: '60px' }}>Parent:</span>
-                    <span style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>{editingFormPage.parent_form_name}{editingFormPage.parent_network_name && ` (${editingFormPage.parent_network_name})`}</span>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary, minWidth: '60px' }}>Parent:</span>
+                    <span style={{ fontSize: '16px', color: getTheme().colors.textPrimary, fontWeight: 500 }}>{editingFormPage.parent_form_name}{editingFormPage.parent_network_name && ` (${editingFormPage.parent_network_name})`}</span>
                   </div>
                 )}
                 {editingFormPage.children && editingFormPage.children.length > 0 && (
                   <div style={{ marginTop: '12px' }}>
-                    <span style={{ fontSize: '14px', color: '#64748b' }}>Children:</span>
+                    <span style={{ fontSize: '15px', color: getTheme().colors.textSecondary }}>Children:</span>
                     <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {editingFormPage.children.map((c, i) => (
                         <span key={i} style={{
-                          background: '#f1f5f9',
-                          color: '#64748b',
+                          background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
+                          color: isLightTheme() ? '#92400e' : '#fbbf24',
                           padding: '6px 12px',
                           borderRadius: '6px',
                           fontSize: '14px',
@@ -2136,13 +2164,13 @@ export default function FormPageEditPanel({
 
             {/* URL Info */}
             <div style={{
-              background: '#f8fafc',
+              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.1)',
               borderRadius: '10px',
               padding: '20px',
-              border: '1px solid #e2e8f0'
+              border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.2)'}`
             }}>
-              <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>URL</h4>
-              <div style={{ fontSize: '14px', color: '#0f172a', wordBreak: 'break-all', lineHeight: 1.6 }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: '15px', color: isLightTheme() ? '#92400e' : '#fbbf24', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>URL</h4>
+              <div style={{ fontSize: '16px', color: getTheme().colors.textPrimary, wordBreak: 'break-all', lineHeight: 1.6 }}>
                 {editingFormPage.url}
               </div>
             </div>
@@ -2163,16 +2191,18 @@ export default function FormPageEditPanel({
                 {/* Spec Document - Right Box */}
                 <div style={{
                   flex: 1,
-                  background: '#f8fafc',
+                  background: isLightTheme() 
+                    ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(168, 85, 247, 0.05))'
+                    : 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.1))',
                   borderRadius: '10px',
                   padding: '20px',
-                  border: '1px solid #e2e8f0'
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h4 style={{ 
                       margin: 0, 
                       fontSize: '15px', 
-                      color: '#0f172a', 
+                      color: isLightTheme() ? '#6b21a8' : '#a78bfa', 
                       textTransform: 'uppercase', 
                       letterSpacing: '1px', 
                       fontWeight: 600,
@@ -2188,7 +2218,7 @@ export default function FormPageEditPanel({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#0f172a',
+                          color: isLightTheme() ? '#6b21a8' : '#a78bfa',
                           cursor: 'pointer',
                           fontSize: '14px',
                           fontWeight: 500
@@ -2202,11 +2232,11 @@ export default function FormPageEditPanel({
                   {!specContent ? (
                     /* No spec - show upload area */
                     <div style={{
-                      border: '2px dashed #e2e8f0',
+                      border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
                       borderRadius: '8px',
                       padding: '24px',
                       textAlign: 'center',
-                      background: true ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.1)'
+                      background: isLightTheme() ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.1)'
                     }}>
                       <input
                         ref={specFileInputRef}
@@ -2216,14 +2246,14 @@ export default function FormPageEditPanel({
                         style={{ display: 'none' }}
                       />
                       <div style={{ fontSize: '32px', marginBottom: '12px' }}>📄</div>
-                      <p style={{ color: '#64748b', marginBottom: '12px', fontSize: '14px' }}>
+                      <p style={{ color: getTheme().colors.textSecondary, marginBottom: '12px', fontSize: '14px' }}>
                         Upload a spec document to check compliance
                       </p>
                       <button
                         onClick={() => specFileInputRef.current?.click()}
                         disabled={specLoading}
                         style={{
-                          background: '#6366f1',
+                          background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                           color: '#fff',
                           border: 'none',
                           padding: '10px 20px',
@@ -2237,7 +2267,7 @@ export default function FormPageEditPanel({
                         {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
                       </button>
                       <p style={{ 
-                        color: '#64748b', 
+                        color: getTheme().colors.textSecondary, 
                         fontSize: '12px', 
                         marginTop: '8px',
                         marginBottom: 0 
@@ -2254,11 +2284,11 @@ export default function FormPageEditPanel({
                         alignItems: 'center',
                         marginBottom: '12px',
                         padding: '8px 12px',
-                        background: '#f8fafc',
+                        background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
                         borderRadius: '6px'
                       }}>
                         <span style={{ 
-                          color: '#0f172a', 
+                          color: getTheme().colors.textPrimary, 
                           fontSize: '14px',
                           fontWeight: 500,
                           display: 'flex',
@@ -2279,8 +2309,8 @@ export default function FormPageEditPanel({
                             onClick={() => specFileInputRef.current?.click()}
                             disabled={specLoading}
                             style={{
-                              background: '#f1f5f9',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
                               border: 'none',
                               padding: '6px 12px',
                               borderRadius: '6px',
@@ -2295,8 +2325,8 @@ export default function FormPageEditPanel({
                             onClick={handleSpecEdit}
                             disabled={specLoading || specEditing}
                             style={{
-                              background: '#f1f5f9',
-                              color: '#0f172a',
+                              background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                              color: getTheme().colors.textPrimary,
                               border: 'none',
                               padding: '6px 12px',
                               borderRadius: '6px',
@@ -2311,7 +2341,7 @@ export default function FormPageEditPanel({
                             onClick={handleSpecDelete}
                             disabled={specLoading}
                             style={{
-                              background: '#fef2f2',
+                              background: 'rgba(239, 68, 68, 0.1)',
                               color: '#ef4444',
                               border: 'none',
                               padding: '6px 12px',
@@ -2338,9 +2368,9 @@ export default function FormPageEditPanel({
                                 minHeight: '150px',
                                 padding: '12px',
                                 borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
-                                background: '#ffffff',
-                                color: '#0f172a',
+                                border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
+                                background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                                color: getTheme().colors.textPrimary,
                                 fontSize: '14px',
                                 fontFamily: 'monospace',
                                 resize: 'vertical',
@@ -2352,7 +2382,7 @@ export default function FormPageEditPanel({
                                 onClick={handleSpecSave}
                                 disabled={specLoading}
                                 style={{
-                                  background: '#10b981',
+                                  background: 'linear-gradient(135deg, #10b981, #059669)',
                                   color: '#fff',
                                   border: 'none',
                                   padding: '8px 16px',
@@ -2368,8 +2398,8 @@ export default function FormPageEditPanel({
                                 onClick={() => { setSpecEditing(false); setSpecExpanded(false); }}
                                 disabled={specLoading}
                                 style={{
-                                  background: '#f1f5f9',
-                                  color: '#0f172a',
+                                  background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                                  color: getTheme().colors.textPrimary,
                                   border: 'none',
                                   padding: '8px 16px',
                                   borderRadius: '6px',
@@ -2384,7 +2414,7 @@ export default function FormPageEditPanel({
                         ) : (
                           /* View mode */
                           <div style={{
-                            background: '#f8fafc',
+                            background: isLightTheme() ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
                             borderRadius: '8px',
                             padding: '12px',
                             maxHeight: '200px',
@@ -2395,7 +2425,7 @@ export default function FormPageEditPanel({
                               whiteSpace: 'pre-wrap',
                               wordBreak: 'break-word',
                               fontSize: '14px',
-                              color: '#0f172a',
+                              color: getTheme().colors.textPrimary,
                               fontFamily: 'monospace'
                             }}>
                               {specContent}
@@ -2410,7 +2440,7 @@ export default function FormPageEditPanel({
                           onClick={handleGenerateSpecCompliance}
                           style={{
                             marginTop: '16px',
-                            background: '#6366f1',
+                            background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                             color: '#fff',
                             border: 'none',
                             padding: '12px 20px',
@@ -2430,7 +2460,7 @@ export default function FormPageEditPanel({
                       )}
                       {completedPaths.length === 0 && (
                         <p style={{ 
-                          color: '#64748b', 
+                          color: getTheme().colors.textSecondary, 
                           fontSize: '19px',
                           marginTop: '12px',
                           marginBottom: 0,
@@ -2447,27 +2477,27 @@ export default function FormPageEditPanel({
           </div>
 
           {/* Right Column - Steps */}
-          <div style={{ width: '600px', flexShrink: 0, padding: '28px', minWidth: 0, background: '#f8fafc' }}>
+          <div style={{ width: '600px', flexShrink: 0, padding: '28px', minWidth: 0, background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.08)' }}>
             {/* Path to Form Page Banner - hidden for login/logout */}
             {!isLoginLogout && (
               <div style={{
                 display: 'inline-flex',
                 gap: '12px',
-                background: '#eef2ff',
-                border: '1px solid #c7d2fe',
+                background: isLightTheme() ? '#bfdbfe' : 'rgba(59, 130, 246, 0.2)',
+                border: isLightTheme() ? '1px solid #93c5fd' : '1px solid rgba(59, 130, 246, 0.3)',
                 padding: '12px 20px',
                 borderRadius: '10px',
                 marginBottom: '24px',
                 alignItems: 'center'
               }}>
                 <span style={{ fontSize: '22px' }}>🛤️</span>
-                <strong style={{ fontSize: '17px', color: '#6366f1' }}>Path to Form Page</strong>
+                <strong style={{ fontSize: '17px', color: isLightTheme() ? '#1e40af' : '#93c5fd' }}>Path to Form Page</strong>
               </div>
             )}
 
             {/* Path Steps Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '20px', color: '#0f172a', fontWeight: 600 }}>
+              <h3 style={{ margin: 0, fontSize: '20px', color: isLightTheme() ? '#1e40af' : getTheme().colors.textPrimary, fontWeight: 600 }}>
                 Steps ({editNavigationSteps.length})
               </h3>
               {false && <div style={{ display: 'flex', gap: '8px' }}>
@@ -2475,7 +2505,7 @@ export default function FormPageEditPanel({
                   <button 
                     onClick={() => setShowNavStepsEditWarning(true)}
                     style={{
-                      background: '#f59e0b',
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                       color: '#fff',
                       border: 'none',
                       padding: '10px 20px',
@@ -2493,7 +2523,7 @@ export default function FormPageEditPanel({
                 ) : (
                   <>
                     <button onClick={addStepAtEnd} style={{
-                      background: '#6366f1',
+                      background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
                       color: '#fff',
                       border: 'none',
                       padding: '10px 20px',
@@ -2511,7 +2541,7 @@ export default function FormPageEditPanel({
                       onClick={onSave}
                       disabled={savingFormPage}
                       style={{
-                        background: '#10b981',
+                        background: 'linear-gradient(135deg, #10b981, #059669)',
                         color: '#fff',
                         border: 'none',
                         padding: '10px 20px',
@@ -2538,10 +2568,10 @@ export default function FormPageEditPanel({
                 <div style={{
                   textAlign: 'center',
                   padding: '40px',
-                  color: '#64748b',
-                  background: '#f8fafc',
+                  color: getTheme().colors.textSecondary,
+                  background: isLightTheme() ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.03)',
                   borderRadius: '12px',
-                  border: '2px dashed #e2e8f0'
+                  border: `2px dashed ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`
                 }}>
                   <p style={{ fontSize: '17px', margin: 0 }}>No navigation steps defined.</p>
                   <p style={{ fontSize: '15px', margin: '10px 0 0', opacity: 0.7 }}>Click "+ Add Step" to add navigation steps to this form page.</p>
@@ -2549,8 +2579,8 @@ export default function FormPageEditPanel({
               ) : (
                 editNavigationSteps.map((step, index) => (
                   <div key={index} className="step-card" style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
+                    background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
                     borderRadius: '12px',
                     marginBottom: '12px',
                     overflow: 'hidden',
@@ -2565,13 +2595,13 @@ export default function FormPageEditPanel({
                         gap: '14px',
                         padding: '14px 18px',
                         cursor: 'pointer',
-                        background: '#f8fafc'
+                        background: isLightTheme() ? 'rgba(59, 130, 246, 0.05)' : 'rgba(255,255,255,0.02)'
                       }}
                     >
                       <div style={{
                         width: '36px',
                         height: '36px',
-                        background: '#6366f1',
+                        background: isLightTheme() ? '#3b82f6' : getTheme().colors.accentPrimary,
                         color: '#fff',
                         borderRadius: '50%',
                         display: 'flex',
@@ -2587,7 +2617,7 @@ export default function FormPageEditPanel({
                         <div style={{ 
                           fontSize: '16px', 
                           fontWeight: 500, 
-                          color: '#0f172a',
+                          color: getTheme().colors.textPrimary,
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
@@ -2596,7 +2626,7 @@ export default function FormPageEditPanel({
                         </div>
                         <div style={{ 
                           fontSize: '14px', 
-                          color: '#64748b',
+                          color: getTheme().colors.textSecondary,
                           marginTop: '4px'
                         }}>
                           {step.action}
@@ -2612,7 +2642,7 @@ export default function FormPageEditPanel({
                       }}>
                         <span style={{ 
                           fontSize: '18px',
-                          color: '#64748b',
+                          color: getTheme().colors.textSecondary,
                           transform: expandedSteps.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
                           display: 'inline-block',
                           transition: 'transform 0.2s ease'
@@ -2622,10 +2652,10 @@ export default function FormPageEditPanel({
 
                     {/* Step Details (Expanded) */}
                     {expandedSteps.has(index) && (
-                      <div style={{ padding: '18px', borderTop: '1px solid #f1f5f9' }}>
+                      <div style={{ padding: '18px', borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                           <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#64748b', fontWeight: 500 }}>Action</label>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: getTheme().colors.textSecondary, fontWeight: 500 }}>Action</label>
                             <select
                               value={step.action || ''}
                               onChange={(e) => updateNavigationStep(index, 'action', e.target.value)}
@@ -2634,11 +2664,11 @@ export default function FormPageEditPanel({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
+                                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
                                 background: navStepsEditable 
-                                  ? ('#ffffff')
-                                  : ('#f8fafc'),
-                                color: '#0f172a',
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                color: getTheme().colors.textPrimary,
                                 fontSize: '14px',
                                 cursor: navStepsEditable ? 'pointer' : 'not-allowed',
                                 opacity: navStepsEditable ? 1 : 0.7
@@ -2651,7 +2681,7 @@ export default function FormPageEditPanel({
                             </select>
                           </div>
                           <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Value</label>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: getTheme().colors.textSecondary, fontWeight: 500 }}>Value</label>
                             <input
                               type="text"
                               value={step.value || ''}
@@ -2662,11 +2692,11 @@ export default function FormPageEditPanel({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
+                                border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
                                 background: navStepsEditable 
-                                  ? ('#ffffff')
-                                  : ('#f8fafc'),
-                                color: '#0f172a',
+                                  ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                  : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                color: getTheme().colors.textPrimary,
                                 fontSize: '14px',
                                 boxSizing: 'border-box',
                                 cursor: navStepsEditable ? 'text' : 'default',
@@ -2676,7 +2706,7 @@ export default function FormPageEditPanel({
                           </div>
                         </div>
                         <div style={{ marginBottom: '16px' }}>
-                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Selector</label>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: getTheme().colors.textSecondary, fontWeight: 500 }}>Selector</label>
                           <input
                             type="text"
                             value={step.selector || ''}
@@ -2687,11 +2717,11 @@ export default function FormPageEditPanel({
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
-                              border: '1px solid #e2e8f0',
+                              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
                               background: navStepsEditable 
-                                ? ('#ffffff')
-                                : ('#f8fafc'),
-                              color: '#0f172a',
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                              color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               fontFamily: 'monospace',
                               boxSizing: 'border-box',
@@ -2701,7 +2731,7 @@ export default function FormPageEditPanel({
                           />
                         </div>
                         <div style={{ marginBottom: '16px' }}>
-                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Description</label>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: getTheme().colors.textSecondary, fontWeight: 500 }}>Description</label>
                           <input
                             type="text"
                             value={step.description || ''}
@@ -2712,11 +2742,11 @@ export default function FormPageEditPanel({
                               width: '100%',
                               padding: '10px 12px',
                               borderRadius: '8px',
-                              border: '1px solid #e2e8f0',
+                              border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
                               background: navStepsEditable 
-                                ? ('#ffffff')
-                                : ('#f8fafc'),
-                              color: '#0f172a',
+                                ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                              color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               boxSizing: 'border-box',
                               cursor: navStepsEditable ? 'text' : 'default',
@@ -2730,8 +2760,8 @@ export default function FormPageEditPanel({
                               onClick={() => addStepAfter(index)}
                               style={{
                                 background: 'transparent',
-                                border: `1px solid ${'#6366f1'}`,
-                                color: '#6366f1',
+                                border: `1px solid ${getTheme().colors.accentPrimary}`,
+                                color: getTheme().colors.accentPrimary,
                                 padding: '8px 14px',
                                 borderRadius: '6px',
                                 fontSize: '13px',
@@ -2768,9 +2798,9 @@ export default function FormPageEditPanel({
         {/* Completed Mapping Paths Section - hidden for login/logout */}
         {!isLoginLogout && (
         <div style={{
-          borderTop: '1px solid #e2e8f0',
+          borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
           padding: '28px 32px',
-          background: '#fafafa'
+          background: isLightTheme() ? 'rgba(16, 185, 129, 0.03)' : 'rgba(16, 185, 129, 0.02)'
         }}>
           <div style={{ 
             display: 'flex', 
@@ -2782,20 +2812,20 @@ export default function FormPageEditPanel({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '10px',
-              background: '#f0fdf4',
-              border: '1px solid #e2e8f0',
+              background: isLightTheme() ? '#d1fae5' : 'rgba(16, 185, 129, 0.15)',
+              border: `1px solid ${isLightTheme() ? '#6ee7b7' : 'rgba(16, 185, 129, 0.3)'}`,
               padding: '10px 16px',
               borderRadius: '10px'
             }}>
               <span style={{ fontSize: '20px' }}>📊</span>
-              <span style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+              <span style={{ fontSize: '16px', fontWeight: 600, color: isLightTheme() ? '#065f46' : '#6ee7b7' }}>
                 Completed Mapping Paths
               </span>
               <span style={{
-                background: '#6366f1',
+                background: isLightTheme() ? '#10b981' : 'rgba(16, 185, 129, 0.3)',
                 color: '#fff',
                 padding: '4px 12px',
-                borderRadius: '8px',
+                borderRadius: '20px',
                 fontSize: '14px',
                 fontWeight: 600
               }}>
@@ -2808,7 +2838,7 @@ export default function FormPageEditPanel({
                 <button
                   onClick={handleExportPom}
                   style={{
-                    background: '#6366f1',
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                     color: '#fff',
                     border: 'none',
                     padding: '8px 16px',
@@ -2829,8 +2859,8 @@ export default function FormPageEditPanel({
                 disabled={loadingPaths}
                 style={{
                   background: 'transparent',
-                  border: `1px solid ${'#6366f1'}`,
-                  color: '#6366f1',
+                  border: `1px solid ${getTheme().colors.accentPrimary}`,
+                  color: getTheme().colors.accentPrimary,
                   padding: '8px 16px',
                   borderRadius: '8px',
                   fontSize: '14px',
@@ -2847,11 +2877,11 @@ export default function FormPageEditPanel({
           {completedPaths.length === 0 ? (
             <div style={{
               textAlign: 'center',
-              padding: '32px',
-              color: '#64748b',
-              background: '#f8fafc',
+              padding: '40px',
+              color: getTheme().colors.textSecondary,
+              background: isLightTheme() ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.02)',
               borderRadius: '12px',
-              border: '2px dashed #e2e8f0'
+              border: `2px dashed ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`
             }}>
               <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
               <p style={{ fontSize: '16px', margin: 0 }}>No completed paths yet.</p>
@@ -2861,8 +2891,8 @@ export default function FormPageEditPanel({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {completedPaths.map((path) => (
                 <div key={path.id} style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
+                  background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: '12px',
                   overflow: 'hidden'
                 }}>
@@ -2875,14 +2905,14 @@ export default function FormPageEditPanel({
                       justifyContent: 'space-between',
                       padding: '16px 20px',
                       cursor: 'pointer',
-                      background: '#f8fafc'
+                      background: isLightTheme() ? 'rgba(16, 185, 129, 0.05)' : 'rgba(16, 185, 129, 0.08)'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                       <div style={{
                         width: '36px',
                         height: '36px',
-                        background: '#6366f1',
+                        background: isLightTheme() ? '#10b981' : 'rgba(16, 185, 129, 0.3)',
                         color: '#fff',
                         borderRadius: '50%',
                         display: 'flex',
@@ -2894,15 +2924,15 @@ export default function FormPageEditPanel({
                         {path.path_number}
                       </div>
                       <div>
-                        <div style={{ fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>
+                        <div style={{ fontSize: '18px', fontWeight: 600, color: getTheme().colors.textPrimary }}>
                           Path {path.path_number}
                         </div>
-                        <div style={{ fontSize: '14px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ fontSize: '15px', color: getTheme().colors.textSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {path.steps_count} steps • {path.path_junctions?.length || 0} junctions
                           {path.test_scenario_id && (
                             <span style={{
-                              background: '#f1f5f9',
-                              color: '#475569',
+                              background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.3)',
+                              color: isLightTheme() ? '#92400e' : '#fcd34d',
                               padding: '6px 12px',
                               borderRadius: '8px',
                               fontSize: '18px',
@@ -2918,8 +2948,8 @@ export default function FormPageEditPanel({
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '12px' }}>
                             {path.path_junctions.map((jc, i) => (
                               <span key={i} style={{
-                                background: '#eef2ff',
-                                color: '#6366f1',
+                                background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)',
+                                color: isLightTheme() ? '#1e40af' : '#93c5fd',
                                 padding: '8px 14px',
                                 borderRadius: '8px',
                                 fontSize: '15px',
@@ -2937,8 +2967,8 @@ export default function FormPageEditPanel({
                         onClick={(e) => { e.stopPropagation(); onExportPath(path); }}
                         style={{
                           background: 'transparent',
-                          border: `1px solid ${'#64748b'}`,
-                          color: '#64748b',
+                          border: `1px solid ${getTheme().colors.textSecondary}`,
+                          color: getTheme().colors.textSecondary,
                           padding: '8px 14px',
                           borderRadius: '6px',
                           fontSize: '14px',
@@ -2963,7 +2993,7 @@ export default function FormPageEditPanel({
                       </button>
                       <span style={{ 
                         fontSize: '18px',
-                        color: '#64748b',
+                        color: getTheme().colors.textSecondary,
                         transform: expandedPathId === path.id ? 'rotate(180deg)' : 'rotate(0deg)',
                         display: 'inline-block',
                         transition: 'transform 0.2s ease'
@@ -2973,18 +3003,18 @@ export default function FormPageEditPanel({
 
                   {/* Path Steps (Expanded) */}
                   {expandedPathId === path.id && (
-                    <div style={{ padding: '20px', borderTop: '1px solid #f1f5f9' }}>
+                    <div style={{ padding: '20px', borderTop: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
                       {/* Junction Choices */}
                       {path.path_junctions && path.path_junctions.length > 0 && (
                         <div style={{ marginBottom: '20px' }}>
-                          <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b', marginBottom: '10px' }}>
+                          <div style={{ fontSize: '16px', fontWeight: 600, color: getTheme().colors.textSecondary, marginBottom: '10px' }}>
                             Junction Choices:
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                             {path.path_junctions.map((jc, i) => (
                               <span key={i} style={{
-                                background: '#eef2ff',
-                                color: '#6366f1',
+                                background: isLightTheme() ? '#dbeafe' : 'rgba(59, 130, 246, 0.2)',
+                                color: isLightTheme() ? '#1e40af' : '#93c5fd',
                                 padding: '8px 14px',
                                 borderRadius: '8px',
                                 fontSize: '15px',
@@ -3004,7 +3034,7 @@ export default function FormPageEditPanel({
                         alignItems: 'center',
                         marginBottom: '12px' 
                       }}>
-                        <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b' }}>
+                        <div style={{ fontSize: '16px', fontWeight: 600, color: getTheme().colors.textSecondary }}>
                           Steps ({getPathSteps(path.id, path.steps || []).length}):
                           {hasUnsavedChanges(path.id) && (
                             <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '15px' }}>● Unsaved changes</span>
@@ -3016,7 +3046,7 @@ export default function FormPageEditPanel({
                             <button
                               onClick={() => setShowEditPathWarning(path.id)}
                               style={{
-                                background: '#f59e0b',
+                                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                                 color: '#fff',
                                 border: 'none',
                                 padding: '8px 16px',
@@ -3027,7 +3057,7 @@ export default function FormPageEditPanel({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)'
                               }}
                             >
                               ✏️ Edit Path Steps
@@ -3038,7 +3068,7 @@ export default function FormPageEditPanel({
                               <button
                                 onClick={() => handleAddStepAfter(path.id, -1, path.steps || [], false)}
                                 style={{
-                                  background: '#6366f1',
+                                  background: isLightTheme() ? '#3b82f6' : 'rgba(59, 130, 246, 0.8)',
                                   color: '#fff',
                                   border: 'none',
                                   padding: '6px 12px',
@@ -3052,7 +3082,7 @@ export default function FormPageEditPanel({
                               <button
                                 onClick={() => handleAddStepAfter(path.id, -1, path.steps || [], true)}
                                 style={{
-                                  background: '#10b981',
+                                  background: isLightTheme() ? '#059669' : 'rgba(16, 185, 129, 0.8)',
                                   color: '#fff',
                                   border: 'none',
                                   padding: '6px 12px',
@@ -3067,7 +3097,7 @@ export default function FormPageEditPanel({
                                 <button
                                   onClick={() => handleSaveAllPathSteps(path.id)}
                                   style={{
-                                    background: '#10b981',
+                                    background: 'linear-gradient(135deg, #059669, #047857)',
                                     color: '#fff',
                                     border: 'none',
                                     padding: '6px 12px',
@@ -3111,16 +3141,16 @@ export default function FormPageEditPanel({
                                 gap: '14px',
                                 padding: '16px',
                                 background: isVerify 
-                                  ? ('#f0fdf4')
-                                  : ('#eef2ff'),
+                                  ? (isLightTheme() ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.15)')
+                                  : (isLightTheme() ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.15)'),
                                 borderRadius: '8px',
                                 marginBottom: '8px',
                                 cursor: 'pointer',
                                 border: isDragOver 
                                   ? '2px dashed #3b82f6'
                                   : isVerify 
-                                    ? '2px solid #bbf7d0'
-                                    : '2px solid #c7d2fe',
+                                    ? `2px solid ${isLightTheme() ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.5)'}`
+                                    : `2px solid ${isLightTheme() ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.4)'}`,
                                 transition: 'all 0.2s ease',
                                 opacity: draggedStep?.pathId === path.id && draggedStep?.index === stepIndex ? 0.5 : 1
                               }}
@@ -3128,14 +3158,14 @@ export default function FormPageEditPanel({
                               {/* Drag handle and step number */}
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                                 {isPathEditable(path.id) && (
-                                  <span style={{ fontSize: '12px', color: '#64748b', cursor: 'grab' }}>⋮⋮</span>
+                                  <span style={{ fontSize: '12px', color: getTheme().colors.textSecondary, cursor: 'grab' }}>⋮⋮</span>
                                 )}
                                 <div style={{
                                   width: '32px',
                                   height: '32px',
                                   background: isVerify 
-                                    ? ('#10b981')
-                                    : ('#6366f1'),
+                                    ? (isLightTheme() ? '#059669' : '#10b981')
+                                    : (isLightTheme() ? '#3b82f6' : '#60a5fa'),
                                   color: '#fff',
                                   borderRadius: '50%',
                                   display: 'flex',
@@ -3161,7 +3191,7 @@ export default function FormPageEditPanel({
                                     style={{ 
                                       fontSize: '16px', 
                                       fontWeight: 500, 
-                                      color: '#0f172a',
+                                      color: getTheme().colors.textPrimary,
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '8px'
@@ -3172,11 +3202,11 @@ export default function FormPageEditPanel({
                                       padding: '2px 6px',
                                       borderRadius: '4px',
                                       background: isVerify 
-                                        ? ('#dcfce7')
-                                        : ('#e0e7ff'),
+                                        ? (isLightTheme() ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.3)')
+                                        : (isLightTheme() ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.3)'),
                                       color: isVerify
-                                        ? ('#10b981')
-                                        : ('#6366f1'),
+                                        ? (isLightTheme() ? '#059669' : '#34d399')
+                                        : (isLightTheme() ? '#2563eb' : '#60a5fa'),
                                       fontWeight: 600
                                     }}>
                                       {step.action || 'unknown'}
@@ -3186,7 +3216,7 @@ export default function FormPageEditPanel({
                                       onClick={(e) => { e.stopPropagation(); toggleStepExpanded(path.id, stepIndex, step); }}
                                       style={{ 
                                         fontSize: '12px', 
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         cursor: 'pointer',
                                         padding: '2px 6px'
                                       }}
@@ -3204,7 +3234,7 @@ export default function FormPageEditPanel({
                                       style={{
                                         background: 'transparent',
                                         border: 'none',
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         padding: '4px 8px',
                                         borderRadius: '4px',
                                         fontSize: '14px',
@@ -3219,7 +3249,7 @@ export default function FormPageEditPanel({
                                       style={{
                                         background: 'transparent',
                                         border: 'none',
-                                        color: '#6366f1',
+                                        color: isLightTheme() ? '#3b82f6' : '#60a5fa',
                                         padding: '4px 8px',
                                         borderRadius: '4px',
                                         fontSize: '14px',
@@ -3234,7 +3264,7 @@ export default function FormPageEditPanel({
                                       style={{
                                         background: 'transparent',
                                         border: 'none',
-                                        color: '#10b981',
+                                        color: isLightTheme() ? '#059669' : '#34d399',
                                         padding: '4px 8px',
                                         borderRadius: '4px',
                                         fontSize: '14px',
@@ -3269,7 +3299,7 @@ export default function FormPageEditPanel({
                                       <div 
                                         style={{ 
                                           fontSize: '15px', 
-                                          color: '#64748b',
+                                          color: getTheme().colors.textSecondary,
                                           fontFamily: 'monospace',
                                           wordBreak: 'break-all',
                                           marginBottom: '6px'
@@ -3284,7 +3314,7 @@ export default function FormPageEditPanel({
                                     {(step.value || step.input_value) && (
                                       <div style={{ 
                                         fontSize: '15px', 
-                                        color: '#10b981',
+                                        color: isLightTheme() ? '#059669' : '#34d399',
                                         fontWeight: 500
                                       }}>
                                         Value: {step.value || step.input_value}
@@ -3302,7 +3332,7 @@ export default function FormPageEditPanel({
                                       display: 'flex',
                                       flexDirection: 'column',
                                       gap: '12px',
-                                      background: '#f8fafc',
+                                      background: isLightTheme() ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.2)',
                                       padding: '16px',
                                       borderRadius: '8px'
                                     }}
@@ -3314,8 +3344,8 @@ export default function FormPageEditPanel({
                                       gap: '8px',
                                       padding: '8px 12px',
                                       background: isVerify 
-                                        ? ('#f0fdf4')
-                                        : ('#eef2ff'),
+                                        ? (isLightTheme() ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.15)')
+                                        : (isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)'),
                                       borderRadius: '6px',
                                       width: 'fit-content'
                                     }}>
@@ -3323,8 +3353,8 @@ export default function FormPageEditPanel({
                                         fontSize: '13px',
                                         fontWeight: 600,
                                         color: isVerify 
-                                          ? ('#10b981')
-                                          : ('#6366f1')
+                                          ? (isLightTheme() ? '#059669' : '#34d399')
+                                          : (isLightTheme() ? '#2563eb' : '#60a5fa')
                                       }}>
                                         {isVerify ? '✓ Verify Step' : '⚡ Create/Action Step'}
                                       </span>
@@ -3335,7 +3365,7 @@ export default function FormPageEditPanel({
                                       <label style={{ 
                                         fontSize: '13px', 
                                         fontWeight: 600, 
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         display: 'block',
                                         marginBottom: '4px'
                                       }}>
@@ -3350,10 +3380,10 @@ export default function FormPageEditPanel({
                                             width: '100%',
                                             padding: '10px 12px',
                                             fontSize: '15px',
-                                            border: '1px solid #e2e8f0',
+                                            border: `1px solid ${isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)'}`,
                                             borderRadius: '6px',
-                                            background: '#f8fafc',
-                                            color: '#64748b',
+                                            background: isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)',
+                                            color: getTheme().colors.textSecondary,
                                             boxSizing: 'border-box',
                                             cursor: 'not-allowed'
                                           }}
@@ -3367,12 +3397,12 @@ export default function FormPageEditPanel({
                                             width: '100%',
                                             padding: '10px 12px',
                                             fontSize: '15px',
-                                            border: '1px solid #e2e8f0',
+                                            border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                             borderRadius: '6px',
                                             background: isPathEditable(path.id) 
-                                              ? ('#ffffff')
-                                              : ('#f8fafc'),
-                                            color: '#0f172a',
+                                              ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                              : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                            color: getTheme().colors.textPrimary,
                                             boxSizing: 'border-box',
                                             cursor: isPathEditable(path.id) ? 'pointer' : 'not-allowed',
                                             opacity: isPathEditable(path.id) ? 1 : 0.7
@@ -3391,7 +3421,7 @@ export default function FormPageEditPanel({
                                       <label style={{ 
                                         fontSize: '13px', 
                                         fontWeight: 600, 
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         display: 'block',
                                         marginBottom: '4px'
                                       }}>
@@ -3407,12 +3437,12 @@ export default function FormPageEditPanel({
                                           padding: '10px 12px',
                                           fontSize: '15px',
                                           fontFamily: 'monospace',
-                                          border: '1px solid #e2e8f0',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
                                           background: isPathEditable(path.id) 
-                                            ? ('#ffffff')
-                                            : ('#f8fafc'),
-                                          color: '#0f172a',
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                          color: getTheme().colors.textPrimary,
                                           boxSizing: 'border-box',
                                           cursor: isPathEditable(path.id) ? 'text' : 'default',
                                           opacity: isPathEditable(path.id) ? 1 : 0.7
@@ -3425,7 +3455,7 @@ export default function FormPageEditPanel({
                                       <label style={{ 
                                         fontSize: '13px', 
                                         fontWeight: 600, 
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         display: 'block',
                                         marginBottom: '4px'
                                       }}>
@@ -3440,12 +3470,12 @@ export default function FormPageEditPanel({
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
-                                          border: '1px solid #e2e8f0',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
                                           background: isPathEditable(path.id) 
-                                            ? ('#ffffff')
-                                            : ('#f8fafc'),
-                                          color: '#10b981',
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                          color: isLightTheme() ? '#059669' : '#34d399',
                                           boxSizing: 'border-box',
                                           cursor: isPathEditable(path.id) ? 'text' : 'default',
                                           opacity: isPathEditable(path.id) ? 1 : 0.7
@@ -3458,7 +3488,7 @@ export default function FormPageEditPanel({
                                       <label style={{ 
                                         fontSize: '13px', 
                                         fontWeight: 600, 
-                                        color: '#64748b',
+                                        color: getTheme().colors.textSecondary,
                                         display: 'block',
                                         marginBottom: '4px'
                                       }}>
@@ -3473,12 +3503,12 @@ export default function FormPageEditPanel({
                                           width: '100%',
                                           padding: '10px 12px',
                                           fontSize: '15px',
-                                          border: '1px solid #e2e8f0',
+                                          border: `1px solid ${isLightTheme() ? '#d1d5db' : 'rgba(255,255,255,0.2)'}`,
                                           borderRadius: '6px',
                                           background: isPathEditable(path.id) 
-                                            ? ('#ffffff')
-                                            : ('#f8fafc'),
-                                          color: '#0f172a',
+                                            ? (isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)')
+                                            : (isLightTheme() ? '#f3f4f6' : 'rgba(255,255,255,0.02)'),
+                                          color: getTheme().colors.textPrimary,
                                           boxSizing: 'border-box',
                                           cursor: isPathEditable(path.id) ? 'text' : 'default',
                                           opacity: isPathEditable(path.id) ? 1 : 0.7
@@ -3491,7 +3521,7 @@ export default function FormPageEditPanel({
                                       <button
                                         onClick={() => handleSaveStep(path.id, stepIndex)}
                                         style={{
-                                          background: '#10b981',
+                                          background: 'linear-gradient(135deg, #059669, #047857)',
                                           color: '#fff',
                                           border: 'none',
                                           padding: '10px 20px',
@@ -3530,64 +3560,64 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowEditPathWarning(null)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '32px',
             width: '90%',
             maxWidth: '580px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }} onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
               <div style={{
                 width: '56px',
                 height: '56px',
-                background: '#f59e0b',
-                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderRadius: '14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '22px'
+                fontSize: '28px'
               }}>
                 ⚠️
               </div>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: 600 }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '24px', fontWeight: 600 }}>
                 Edit Path Steps
               </h3>
             </div>
             
             {/* Warning Content */}
             <div style={{
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
+              background: isLightTheme() ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.15)',
+              border: `1px solid ${isLightTheme() ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.4)'}`,
               borderRadius: '12px',
               padding: '20px',
               marginBottom: '24px'
             }}>
-              <p style={{ margin: '0 0 14px', color: '#0f172a', fontWeight: 600, fontSize: '17px' }}>
+              <p style={{ margin: '0 0 14px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '17px' }}>
                 🤖 These path steps were automatically discovered and generated by AI.
               </p>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '16px', lineHeight: 1.6 }}>
+              <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
                 They represent a complete, validated sequence of actions to fill out this form path. 
                 The steps are designed to work together in order.
               </p>
             </div>
             
-            <p style={{ margin: '0 0 14px', color: '#64748b', fontSize: '16px', lineHeight: 1.6 }}>
-              <strong style={{ color: '#0f172a' }}>Before editing, please understand:</strong>
+            <p style={{ margin: '0 0 14px', color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+              <strong style={{ color: getTheme().colors.textPrimary }}>Before editing, please understand:</strong>
             </p>
             
             <ul style={{ 
               margin: '0 0 24px', 
               paddingLeft: '24px',
-              color: '#64748b',
+              color: getTheme().colors.textSecondary,
               fontSize: '16px',
               lineHeight: 2
             }}>
@@ -3600,9 +3630,9 @@ export default function FormPageEditPanel({
             <p style={{ 
               margin: '0 0 28px', 
               padding: '16px',
-              background: '#eef2ff',
+              background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)',
               borderRadius: '10px',
-              color: '#6366f1',
+              color: isLightTheme() ? '#1d4ed8' : '#93c5fd',
               fontSize: '15px',
               lineHeight: 1.5
             }}>
@@ -3614,9 +3644,9 @@ export default function FormPageEditPanel({
               <button
                 onClick={() => setShowEditPathWarning(null)}
                 style={{
-                  background: '#f1f5f9',
-                  border: '1px solid #e2e8f0',
-                  color: '#0f172a',
+                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                  color: getTheme().colors.textPrimary,
                   padding: '12px 24px',
                   borderRadius: '10px',
                   fontSize: '15px',
@@ -3628,7 +3658,7 @@ export default function FormPageEditPanel({
               <button
                 onClick={() => enablePathEditing(showEditPathWarning)}
                 style={{
-                  background: '#f59e0b',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   border: 'none',
                   color: '#fff',
                   padding: '12px 24px',
@@ -3636,7 +3666,7 @@ export default function FormPageEditPanel({
                   fontSize: '15px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
                 }}
               >
                 ✏️ I Understand, Enable Editing
@@ -3654,63 +3684,63 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowNavStepsEditWarning(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '32px',
             width: '90%',
             maxWidth: '580px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }} onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
               <div style={{
                 width: '56px',
                 height: '56px',
-                background: '#f59e0b',
-                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderRadius: '14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '22px'
+                fontSize: '28px'
               }}>
                 ⚠️
               </div>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: 600 }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '24px', fontWeight: 600 }}>
                 Edit Navigation Steps
               </h3>
             </div>
             
             {/* Warning Content */}
             <div style={{
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
+              background: isLightTheme() ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.15)',
+              border: `1px solid ${isLightTheme() ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.4)'}`,
               borderRadius: '12px',
               padding: '20px',
               marginBottom: '24px'
             }}>
-              <p style={{ margin: '0 0 14px', color: '#0f172a', fontWeight: 600, fontSize: '17px' }}>
+              <p style={{ margin: '0 0 14px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '17px' }}>
                 🛤️ These navigation steps define how to reach this form page.
               </p>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '16px', lineHeight: 1.6 }}>
+              <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
                 They were discovered during form discovery and represent the path from the login page to this form.
               </p>
             </div>
             
-            <p style={{ margin: '0 0 14px', color: '#64748b', fontSize: '16px', lineHeight: 1.6 }}>
-              <strong style={{ color: '#0f172a' }}>Before editing, please understand:</strong>
+            <p style={{ margin: '0 0 14px', color: getTheme().colors.textSecondary, fontSize: '16px', lineHeight: 1.6 }}>
+              <strong style={{ color: getTheme().colors.textPrimary }}>Before editing, please understand:</strong>
             </p>
             
             <ul style={{ 
               margin: '0 0 24px', 
               paddingLeft: '24px',
-              color: '#64748b',
+              color: getTheme().colors.textSecondary,
               fontSize: '16px',
               lineHeight: 2
             }}>
@@ -3723,9 +3753,9 @@ export default function FormPageEditPanel({
             <p style={{ 
               margin: '0 0 28px', 
               padding: '16px',
-              background: '#eef2ff',
+              background: isLightTheme() ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)',
               borderRadius: '10px',
-              color: '#6366f1',
+              color: isLightTheme() ? '#1d4ed8' : '#93c5fd',
               fontSize: '15px',
               lineHeight: 1.5
             }}>
@@ -3737,9 +3767,9 @@ export default function FormPageEditPanel({
               <button
                 onClick={() => setShowNavStepsEditWarning(false)}
                 style={{
-                  background: '#f1f5f9',
-                  border: '1px solid #e2e8f0',
-                  color: '#0f172a',
+                  background: isLightTheme() ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${isLightTheme() ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
+                  color: getTheme().colors.textPrimary,
                   padding: '12px 24px',
                   borderRadius: '10px',
                   fontSize: '15px',
@@ -3751,7 +3781,7 @@ export default function FormPageEditPanel({
               <button
                 onClick={enableNavStepsEditing}
                 style={{
-                  background: '#f59e0b',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   border: 'none',
                   color: '#fff',
                   padding: '12px 24px',
@@ -3759,7 +3789,7 @@ export default function FormPageEditPanel({
                   fontSize: '15px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
                 }}
               >
                 ✏️ I Understand, Enable Editing
@@ -3777,15 +3807,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowPomModal(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '800px',
@@ -3793,12 +3823,12 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 📄 Export Page Object Model (POM)
               </h3>
               <button
                 onClick={() => setShowPomModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
@@ -3806,13 +3836,13 @@ export default function FormPageEditPanel({
             
             {pomStatus === 'idle' && (
               <>
-                <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '19px' }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
                   Generate Page Object Model code for "{editingFormPage.form_name}" with {completedPaths.length} path(s).
                 </p>
                 
                 <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: '#0f172a', fontWeight: 600, fontSize: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '15px' }}>
                       Language
                     </label>
                     <select
@@ -3822,9 +3852,9 @@ export default function FormPageEditPanel({
                         width: '100%',
                         padding: '10px 12px',
                         borderRadius: '8px',
-                        border: `1px solid ${'#e2e8f0'}`,
-                        background: '#ffffff',
-                        color: '#0f172a',
+                        border: `1px solid ${getTheme().colors.cardBorder}`,
+                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                        color: getTheme().colors.textPrimary,
                         fontSize: '15px'
                       }}
                     >
@@ -3837,7 +3867,7 @@ export default function FormPageEditPanel({
                   </div>
                   
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: '#0f172a', fontWeight: 600, fontSize: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '15px' }}>
                       Framework
                     </label>
                     <select
@@ -3847,9 +3877,9 @@ export default function FormPageEditPanel({
                         width: '100%',
                         padding: '10px 12px',
                         borderRadius: '8px',
-                        border: `1px solid ${'#e2e8f0'}`,
-                        background: '#ffffff',
-                        color: '#0f172a',
+                        border: `1px solid ${getTheme().colors.cardBorder}`,
+                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                        color: getTheme().colors.textPrimary,
                         fontSize: '15px'
                       }}
                     >
@@ -3863,7 +3893,7 @@ export default function FormPageEditPanel({
                 {/* Style dropdown - only show for Java */}
                 {pomLanguage === 'java' && (
                   <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: '#0f172a', fontWeight: 600, fontSize: '18px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: getTheme().colors.textPrimary, fontWeight: 600, fontSize: '18px' }}>
                       Style
                     </label>
                     <select
@@ -3873,9 +3903,9 @@ export default function FormPageEditPanel({
                         width: '100%',
                         padding: '10px 12px',
                         borderRadius: '8px',
-                        border: `1px solid ${'#e2e8f0'}`,
-                        background: '#ffffff',
-                        color: '#0f172a',
+                        border: `1px solid ${getTheme().colors.cardBorder}`,
+                        background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                        color: getTheme().colors.textPrimary,
                         fontSize: '15px'
                       }}
                     >
@@ -3888,7 +3918,7 @@ export default function FormPageEditPanel({
                 <button
                   onClick={startPomGeneration}
                   style={{
-                    background: '#6366f1',
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                     color: '#fff',
                     border: 'none',
                     padding: '12px 24px',
@@ -3905,31 +3935,31 @@ export default function FormPageEditPanel({
             )}
             
             {(pomStatus === 'starting' || pomStatus === 'processing') && (
-              <div style={{ textAlign: 'center', padding: '32px' }}>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚙️</div>
-                <p style={{ color: '#0f172a', fontSize: '18px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, fontSize: '18px', fontWeight: 600 }}>
                   Generating POM code...
                 </p>
-                <p style={{ color: '#64748b' }}>
+                <p style={{ color: getTheme().colors.textSecondary }}>
                   AI is creating your {pomLanguage} + {pomFramework} Page Object Model
                 </p>
               </div>
             )}
             
             {pomStatus === 'failed' && (
-              <div style={{ textAlign: 'center', padding: '32px' }}>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
                 <p style={{ color: '#ef4444', fontSize: '18px', fontWeight: 600 }}>
                   Generation Failed
                 </p>
-                <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '18px' }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '18px' }}>
                   {pomError}
                 </p>
                 <button
                   onClick={() => setPomStatus('idle')}
                   style={{
-                    background: '#e2e8f0',
-                    color: '#0f172a',
+                    background: getTheme().colors.cardBorder,
+                    color: getTheme().colors.textPrimary,
                     border: 'none',
                     padding: '10px 20px',
                     borderRadius: '8px',
@@ -3947,8 +3977,8 @@ export default function FormPageEditPanel({
                   <button
                     onClick={copyPomToClipboard}
                     style={{
-                      background: '#f1f5f9',
-                      color: '#0f172a',
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
                       border: 'none',
                       padding: '10px 20px',
                       borderRadius: '8px',
@@ -3963,7 +3993,7 @@ export default function FormPageEditPanel({
                   <button
                     onClick={downloadPomFile}
                     style={{
-                      background: '#10b981',
+                      background: 'linear-gradient(135deg, #059669, #047857)',
                       color: '#fff',
                       border: 'none',
                       padding: '10px 20px',
@@ -3980,8 +4010,8 @@ export default function FormPageEditPanel({
                     onClick={() => setPomStatus('idle')}
                     style={{
                       background: 'transparent',
-                      color: '#64748b',
-                      border: `1px solid ${'#e2e8f0'}`,
+                      color: getTheme().colors.textSecondary,
+                      border: `1px solid ${getTheme().colors.cardBorder}`,
                       padding: '10px 20px',
                       borderRadius: '8px',
                       cursor: 'pointer'
@@ -3992,7 +4022,7 @@ export default function FormPageEditPanel({
                 </div>
                 
                 <pre style={{
-                  background: '#1e293b',
+                  background: isLightTheme() ? '#1e1e1e' : '#0d1117',
                   color: '#e6e6e6',
                   padding: '16px',
                   borderRadius: '8px',
@@ -4019,15 +4049,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1100
         }} onClick={() => setShowSpecComplianceModal(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '900px',
@@ -4035,12 +4065,12 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 📊 Spec Compliance Report
               </h3>
               <button
                 onClick={() => setShowSpecComplianceModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
@@ -4048,30 +4078,30 @@ export default function FormPageEditPanel({
             
             {specComplianceStatus === 'idle' && (
               <>
-                <p style={{ color: '#64748b', marginBottom: '20px' }}>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
                   Generate a compliance report comparing your spec document against the actual form implementation for "{editingFormPage.form_name}".
                 </p>
                 
                 <div style={{
-                  background: '#f8fafc',
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
                   borderRadius: '8px',
                   padding: '16px',
                   marginBottom: '20px'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <p style={{ margin: '0 0 4px', color: '#0f172a', fontWeight: 600 }}>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
                         📋 Spec: {specFilename}
                       </p>
-                      <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
                         {specContent.length} characters
                       </p>
                     </div>
                     <div>
-                      <p style={{ margin: '0 0 4px', color: '#0f172a', fontWeight: 600 }}>
+                      <p style={{ margin: '0 0 4px', color: getTheme().colors.textPrimary, fontWeight: 600 }}>
                         🛤️ Paths: {completedPaths.length}
                       </p>
-                      <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                      <p style={{ margin: 0, color: getTheme().colors.textSecondary, fontSize: '14px' }}>
                         {completedPaths.reduce((sum, p) => sum + (p.steps?.length || 0), 0)} total steps
                       </p>
                     </div>
@@ -4081,7 +4111,7 @@ export default function FormPageEditPanel({
                 <button
                   onClick={startSpecComplianceGeneration}
                   style={{
-                    background: '#6366f1',
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                     color: '#fff',
                     border: 'none',
                     padding: '12px 24px',
@@ -4098,31 +4128,31 @@ export default function FormPageEditPanel({
             )}
             
             {(specComplianceStatus === 'starting' || specComplianceStatus === 'processing') && (
-              <div style={{ textAlign: 'center', padding: '32px' }}>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚙️</div>
-                <p style={{ color: '#0f172a', fontSize: '18px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, fontSize: '18px', fontWeight: 600 }}>
                   Analyzing compliance...
                 </p>
-                <p style={{ color: '#64748b' }}>
+                <p style={{ color: getTheme().colors.textSecondary }}>
                   AI is comparing your spec against the implementation
                 </p>
               </div>
             )}
             
             {specComplianceStatus === 'failed' && (
-              <div style={{ textAlign: 'center', padding: '32px' }}>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
                 <p style={{ color: '#ef4444', fontSize: '18px', fontWeight: 600 }}>
                   Compliance Check Failed
                 </p>
-                <p style={{ color: '#64748b', marginBottom: '20px' }}>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px' }}>
                   {specComplianceError}
                 </p>
                 <button
                   onClick={() => setSpecComplianceStatus('idle')}
                   style={{
-                    background: '#e2e8f0',
-                    color: '#0f172a',
+                    background: getTheme().colors.cardBorder,
+                    color: getTheme().colors.textPrimary,
                     border: 'none',
                     padding: '10px 20px',
                     borderRadius: '8px',
@@ -4140,8 +4170,8 @@ export default function FormPageEditPanel({
                   <button
                     onClick={copyComplianceReportToClipboard}
                     style={{
-                      background: '#f1f5f9',
-                      color: '#0f172a',
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
                       border: 'none',
                       padding: '10px 20px',
                       borderRadius: '8px',
@@ -4156,7 +4186,7 @@ export default function FormPageEditPanel({
                   <button
                     onClick={downloadComplianceReport}
                     style={{
-                      background: '#10b981',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
                       color: '#fff',
                       border: 'none',
                       padding: '10px 20px',
@@ -4173,8 +4203,8 @@ export default function FormPageEditPanel({
                     onClick={() => setSpecComplianceStatus('idle')}
                     style={{
                       background: 'transparent',
-                      color: '#64748b',
-                      border: `1px solid ${'#e2e8f0'}`,
+                      color: getTheme().colors.textSecondary,
+                      border: `1px solid ${getTheme().colors.cardBorder}`,
                       padding: '10px 20px',
                       borderRadius: '8px',
                       cursor: 'pointer'
@@ -4185,7 +4215,7 @@ export default function FormPageEditPanel({
                 </div>
                 
                 <div style={{
-                  background: '#f8fafc',
+                  background: isLightTheme() ? '#f8fafc' : '#0d1117',
                   padding: '20px',
                   borderRadius: '8px',
                   overflow: 'auto',
@@ -4197,7 +4227,7 @@ export default function FormPageEditPanel({
                     wordBreak: 'break-word',
                     fontSize: '14px',
                     fontFamily: 'Monaco, Consolas, monospace',
-                    color: '#0f172a',
+                    color: getTheme().colors.textPrimary,
                     lineHeight: 1.6
                   }}>
                     {specComplianceReport}
@@ -4214,12 +4244,14 @@ export default function FormPageEditPanel({
         <div style={modalOverlayStyle} onClick={() => setShowDeleteStepConfirm(false)}>
           <div style={{
             ...smallModalContentStyle,
-            background: '#ffffff'
+            background: isLightTheme() 
+              ? 'linear-gradient(135deg, #ffffff, #f8fafc)'
+              : 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))'
           }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 16px', color: '#0f172a', fontSize: '20px' }}>
+            <h3 style={{ margin: '0 0 16px', color: getTheme().colors.textPrimary, fontSize: '20px' }}>
               Delete Step?
             </h3>
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '24px' }}>
               Are you sure you want to delete step {stepToDeleteIndex !== null ? stepToDeleteIndex + 1 : ''}? This action cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
@@ -4227,8 +4259,8 @@ export default function FormPageEditPanel({
                 onClick={() => setShowDeleteStepConfirm(false)}
                 style={{
                   background: 'transparent',
-                  border: `1px solid ${'#e2e8f0'}`,
-                  color: '#64748b',
+                  border: `1px solid ${getTheme().colors.cardBorder}`,
+                  color: getTheme().colors.textSecondary,
                   padding: '12px 24px',
                   borderRadius: '10px',
                   fontSize: '15px',
@@ -4240,7 +4272,7 @@ export default function FormPageEditPanel({
               <button
                 onClick={deleteStep}
                 style={{
-                  background: '#ef4444',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   border: 'none',
                   color: '#fff',
                   padding: '12px 24px',
@@ -4265,32 +4297,32 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => !deletingFormPage && setShowRediscoverModal(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '500px'
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <span style={{ fontSize: '32px' }}>⚠️</span>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 Rediscover Form Page?
               </h3>
             </div>
             
-            <p style={{ color: '#64748b', marginBottom: '12px', lineHeight: 1.6 }}>
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '12px', lineHeight: 1.6 }}>
               This will <strong style={{ color: '#ef4444' }}>permanently delete</strong> all data for this form page:
             </p>
             
             <ul style={{ 
-              color: '#64748b', 
+              color: getTheme().colors.textSecondary, 
               marginBottom: '20px',
               paddingLeft: '20px',
               lineHeight: 1.8
@@ -4301,7 +4333,7 @@ export default function FormPageEditPanel({
               <li>User-provided input values</li>
             </ul>
             
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '24px' }}>
               You will be redirected to the main page to start a fresh discovery.
             </p>
             
@@ -4311,8 +4343,8 @@ export default function FormPageEditPanel({
                 disabled={deletingFormPage}
                 style={{
                   background: 'transparent',
-                  border: `1px solid ${'#e2e8f0'}`,
-                  color: '#64748b',
+                  border: `1px solid ${getTheme().colors.cardBorder}`,
+                  color: getTheme().colors.textSecondary,
                   padding: '12px 24px',
                   borderRadius: '10px',
                   fontSize: '15px',
@@ -4326,7 +4358,7 @@ export default function FormPageEditPanel({
                 onClick={confirmRediscoverFormPage}
                 disabled={deletingFormPage}
                 style={{
-                  background: '#ef4444',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   border: 'none',
                   color: '#fff',
                   padding: '12px 24px',
@@ -4359,15 +4391,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowFieldValuesPanel(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '600px',
@@ -4375,21 +4407,21 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 ✏️ Configure Field Values
               </h3>
               <button
                 onClick={() => setShowFieldValuesPanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '21px' }}>
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '21px' }}>
               For auto-mapping: specify fields that require exact values instead of AI-generated random data.
               <br />
-              <span style={{ color: '#64748b', fontSize: '18px' }}>
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
                 Examples: AD username, database port, specific email domain, company ID, etc.
               </span>
             </p>
@@ -4412,15 +4444,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowSpecCompliancePanel(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '700px',
@@ -4428,18 +4460,18 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 📋 Check Spec Compliance
               </h3>
               <button
                 onClick={() => setShowSpecCompliancePanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '19px' }}>
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '19px' }}>
               Upload a specification document and check if "{editingFormPage.form_name}" complies with requirements.
             </p>
 
@@ -4454,11 +4486,11 @@ export default function FormPageEditPanel({
 
             {!specContent ? (
               <div style={{
-                border: '2px dashed #e2e8f0',
+                border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
                 borderRadius: '12px',
                 padding: '48px 24px',
                 textAlign: 'center',
-                background: '#fafafa'
+                background: isLightTheme() ? 'rgba(139, 92, 246, 0.05)' : 'rgba(139, 92, 246, 0.1)'
               }}>
                 <input
                   ref={specFileInputRef}
@@ -4468,17 +4500,17 @@ export default function FormPageEditPanel({
                   style={{ display: 'none' }}
                 />
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
-                <p style={{ color: '#0f172a', marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '18px', fontWeight: 600 }}>
                   No spec document uploaded
                 </p>
-                <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '15px' }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '15px' }}>
                   Upload a document to check compliance
                 </p>
                 <button
                   onClick={() => specFileInputRef.current?.click()}
                   disabled={specLoading}
                   style={{
-                    background: '#6366f1',
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                     color: '#fff',
                     border: 'none',
                     padding: '12px 24px',
@@ -4491,7 +4523,7 @@ export default function FormPageEditPanel({
                 >
                   {specLoading ? 'Uploading...' : '📤 Upload Spec File'}
                 </button>
-                <p style={{ color: '#64748b', fontSize: '13px', marginTop: '12px', marginBottom: 0 }}>
+                <p style={{ color: getTheme().colors.textSecondary, fontSize: '13px', marginTop: '12px', marginBottom: 0 }}>
                   Supports: .txt, .md, .pdf, .docx
                 </p>
               </div>
@@ -4503,17 +4535,17 @@ export default function FormPageEditPanel({
                   alignItems: 'center',
                   marginBottom: '16px',
                   padding: '12px 16px',
-                  background: '#f8fafc',
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.15)',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0'
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
                 }}>
-                  <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: getTheme().colors.textPrimary, fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     📎 {specFilename}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => specFileInputRef.current?.click()} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
-                    <button onClick={() => { setSpecEditing(true); setSpecEditContent(specContent); }} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
-                    <button onClick={handleSpecDelete} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
+                    <button onClick={() => specFileInputRef.current?.click()} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={() => { setSpecEditing(true); setSpecEditContent(specContent); }} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={handleSpecDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
                   </div>
                 </div>
 
@@ -4522,26 +4554,26 @@ export default function FormPageEditPanel({
                     <textarea
                       value={specEditContent}
                       onChange={(e) => setSpecEditContent(e.target.value)}
-                      style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${'#e2e8f0'}`, background: '#ffffff', color: '#0f172a', fontSize: '14px', fontFamily: 'monospace', resize: 'vertical' }}
+                      style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${getTheme().colors.cardBorder}`, background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)', color: getTheme().colors.textPrimary, fontSize: '14px', fontFamily: 'monospace', resize: 'vertical' }}
                     />
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={handleSpecSave} disabled={specLoading} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>{specLoading ? 'Saving...' : '💾 Save'}</button>
-                      <button onClick={() => setSpecEditing(false)} disabled={specLoading} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                      <button onClick={handleSpecSave} disabled={specLoading} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>{specLoading ? 'Saving...' : '💾 Save'}</button>
+                      <button onClick={() => setSpecEditing(false)} disabled={specLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto', border: `1px solid ${'#e2e8f0'}` }}>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: '#0f172a', fontFamily: 'Monaco, Consolas, monospace' }}>{specContent}</pre>
+                  <div style={{ background: isLightTheme() ? '#f8fafc' : 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: getTheme().colors.textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{specContent}</pre>
                   </div>
                 )}
 
                 {completedPaths.length > 0 && !specEditing && (
-                  <button onClick={handleGenerateSpecCompliance} style={{ marginTop: '20px', background: '#6366f1', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                  <button onClick={handleGenerateSpecCompliance} style={{ marginTop: '20px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '100%' }}>
                     📊 Generate Compliance Report
                   </button>
                 )}
                 {completedPaths.length === 0 && !specEditing && (
-                  <p style={{ color: '#64748b', fontSize: '19px', marginTop: '19px', marginBottom: 0, textAlign: 'center' }}>
+                  <p style={{ color: getTheme().colors.textSecondary, fontSize: '19px', marginTop: '19px', marginBottom: 0, textAlign: 'center' }}>
                     ℹ️ Compliance verification will be available after mapping this form page
                   </p>
                 )}
@@ -4559,15 +4591,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowVerificationInstructionsPanel(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '700px',
@@ -4575,18 +4607,18 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 📝 Verification Instructions
               </h3>
               <button
                 onClick={() => setShowVerificationInstructionsPanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '21px' }}>
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '21px' }}>
               Provide rules for verifying form field values (e.g., "First Name should be preceded by Mr/Mrs", "Total = Quantity × Price x 0.5", "a flag should appear near State"..).
             </p>
 
@@ -4600,17 +4632,17 @@ export default function FormPageEditPanel({
 
             {!verificationContent ? (
               <div style={{
-                border: '2px dashed #e2e8f0',
+                border: `2px dashed ${isLightTheme() ? '#67e8f9' : 'rgba(6, 182, 212, 0.4)'}`,
                 borderRadius: '12px',
                 padding: '48px 24px',
                 textAlign: 'center',
-                background: '#fafafa'
+                background: isLightTheme() ? 'rgba(6, 182, 212, 0.05)' : 'rgba(6, 182, 212, 0.1)'
               }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
-                <p style={{ color: '#0f172a', marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
                   No verification instructions
                 </p>
-                <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '15px' }}>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '15px' }}>
                   Upload a file or type instructions directly
                 </p>
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -4618,7 +4650,7 @@ export default function FormPageEditPanel({
                     onClick={() => verificationFileInputRef.current?.click()}
                     disabled={verificationLoading}
                     style={{
-                      background: '#06b6d4',
+                      background: 'linear-gradient(135deg, #06b6d4, #0891b2)',
                       color: '#fff',
                       border: 'none',
                       padding: '12px 24px',
@@ -4634,8 +4666,8 @@ export default function FormPageEditPanel({
                   <button
                     onClick={() => { setVerificationEditing(true); setVerificationEditContent(''); }}
                     style={{
-                      background: '#f1f5f9',
-                      color: '#0f172a',
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
                       border: 'none',
                       padding: '12px 24px',
                       borderRadius: '8px',
@@ -4656,22 +4688,22 @@ export default function FormPageEditPanel({
                   alignItems: 'center',
                   marginBottom: '16px',
                   padding: '12px 16px',
-                  background: '#f8fafc',
+                  background: isLightTheme() ? 'rgba(6, 182, 212, 0.08)' : 'rgba(6, 182, 212, 0.15)',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0'
+                  border: `1px solid ${isLightTheme() ? '#67e8f9' : 'rgba(6, 182, 212, 0.3)'}`
                 }}>
-                  <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: getTheme().colors.textPrimary, fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     📎 {verificationFilename || 'verification_instructions.txt'}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => verificationFileInputRef.current?.click()} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
-                    <button onClick={() => { setVerificationEditing(true); setVerificationEditContent(verificationContent); }} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
-                    <button onClick={handleVerificationDelete} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
+                    <button onClick={() => verificationFileInputRef.current?.click()} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={() => { setVerificationEditing(true); setVerificationEditContent(verificationContent); }} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={handleVerificationDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '16px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${'#e2e8f0'}` }}>
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: '#0f172a', fontFamily: 'Monaco, Consolas, monospace' }}>{verificationContent}</pre>
+                <div style={{ background: isLightTheme() ? '#f8fafc' : 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '14px', color: getTheme().colors.textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{verificationContent}</pre>
                 </div>
               </div>
             ) : (
@@ -4680,11 +4712,11 @@ export default function FormPageEditPanel({
                   value={verificationEditContent}
                   onChange={(e) => setVerificationEditContent(e.target.value)}
                   placeholder="Enter verification instructions...&#10;&#10;Examples:&#10;- First Name should be preceded by Mr or Mrs&#10;- Total = Quantity × Price&#10;- Date format should be DD/MM/YYYY"
-                  style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${'#e2e8f0'}`, background: '#ffffff', color: '#0f172a', fontSize: '14px', fontFamily: 'monospace', resize: 'vertical' }}
+                  style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${getTheme().colors.cardBorder}`, background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)', color: getTheme().colors.textPrimary, fontSize: '14px', fontFamily: 'monospace', resize: 'vertical' }}
                 />
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                  <button onClick={handleVerificationSave} disabled={verificationLoading || !verificationEditContent.trim()} style={{ background: '#06b6d4', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!verificationEditContent.trim() || verificationLoading) ? 0.5 : 1 }}>{verificationLoading ? 'Saving...' : '💾 Save'}</button>
-                  <button onClick={() => { setVerificationEditing(false); setVerificationEditContent(''); }} disabled={verificationLoading} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={handleVerificationSave} disabled={verificationLoading || !verificationEditContent.trim()} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!verificationEditContent.trim() || verificationLoading) ? 0.5 : 1 }}>{verificationLoading ? 'Saving...' : '💾 Save'}</button>
+                  <button onClick={() => { setVerificationEditing(false); setVerificationEditContent(''); }} disabled={verificationLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -4700,15 +4732,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowMappingHintsPanel(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '700px',
@@ -4716,19 +4748,19 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 💡 Mapping Hints
               </h3>
               <button
                 onClick={() => setShowMappingHintsPanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '21px' }}>
-              Provide guidance notes for the AI when mapping this form page for edge cases(e.g., "Make sure to fill the Address field", "The city field dropdown must be filled and it's a native select.").
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '21px' }}>
+              Provide guidance notes for the AI when mapping this form page (e.g., "Skip the newsletter checkbox", "The submit button is inside an iframe", "Use the second Save button not the first").
             </p>
 
             <input
@@ -4741,17 +4773,17 @@ export default function FormPageEditPanel({
 
             {!mappingHintsContent ? (
               <div style={{
-                border: '2px dashed #e2e8f0',
+                border: `2px dashed ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.4)'}`,
                 borderRadius: '12px',
                 padding: '48px 24px',
                 textAlign: 'center',
-                background: '#fafafa'
+                background: isLightTheme() ? 'rgba(139, 92, 246, 0.05)' : 'rgba(139, 92, 246, 0.1)'
               }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>💡</div>
-                <p style={{ color: '#0f172a', marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
+                <p style={{ color: getTheme().colors.textPrimary, marginBottom: '8px', fontSize: '21px', fontWeight: 600 }}>
                   No mapping hints
                 </p>
-                <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '15px' }}>
+                <p style={{ color: getTheme().colors.textSecondary, marginBottom: '20px', fontSize: '15px' }}>
                   Upload a file or type hints directly
                 </p>
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -4759,7 +4791,7 @@ export default function FormPageEditPanel({
                     onClick={() => mappingHintsFileInputRef.current?.click()}
                     disabled={mappingHintsLoading}
                     style={{
-                      background: '#6366f1',
+                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                       color: '#fff',
                       border: 'none',
                       padding: '12px 24px',
@@ -4775,8 +4807,8 @@ export default function FormPageEditPanel({
                   <button
                     onClick={() => { setMappingHintsEditing(true); setMappingHintsEditContent(''); }}
                     style={{
-                      background: '#f1f5f9',
-                      color: '#0f172a',
+                      background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)',
+                      color: getTheme().colors.textPrimary,
                       border: 'none',
                       padding: '12px 24px',
                       borderRadius: '8px',
@@ -4797,22 +4829,22 @@ export default function FormPageEditPanel({
                   alignItems: 'center',
                   marginBottom: '16px',
                   padding: '12px 16px',
-                  background: '#f8fafc',
+                  background: isLightTheme() ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.15)',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0'
+                  border: `1px solid ${isLightTheme() ? '#c4b5fd' : 'rgba(139, 92, 246, 0.3)'}`
                 }}>
-                  <span style={{ color: '#0f172a', fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: getTheme().colors.textPrimary, fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     📎 {mappingHintsFilename || 'mapping_hints.txt'}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => mappingHintsFileInputRef.current?.click()} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
-                    <button onClick={() => { setMappingHintsEditing(true); setMappingHintsEditContent(mappingHintsContent); }} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
-                    <button onClick={handleMappingHintsDelete} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
+                    <button onClick={() => mappingHintsFileInputRef.current?.click()} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Replace</button>
+                    <button onClick={() => { setMappingHintsEditing(true); setMappingHintsEditContent(mappingHintsContent); }} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={handleMappingHintsDelete} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>🗑️</button>
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '16px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${'#e2e8f0'}` }}>
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '16px', color: '#0f172a', fontFamily: 'Monaco, Consolas, monospace' }}>{mappingHintsContent}</pre>
+                <div style={{ background: isLightTheme() ? '#f8fafc' : 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', maxHeight: '300px', overflowY: 'auto', border: `1px solid ${getTheme().colors.cardBorder}` }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '16px', color: getTheme().colors.textPrimary, fontFamily: 'Monaco, Consolas, monospace' }}>{mappingHintsContent}</pre>
                 </div>
               </div>
             ) : (
@@ -4821,11 +4853,11 @@ export default function FormPageEditPanel({
                   value={mappingHintsEditContent}
                   onChange={(e) => setMappingHintsEditContent(e.target.value)}
                   placeholder="Enter mapping hints...&#10;&#10;Examples:&#10;- Skip the newsletter checkbox&#10;- The submit button is inside an iframe&#10;- Use the second Save button not the first&#10;- After selecting Country, wait for State dropdown to load"
-                  style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${'#e2e8f0'}`, background: '#ffffff', color: '#0f172a', fontSize: '16px', fontFamily: 'monospace', resize: 'vertical' }}
+                  style={{ width: '100%', minHeight: '250px', padding: '12px', borderRadius: '8px', border: `1px solid ${getTheme().colors.cardBorder}`, background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)', color: getTheme().colors.textPrimary, fontSize: '16px', fontFamily: 'monospace', resize: 'vertical' }}
                 />
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                  <button onClick={handleMappingHintsSave} disabled={mappingHintsLoading || !mappingHintsEditContent.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!mappingHintsEditContent.trim() || mappingHintsLoading) ? 0.5 : 1 }}>{mappingHintsLoading ? 'Saving...' : '💾 Save'}</button>
-                  <button onClick={() => { setMappingHintsEditing(false); setMappingHintsEditContent(''); }} disabled={mappingHintsLoading} style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={handleMappingHintsSave} disabled={mappingHintsLoading || !mappingHintsEditContent.trim()} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: (!mappingHintsEditContent.trim() || mappingHintsLoading) ? 0.5 : 1 }}>{mappingHintsLoading ? 'Saving...' : '💾 Save'}</button>
+                  <button onClick={() => { setMappingHintsEditing(false); setMappingHintsEditContent(''); }} disabled={mappingHintsLoading} style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -4841,15 +4873,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
         }} onClick={() => setShowTestScenariosPanel(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '800px',
@@ -4857,24 +4889,24 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 🧪 Test Scenarios
               </h3>
               <button
                 onClick={() => setShowTestScenariosPanel(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#0f172a', marginBottom: '20px', fontSize: '21px' }}>
+            <p style={{ color: getTheme().colors.textPrimary, marginBottom: '20px', fontSize: '21px' }}>
               Create test scenarios for targeted mapping. Each scenario maps a single path using your defined values.
               <br />
-              <span style={{ color: '#64748b', fontSize: '18px' }}>
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
                 Focus on field values that reveal new fields or trigger different junction combinations.
               </span>
-              <span style={{ color: '#64748b', fontSize: '18px' }}>
+              <span style={{ color: getTheme().colors.textSecondary, fontSize: '18px' }}>
                 In case of exact fields needed (Specific AD user/DB port - put these also here).
               </span>
             </p>
@@ -4897,8 +4929,8 @@ export default function FormPageEditPanel({
 
             {/* Upload Button */}
             <div style={{
-              background: '#fffbeb',
-              border: '2px dashed #fde68a',
+              background: isLightTheme() ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.15)',
+              border: `2px dashed ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.5)'}`,
               borderRadius: '12px',
               padding: '24px',
               textAlign: 'center',
@@ -4908,7 +4940,7 @@ export default function FormPageEditPanel({
                 onClick={() => scenarioFileInputRef.current?.click()}
                 disabled={scenarioSaving}
                 style={{
-                  background: '#f59e0b',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   color: '#fff',
                   border: 'none',
                   padding: '14px 28px',
@@ -4921,26 +4953,26 @@ export default function FormPageEditPanel({
               >
                 {scenarioSaving ? 'Uploading...' : '📄 Upload Scenario File'}
               </button>
-              <p style={{ margin: '12px 0 0', color: '#64748b', fontSize: '17px' }}>
+              <p style={{ margin: '12px 0 0', color: getTheme().colors.textSecondary, fontSize: '17px' }}>
                 .txt, .md, or .csv files with field values (e.g., "Full Name: Johnny B")
               </p>
             </div>
 
             {/* Existing Scenarios */}
             <div>
-              <h4 style={{ margin: '0 0 12px', color: '#0f172a', fontSize: '16px' }}>
+              <h4 style={{ margin: '0 0 12px', color: getTheme().colors.textPrimary, fontSize: '16px' }}>
                 Existing Scenarios ({testScenarios.length})
               </h4>
               {testScenariosLoading ? (
-                <p style={{ color: '#64748b' }}>Loading...</p>
+                <p style={{ color: getTheme().colors.textSecondary }}>Loading...</p>
               ) : testScenarios.length === 0 ? (
-                <p style={{ color: '#64748b', fontStyle: 'italic' }}>No test scenarios yet. Create one above.</p>
+                <p style={{ color: getTheme().colors.textSecondary, fontStyle: 'italic' }}>No test scenarios yet. Create one above.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {testScenarios.map((scenario) => (
                     <div key={scenario.id} style={{
-                      background: '#f8fafc',
-                      border: `1px solid ${'#e2e8f0'}`,
+                      background: isLightTheme() ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${getTheme().colors.cardBorder}`,
                       borderRadius: '10px',
                       padding: '16px'
                     }}>
@@ -4954,9 +4986,9 @@ export default function FormPageEditPanel({
                               width: '100%',
                               padding: '8px 12px',
                               borderRadius: '6px',
-                              border: `1px solid ${'#e2e8f0'}`,
-                              background: '#ffffff',
-                              color: '#0f172a',
+                              border: `1px solid ${getTheme().colors.cardBorder}`,
+                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               marginBottom: '8px'
                             }}
@@ -4969,9 +5001,9 @@ export default function FormPageEditPanel({
                               minHeight: '100px',
                               padding: '12px',
                               borderRadius: '6px',
-                              border: `1px solid ${'#e2e8f0'}`,
-                              background: '#ffffff',
-                              color: '#0f172a',
+                              border: `1px solid ${getTheme().colors.cardBorder}`,
+                              background: isLightTheme() ? '#fff' : 'rgba(255,255,255,0.05)',
+                              color: getTheme().colors.textPrimary,
                               fontSize: '14px',
                               fontFamily: 'monospace',
                               resize: 'vertical',
@@ -4988,7 +5020,7 @@ export default function FormPageEditPanel({
                             </button>
                             <button
                               onClick={() => setEditingScenario(null)}
-                              style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
+                              style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}
                             >
                               Cancel
                             </button>
@@ -4997,7 +5029,7 @@ export default function FormPageEditPanel({
                       ) : (
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '15px' }}>
+                            <div style={{ fontWeight: 600, color: getTheme().colors.textPrimary, fontSize: '15px' }}>
                               🧪 {scenario.name}
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
@@ -5006,19 +5038,19 @@ export default function FormPageEditPanel({
                                   setReplacingScenarioId(scenario.id)
                                   replaceScenarioFileInputRef.current?.click()
                                 }}
-                                style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+                                style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
                               >
                                 Replace
                               </button>
                               <button
                                 onClick={() => setEditingScenario(scenario)}
-                                style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+                                style={{ background: isLightTheme() ? '#e5e7eb' : 'rgba(255,255,255,0.1)', color: getTheme().colors.textPrimary, border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => handleDeleteScenario(scenario.id)}
-                                style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+                                style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
                               >
                                 🗑️
                               </button>
@@ -5027,10 +5059,10 @@ export default function FormPageEditPanel({
                           <pre style={{
                             margin: 0,
                             padding: '12px',
-                            background: '#fafafa',
+                            background: isLightTheme() ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.2)',
                             borderRadius: '6px',
                             fontSize: '13px',
-                            color: '#64748b',
+                            color: getTheme().colors.textSecondary,
                             fontFamily: 'Monaco, Consolas, monospace',
                             whiteSpace: 'pre-wrap',
                             maxHeight: '150px',
@@ -5055,15 +5087,15 @@ export default function FormPageEditPanel({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1001
         }} onClick={() => setShowScenarioPicker(false)}>
           <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
+            background: isLightTheme() ? '#fff' : '#1f2937',
+            borderRadius: '16px',
             padding: '24px',
             width: '90%',
             maxWidth: '500px',
@@ -5071,18 +5103,18 @@ export default function FormPageEditPanel({
             overflow: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px' }}>
+              <h3 style={{ margin: 0, color: getTheme().colors.textPrimary, fontSize: '20px' }}>
                 🧪 Select Test Scenario
               </h3>
               <button
                 onClick={() => setShowScenarioPicker(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: getTheme().colors.textSecondary }}
               >
                 ×
               </button>
             </div>
 
-            <p style={{ color: '#64748b', marginBottom: '16px', fontSize: '14px' }}>
+            <p style={{ color: getTheme().colors.textSecondary, marginBottom: '16px', fontSize: '14px' }}>
               Choose a scenario to map. This will create one path using the scenario's field values.
             </p>
 
@@ -5098,16 +5130,16 @@ export default function FormPageEditPanel({
                     gap: '4px',
                     width: '100%',
                     padding: '14px 16px',
-                    background: '#f1f5f9',
-                    border: '1px solid #fde68a',
+                    background: isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)',
+                    border: `1px solid ${isLightTheme() ? '#fcd34d' : 'rgba(245, 158, 11, 0.4)'}`,
                     borderRadius: '10px',
-                    color: '#475569',
+                    color: isLightTheme() ? '#92400e' : '#fcd34d',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'all 0.15s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = isLightTheme() ? '#fde68a' : 'rgba(245, 158, 11, 0.3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = isLightTheme() ? '#fef3c7' : 'rgba(245, 158, 11, 0.15)'}
                 >
                   <span style={{ fontWeight: 600, fontSize: '15px' }}>🧪 {scenario.name}</span>
                   <span style={{ fontSize: '12px', opacity: 0.8 }}>{scenario.content.split('\n').slice(0, 2).join(', ')}...</span>

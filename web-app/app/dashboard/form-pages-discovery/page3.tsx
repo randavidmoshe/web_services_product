@@ -1983,8 +1983,8 @@ export default function DashboardPage() {
             background: #f8fafc;
           }
           .action-btn:hover {
-            background: #f8fafc !important;
-            border-color: #cbd5e1 !important;
+            transform: scale(1.05);
+            background: #f1f5f9 !important;
           }
         `}</style>
 
@@ -2028,23 +2028,24 @@ export default function DashboardPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '40px',
-            height: '40px',
-            background: '#6366f1',
-            borderRadius: '8px'
+            width: '44px',
+            height: '44px',
+            background: 'linear-gradient(135deg, #6366f1, #818cf8)',
+            borderRadius: '10px',
+            boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)'
           }}>
-            <span style={{ fontSize: '20px' }}>🧭</span>
+            <span style={{ fontSize: '22px' }}>🧭</span>
           </div>
           <div style={{ flex: 1 }}>
             <h1 style={{
               margin: 0,
-              fontSize: '20px',
+              fontSize: '24px',
               fontWeight: 700,
               color: getTheme().colors.textPrimary
             }}>Form Pages Discovery</h1>
             <p style={{
-              margin: '4px 0 0',
-              fontSize: '14px',
+              margin: '6px 0 0',
+              fontSize: '15px',
               color: getTheme().colors.textSecondary
             }}>
               {isDiscoveryExpanded 
@@ -2081,17 +2082,14 @@ export default function DashboardPage() {
               gap: '6px',
               padding: '8px 16px',
               background: isDiscoveryExpanded 
-                ? '#f8fafc'
-                : '#ffffff',
+                ? '#f1f5f9'
+                : '#6366f1',
               borderRadius: '6px',
-              border: isDiscoveryExpanded
-                ? '1px solid #e2e8f0'
-                : '1px solid #6366f1',
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 500,
               color: isDiscoveryExpanded 
                 ? '#64748b'
-                : '#6366f1'
+                : '#fff'
             }}>
               <span style={{ fontSize: '13px' }}>{isDiscoveryExpanded ? '▲' : '▼'}</span>
               {isDiscoveryExpanded ? 'Collapse' : 'Expand'}
@@ -2788,10 +2786,10 @@ export default function DashboardPage() {
                                 color: '#0f172a'
                               }}>
                                 <span style={{
-                                  background: '#f1f5f9',
-                                  color: '#475569',
-                                  padding: '3px 10px',
-                                  borderRadius: '4px',
+                                  background: '#f0fdf4',
+                                  color: '#16a34a',
+                                  padding: '4px 12px',
+                                  borderRadius: '16px',
                                   fontSize: '13px',
                                   fontWeight: 500
                                 }}>
@@ -2822,17 +2820,17 @@ export default function DashboardPage() {
                                 ) : '-'}
                               </td>
                               <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                   <button 
                                     onClick={() => openEditPanel(form)}
                                     className="action-btn"
                                     style={{
-                                      background: 'transparent',
+                                      background: '#f1f5f9',
                                       border: '1px solid #e2e8f0',
-                                      borderRadius: '6px',
-                                      padding: '5px 8px',
+                                      borderRadius: '8px',
+                                      padding: '8px 10px',
                                       cursor: 'pointer',
-                                      fontSize: '14px',
+                                      fontSize: '16px',
                                       transition: 'all 0.15s ease'
                                     }}
                                     title="View form page"
@@ -2843,12 +2841,12 @@ export default function DashboardPage() {
                                     onClick={() => openDeleteModal(form)}
                                     className="action-btn"
                                     style={{
-                                      background: 'transparent',
-                                      border: '1px solid #e2e8f0',
-                                      borderRadius: '6px',
-                                      padding: '5px 8px',
+                                      background: '#fef2f2',
+                                      border: '1px solid #fecaca',
+                                      borderRadius: '8px',
+                                      padding: '8px 10px',
                                       cursor: 'pointer',
-                                      fontSize: '14px',
+                                      fontSize: '16px',
                                       transition: 'all 0.15s ease'
                                     }}
                                     title="Delete form page"
@@ -2871,67 +2869,70 @@ export default function DashboardPage() {
                               style={{
                                 transition: 'all 0.2s ease',
                                 cursor: 'pointer',
-                                background: '#f8fafb',
-                                borderLeft: '3px solid #10b981'
+                                background: isLightTheme() 
+                                  ? 'rgba(16, 185, 129, 0.08)' 
+                                  : 'rgba(16, 185, 129, 0.1)',
+                                borderLeft: '4px solid #10b981'
                               }}
                               onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'login')}
                             >
                               <td style={{
-                                padding: '14px 20px',
-                                borderBottom: '1px solid #f1f5f9',
+                                padding: '20px 24px',
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`,
                                 verticalAlign: 'middle',
-                                fontSize: '14px',
-                                color: '#0f172a'
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
                               }}>
-                                <strong style={{ fontSize: '14px', fontWeight: 600, color: '#10b981' }}>🔐 Login</strong>
-                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                                <strong style={{ fontSize: '17px', color: '#10b981' }}>🔐 Login</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
                                   {loginLogout.network_name}
                                 </div>
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}` }}>
                                 <span style={{
-                                  background: '#f1f5f9',
-                                  color: '#475569',
-                                  padding: '3px 10px',
-                                  borderRadius: '4px',
-                                  fontSize: '13px',
-                                  fontWeight: 500
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
                                 }}>
                                   {loginLogout.login_stages.length} steps
                                 </span>
                               </td>
                               <td style={{ 
-                                padding: '14px 20px', 
-                                borderBottom: '1px solid #f1f5f9', 
-                                color: '#6366f1',
-                                fontSize: '13px',
+                                padding: '20px 24px', 
+                                borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
                                 maxWidth: '250px'
                               }}>
                                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
                                   {loginLogout.url}
                                 </div>
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, color: getTheme().colors.textSecondary }}>
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `1px solid ${isLightTheme() ? 'rgba(100,116,139,0.15)' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                                 <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'login')}
                                   className="action-btn"
                                   style={{
-                                    background: 'transparent',
-                                    border: '1px solid #e2e8f0',
-                                    borderRadius: '6px',
-                                    padding: '5px 8px',
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '2px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
                                     cursor: 'pointer',
-                                    fontSize: '14px',
-                                    transition: 'all 0.15s ease'
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
                                   }}
                                   title="View login steps"
                                 >
                                   👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
                                 </div>
                               </td>
                             </tr>
@@ -2943,67 +2944,70 @@ export default function DashboardPage() {
                               style={{
                                 transition: 'all 0.2s ease',
                                 cursor: 'pointer',
-                                background: '#f8fafb',
-                                borderLeft: '3px solid #10b981'
+                                background: isLightTheme() 
+                                  ? 'rgba(16, 185, 129, 0.08)' 
+                                  : 'rgba(16, 185, 129, 0.1)',
+                                borderLeft: '4px solid #10b981'
                               }}
                               onDoubleClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
                             >
                               <td style={{
-                                padding: '14px 20px',
-                                borderBottom: '1px solid #e2e8f0',
+                                padding: '20px 24px',
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`,
                                 verticalAlign: 'middle',
-                                fontSize: '14px',
-                                color: '#0f172a'
+                                fontSize: '16px',
+                                color: getTheme().colors.textPrimary
                               }}>
-                                <strong style={{ fontSize: '14px', fontWeight: 600, color: '#10b981' }}>🚪 Logout</strong>
-                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                                <strong style={{ fontSize: '17px', color: '#10b981' }}>🚪 Logout</strong>
+                                <div style={{ fontSize: '14px', color: getTheme().colors.textSecondary, marginTop: '4px' }}>
                                   {loginLogout.network_name}
                                 </div>
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}` }}>
                                 <span style={{
-                                  background: '#f1f5f9',
-                                  color: '#475569',
-                                  padding: '3px 10px',
-                                  borderRadius: '4px',
-                                  fontSize: '13px',
-                                  fontWeight: 500
+                                  background: 'rgba(107, 114, 128, 0.2)',
+                                  color: '#9ca3af',
+                                  padding: '8px 16px',
+                                  borderRadius: '20px',
+                                  fontSize: '15px',
+                                  fontWeight: 600
                                 }}>
                                   {loginLogout.logout_stages.length} steps
                                 </span>
                               </td>
                               <td style={{ 
-                                padding: '14px 20px', 
-                                borderBottom: '1px solid #e2e8f0', 
-                                color: '#6366f1',
-                                fontSize: '13px',
+                                padding: '20px 24px', 
+                                borderBottom: `2px solid ${getTheme().colors.cardBorder}`, 
+                                color: isLightTheme() ? '#0369a1' : '#7dd3fc',
+                                fontSize: '14px',
                                 maxWidth: '250px'
                               }}>
                                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loginLogout.url}>
                                   {loginLogout.url}
                                 </div>
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, color: getTheme().colors.textSecondary }}>
                                 {loginLogout.updated_at ? new Date(loginLogout.updated_at).toLocaleDateString() : '-'}
                               </td>
-                              <td style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                              <td style={{ padding: '20px 24px', borderBottom: `2px solid ${getTheme().colors.cardBorder}`, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                                 <button
                                   onClick={() => openLoginLogoutEditPanel(networkId, 'logout')}
                                   className="action-btn"
                                   style={{
-                                    background: 'transparent',
-                                    border: '1px solid #e2e8f0',
-                                    borderRadius: '6px',
-                                    padding: '5px 8px',
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '2px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '16px 18px',
                                     cursor: 'pointer',
-                                    fontSize: '14px',
-                                    transition: 'all 0.15s ease'
+                                    fontSize: '20px',
+                                    transition: 'all 0.2s ease'
                                   }}
                                   title="View logout steps"
                                 >
                                    👁️
                                 </button>
+                                <div style={{ width: '56px', height: '56px' }} />
                                 </div>
                               </td>
                             </tr>
