@@ -9,6 +9,8 @@ from typing import Optional
 from models.database import get_db, User, Company, CompanyProductSubscription
 import logging
 from services.encryption_service import encrypt_secret, decrypt_secret, invalidate_cached_secret, mask_api_key
+import redis
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +108,24 @@ async def update_api_key(
 
     company = db.query(Company).filter(Company.id == company_id).first()
     if company:
+        company.access_model = 'byok'
         company.access_status = 'active'
         if company.account_category:
             company.onboarding_completed = True
 
     db.commit()
+
+    # Invalidate AI access/budget caches (same pattern as company.py)
+    try:
+        redis_client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", 6379)),
+            db=0
+        )
+        redis_client.delete(f"ai_access:{company_id}")
+        redis_client.delete(f"ai_daily_budget:{company_id}")
+    except Exception:
+        pass
 
     logger.info(f"[Settings] API key updated for company {company_id}")
 

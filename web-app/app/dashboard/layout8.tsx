@@ -604,7 +604,7 @@ export default function DashboardLayout({
         <div style={{ fontWeight: 600, fontSize: '15px', color: '#1e293b' }}>{network.name}</div>
         <div style={{ display: 'flex', gap: '6px' }}>
           <button onClick={onEdit} style={iconButtonStyle} title="Edit">✏️</button>
-          <button onClick={onDelete} style={{ ...iconButtonStyle, borderColor: '#fecaca' }} title="Delete">🗑️</button>
+          <button onClick={onDelete} style={{ ...iconButtonStyle, borderColor: 'rgba(239, 68, 68, 0.3)' }} title="Delete">🗑️</button>
         </div>
       </div>
       <div style={{ fontSize: '13px', color: '#64748b', wordBreak: 'break-all', marginBottom: '8px' }}>{network.url}</div>
@@ -1129,10 +1129,10 @@ export default function DashboardLayout({
             <div style={contentCardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
-                  <h2 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                    Test Sites
+                  <h2 style={{ margin: '0 0 10px', fontSize: '32px', fontWeight: 700, color: '#fff', letterSpacing: '-0.5px' }}>
+                    <span style={{ marginRight: '14px' }}>🌐</span>Test Sites
                   </h2>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '17px' }}>
                     Manage your test site environments for {activeProject?.name || 'this project'}
                   </p>
                 </div>
@@ -1140,25 +1140,25 @@ export default function DashboardLayout({
               
               {/* Environment Info Banner */}
               <div style={infoBannerStyle}>
-                <div style={{ fontSize: '16px' }}>💡</div>
+                <div style={{ fontSize: '32px' }}>💡</div>
                 <div>
-                  <strong style={{ color: '#334155', fontSize: '13px', fontWeight: 600 }}>Environment Usage Guide</strong>
-                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px', lineHeight: '1.6' }}>
-                    <strong style={{ color: '#0f172a' }}>Form Pages Discovery & Mapping</strong> are performed exclusively in the <strong style={{ color: '#16a34a' }}>QA environment</strong> to safely explore your application. 
-                    When <strong style={{ color: '#0f172a' }}>running tests</strong>, you can target any environment based on your testing needs.
+                  <strong style={{ color: '#00BBF9', fontSize: '18px' }}>Environment Usage Guide</strong>
+                  <p style={{ margin: '10px 0 0', color: '#94a3b8', fontSize: '16px', lineHeight: '1.7' }}>
+                    <strong style={{ color: '#fff' }}>Form Pages Discovery & Mapping</strong> are performed exclusively in the <strong style={{ color: '#10b981' }}>QA environment</strong> to safely explore your application. 
+                    When <strong style={{ color: '#fff' }}>running tests</strong>, you can target any environment based on your testing needs.
                   </p>
                 </div>
               </div>
               
               {loadingNetworks ? (
-                <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', fontSize: '13px' }}>Loading networks...</div>
+                <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading networks...</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {/* QA Networks */}
                   <div style={networkSectionStyle}>
                     <div style={networkSectionHeaderStyle} onClick={() => toggleSection('qa')}>
-                      <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>
-                        <span style={{ marginRight: '6px' }}>🧪</span>
+                      <span style={{ fontWeight: 600, color: '#fff' }}>
+                        <span style={{ color: '#10b981', marginRight: '8px' }}>🧪</span>
                         QA Environment ({networks.qa.length})
                       </span>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1167,7 +1167,7 @@ export default function DashboardLayout({
                       </div>
                     </div>
                     {!collapsedSections.qa && (
-                      <div style={{ padding: '12px 16px' }}>
+                      <div style={{ padding: '20px' }}>
                         {networks.qa.length === 0 ? (
                           <p style={emptyTextStyle}>No QA networks configured</p>
                         ) : (
@@ -1189,8 +1189,8 @@ export default function DashboardLayout({
                   {/* Staging Networks */}
                   <div style={networkSectionStyle}>
                     <div style={networkSectionHeaderStyle} onClick={() => toggleSection('staging')}>
-                      <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>
-                        <span style={{ marginRight: '6px' }}>🚀</span>
+                      <span style={{ fontWeight: 600, color: '#fff' }}>
+                        <span style={{ color: '#f59e0b', marginRight: '8px' }}>🚀</span>
                         Staging Environment ({networks.staging.length})
                       </span>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1199,7 +1199,7 @@ export default function DashboardLayout({
                       </div>
                     </div>
                     {!collapsedSections.staging && (
-                      <div style={{ padding: '12px 16px' }}>
+                      <div style={{ padding: '20px' }}>
                         {networks.staging.length === 0 ? (
                           <p style={emptyTextStyle}>No Staging networks configured</p>
                         ) : (
@@ -1221,8 +1221,8 @@ export default function DashboardLayout({
                   {/* Production Networks */}
                   <div style={networkSectionStyle}>
                     <div style={networkSectionHeaderStyle} onClick={() => toggleSection('production')}>
-                      <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>
-                        <span style={{ marginRight: '6px' }}>🏭</span>
+                      <span style={{ fontWeight: 600, color: '#fff' }}>
+                        <span style={{ color: '#ef4444', marginRight: '8px' }}>🏭</span>
                         Production Environment ({networks.production.length})
                       </span>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1231,7 +1231,7 @@ export default function DashboardLayout({
                       </div>
                     </div>
                     {!collapsedSections.production && (
-                      <div style={{ padding: '12px 16px' }}>
+                      <div style={{ padding: '20px' }}>
                         {networks.production.length === 0 ? (
                           <p style={emptyTextStyle}>No Production networks configured</p>
                         ) : (
@@ -1263,13 +1263,13 @@ export default function DashboardLayout({
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
             <div style={modalHeaderStyle}>
-              <h2 style={{ margin: 0, fontSize: '15px', color: '#0f172a', fontWeight: 600 }}>
-                Create New Project
+              <h2 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 700 }}>
+                <span style={{ marginRight: '10px' }}>📁</span>Create New Project
               </h2>
             </div>
             
-            <div style={{ padding: '20px' }}>
-              <div style={{ marginBottom: '16px' }}>
+            <div style={{ padding: '28px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={labelStyle}>Project Name *</label>
                 <input
                   type="text"
@@ -1281,7 +1281,7 @@ export default function DashboardLayout({
                 />
               </div>
               
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '8px' }}>
                 <label style={labelStyle}>Description (optional)</label>
                 <textarea
                   value={newProjectDescription}
@@ -1293,18 +1293,18 @@ export default function DashboardLayout({
 
               {/* Only show project type selection if accountCategory is null (legacy users) */}
               {accountCategory === null && (
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '8px' }}>
                 <label style={labelStyle}>Project Type *</label>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
                   <label style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '10px',
                     cursor: 'pointer',
-                    padding: '10px 14px',
-                    borderRadius: '6px',
-                    border: newProjectType === 'enterprise' ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                    background: newProjectType === 'enterprise' ? '#eef2ff' : '#ffffff',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'enterprise' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'enterprise' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
                     flex: 1
                   }}>
                     <input
@@ -1313,22 +1313,22 @@ export default function DashboardLayout({
                       value="enterprise"
                       checked={newProjectType === 'enterprise'}
                       onChange={() => setNewProjectType('enterprise')}
-                      style={{ width: '16px', height: '16px' }}
+                      style={{ width: '18px', height: '18px' }}
                     />
                     <div>
-                      <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>Enterprise Forms</div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Auto-discover forms, multi-path mapping</div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🏢 Enterprise Forms</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Auto-discover forms, multi-path mapping</div>
                     </div>
                   </label>
                   <label style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '10px',
                     cursor: 'pointer',
-                    padding: '10px 14px',
-                    borderRadius: '6px',
-                    border: newProjectType === 'dynamic_content' ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                    background: newProjectType === 'dynamic_content' ? '#eef2ff' : '#ffffff',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: newProjectType === 'dynamic_content' ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.15)',
+                    background: newProjectType === 'dynamic_content' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)',
                     flex: 1
                   }}>
                     <input
@@ -1337,11 +1337,11 @@ export default function DashboardLayout({
                       value="dynamic_content"
                       checked={newProjectType === 'dynamic_content'}
                       onChange={() => setNewProjectType('dynamic_content')}
-                      style={{ width: '16px', height: '16px' }}
+                      style={{ width: '18px', height: '18px' }}
                     />
                     <div>
-                      <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>Dynamic Content</div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Manual test pages, natural language tests</div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '15px' }}>🧪 Dynamic Content</div>
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>Manual test pages, natural language tests</div>
                     </div>
                   </label>
                 </div>
@@ -1373,7 +1373,7 @@ export default function DashboardLayout({
         <div style={modalOverlayStyle}>
           <div style={{ ...modalContentStyle, maxWidth: '600px' }}>
             <div style={{ ...modalHeaderStyle, justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0, fontSize: '15px', color: '#0f172a', fontWeight: 600 }}>Manage Projects</h2>
+              <h2 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 700 }}>Manage Projects</h2>
               <button onClick={() => setShowProjectsModal(false)} style={modalCloseStyle}>×</button>
             </div>
             
@@ -1384,9 +1384,9 @@ export default function DashboardLayout({
                 projects.map(project => (
                   <div key={project.id} style={projectListItemStyle}>
                     <div>
-                      <strong style={{ color: '#0f172a', fontSize: '14px' }}>{project.name}</strong>
-                      {project.description && <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{project.description}</p>}
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                      <strong style={{ color: '#fff', fontSize: '16px' }}>{project.name}</strong>
+                      {project.description && <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#94a3b8' }}>{project.description}</p>}
+                      <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>
                         {project.network_count} networks · {project.form_page_count} form pages
                       </div>
                     </div>
@@ -1418,18 +1418,18 @@ export default function DashboardLayout({
       {showDeleteConfirm && projectToDelete && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
-            <div style={{ ...modalHeaderStyle, background: '#fef2f2' }}>
-              <h2 style={{ margin: 0, fontSize: '15px', color: '#dc2626', fontWeight: 600 }}>
-                Delete Project?
+            <div style={{ ...modalHeaderStyle, background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.2))' }}>
+              <h2 style={{ margin: 0, fontSize: '22px', color: '#ef4444', fontWeight: 700 }}>
+                ⚠️ Delete Project?
               </h2>
             </div>
-            <div style={{ padding: '20px' }}>
-              <p style={{ color: '#334155', fontSize: '14px', margin: '0 0 14px' }}>
-                Are you sure you want to delete <strong style={{ color: '#0f172a' }}>{projectToDelete.name}</strong>?
+            <div style={{ padding: '28px' }}>
+              <p style={{ color: '#e2e8f0', fontSize: '16px', margin: '0 0 20px' }}>
+                Are you sure you want to delete <strong style={{ color: '#fff' }}>{projectToDelete.name}</strong>?
               </p>
               <div style={warningBoxStyle}>
-                <strong style={{ color: '#92400e', fontSize: '13px' }}>This will permanently delete:</strong>
-                <ul style={{ margin: '8px 0 0', paddingLeft: '20px', color: '#64748b', fontSize: '13px' }}>
+                <strong style={{ color: '#f59e0b' }}>This will permanently delete:</strong>
+                <ul style={{ margin: '12px 0 0', paddingLeft: '20px', color: '#94a3b8' }}>
                   <li>{projectToDelete.network_count} network(s)</li>
                   <li>{projectToDelete.form_page_count} form page(s)</li>
                 </ul>
@@ -1452,28 +1452,28 @@ export default function DashboardLayout({
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
             <div style={modalHeaderStyle}>
-              <h2 style={{ margin: 0, fontSize: '15px', color: '#0f172a', fontWeight: 600 }}>
-                {editingNetwork ? 'Edit Network' : 'Add Network'}
+              <h2 style={{ margin: 0, fontSize: '22px', color: '#fff', fontWeight: 700 }}>
+                {editingNetwork ? '✏️ Edit Network' : '🌐 Add Network'}
               </h2>
             </div>
             
-            <div style={{ padding: '20px' }}>
-              <div style={{ marginBottom: '16px' }}>
+            <div style={{ padding: '28px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={labelStyle}>Environment</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   {(['qa', 'staging', 'production'] as const).map(type => (
                     <button
                       key={type}
                       onClick={() => !editingNetwork && setAddNetworkType(type)}
                       style={{
                         flex: 1,
-                        padding: '8px',
-                        border: addNetworkType === type ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                        borderRadius: '6px',
+                        padding: '12px',
+                        border: addNetworkType === type ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '10px',
                         background: addNetworkType === type 
-                          ? '#eef2ff' 
-                          : '#ffffff',
-                        color: addNetworkType === type ? '#0f172a' : '#64748b',
+                          ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2))' 
+                          : 'rgba(255,255,255,0.03)',
+                        color: addNetworkType === type ? '#fff' : '#94a3b8',
                         cursor: editingNetwork ? 'not-allowed' : 'pointer',
                         fontWeight: 600,
                         fontSize: '14px',
@@ -1487,7 +1487,7 @@ export default function DashboardLayout({
                 </div>
               </div>
               
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={labelStyle}>Network Name *</label>
                 <input
                   type="text"
@@ -1498,7 +1498,7 @@ export default function DashboardLayout({
                 />
               </div>
               
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={labelStyle}>URL *</label>
                 <input
                   type="text"
@@ -1509,7 +1509,7 @@ export default function DashboardLayout({
                 />
               </div>
               
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={labelStyle}>Login Username (optional)</label>
                 <input
                   type="text"
@@ -1635,16 +1635,16 @@ export default function DashboardLayout({
       {showDeleteNetworkConfirm && networkToDelete && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
-            <div style={{ ...modalHeaderStyle, background: '#fef2f2' }}>
-              <h2 style={{ margin: 0, fontSize: '15px', color: '#dc2626', fontWeight: 600 }}>
-                Delete Network?
+            <div style={{ ...modalHeaderStyle, background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.2))' }}>
+              <h2 style={{ margin: 0, fontSize: '22px', color: '#ef4444', fontWeight: 700 }}>
+                ⚠️ Delete Network?
               </h2>
             </div>
-            <div style={{ padding: '20px' }}>
-              <p style={{ color: '#334155', fontSize: '14px', margin: 0 }}>
-                Are you sure you want to delete <strong style={{ color: '#0f172a' }}>{networkToDelete.name}</strong>?
+            <div style={{ padding: '28px' }}>
+              <p style={{ color: '#e2e8f0', fontSize: '16px', margin: 0 }}>
+                Are you sure you want to delete <strong style={{ color: '#fff' }}>{networkToDelete.name}</strong>?
               </p>
-              <p style={{ color: '#64748b', fontSize: '13px', marginTop: '8px' }}>
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '12px' }}>
                 This will also delete all form pages discovered from this network.
               </p>
             </div>
@@ -1885,80 +1885,81 @@ const placeholderIconStyle: React.CSSProperties = {
 }
 
 const contentCardStyle: React.CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '8px',
-  padding: '24px',
-  border: '1px solid #e2e8f0',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+  background: 'rgba(75, 85, 99, 0.5)',
+  backdropFilter: 'blur(20px)',
+  borderRadius: '24px',
+  padding: '32px',
+  border: '2px solid rgba(156, 163, 175, 0.3)',
+  boxShadow: '0 0 40px rgba(156, 163, 175, 0.12), 0 20px 60px rgba(0,0,0,0.25)'
 }
 
 const infoBannerStyle: React.CSSProperties = {
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  padding: '14px 18px',
-  marginBottom: '20px',
+  background: 'linear-gradient(135deg, rgba(0, 187, 249, 0.15), rgba(0, 245, 212, 0.12))',
+  border: '2px solid rgba(0, 187, 249, 0.4)',
+  borderRadius: '16px',
+  padding: '20px 24px',
+  marginBottom: '28px',
   display: 'flex',
   alignItems: 'flex-start',
-  gap: '12px'
+  gap: '16px',
+  boxShadow: '0 0 35px rgba(0, 187, 249, 0.2), inset 0 0 30px rgba(0, 187, 249, 0.05)'
 }
 
 const networkSectionStyle: React.CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '6px',
+  background: 'rgba(255, 255, 255, 0.02)',
+  borderRadius: '16px',
   overflow: 'hidden',
-  border: '1px solid #e2e8f0'
+  border: '1px solid rgba(255,255,255,0.05)'
 }
 
 const networkSectionHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '12px 16px',
-  background: '#f8fafc',
+  padding: '18px 24px',
+  background: 'rgba(255, 255, 255, 0.03)',
   cursor: 'pointer',
-  transition: 'all 0.15s ease',
-  borderBottom: '1px solid #f1f5f9'
+  transition: 'all 0.2s ease'
 }
 
 const addBtnStyle: React.CSSProperties = {
-  background: '#6366f1',
+  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: '#fff',
   border: 'none',
-  borderRadius: '6px',
-  width: '28px',
-  height: '28px',
-  fontSize: '16px',
+  borderRadius: '8px',
+  width: '32px',
+  height: '32px',
+  fontSize: '18px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'center'
+  justifyContent: 'center',
+  boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
 }
 
 const networkCardStyle: React.CSSProperties = {
-  background: '#ffffff',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  padding: '14px',
-  transition: 'all 0.15s ease',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+  background: 'rgba(255, 255, 255, 0.03)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: '14px',
+  padding: '18px',
+  transition: 'all 0.2s ease'
 }
 
 const iconButtonStyle: React.CSSProperties = {
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  padding: '6px 8px',
+  background: 'rgba(255, 255, 255, 0.05)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '8px',
+  padding: '8px 10px',
   cursor: 'pointer',
-  fontSize: '13px',
-  transition: 'all 0.15s ease'
+  fontSize: '14px',
+  transition: 'all 0.2s ease'
 }
 
 const emptyTextStyle: React.CSSProperties = {
-  color: '#94a3b8',
-  fontSize: '13px',
+  color: '#64748b',
+  fontSize: '14px',
   textAlign: 'center',
-  padding: '20px'
+  padding: '24px'
 }
 
 const modalOverlayStyle: React.CSSProperties = {
@@ -1967,8 +1968,8 @@ const modalOverlayStyle: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: 'rgba(15, 23, 42, 0.4)',
-  backdropFilter: 'blur(4px)',
+  background: 'rgba(0, 0, 0, 0.6)',
+  backdropFilter: 'blur(8px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1978,126 +1979,128 @@ const modalOverlayStyle: React.CSSProperties = {
 }
 
 const modalContentStyle: React.CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '12px',
+  background: 'linear-gradient(135deg, rgba(75, 85, 99, 0.98), rgba(55, 65, 81, 0.98))',
+  borderRadius: '24px',
   width: '100%',
   maxWidth: '500px',
-  border: '1px solid #e2e8f0',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
   overflow: 'hidden'
 }
 
 const modalHeaderStyle: React.CSSProperties = {
-  padding: '16px 20px',
-  background: '#f8fafc',
-  borderBottom: '1px solid #e2e8f0',
+  padding: '24px 28px',
+  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))',
+  borderBottom: '1px solid rgba(255,255,255,0.05)',
   display: 'flex',
   alignItems: 'center'
 }
 
 const modalCloseStyle: React.CSSProperties = {
-  background: '#f1f5f9',
-  border: '1px solid #e2e8f0',
-  color: '#64748b',
-  width: '32px',
-  height: '32px',
-  borderRadius: '6px',
+  background: 'rgba(255,255,255,0.1)',
+  border: 'none',
+  color: '#94a3b8',
+  width: '36px',
+  height: '36px',
+  borderRadius: '10px',
   cursor: 'pointer',
-  fontSize: '20px',
+  fontSize: '24px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const modalFooterStyle: React.CSSProperties = {
-  padding: '14px 20px',
-  background: '#f8fafc',
-  borderTop: '1px solid #e2e8f0',
+  padding: '20px 28px',
+  background: 'rgba(255,255,255,0.02)',
+  borderTop: '1px solid rgba(255,255,255,0.05)',
   display: 'flex',
   justifyContent: 'flex-end',
-  gap: '8px'
+  gap: '12px'
 }
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  marginBottom: '6px',
-  fontWeight: 500,
-  color: '#334155',
-  fontSize: '13px'
+  marginBottom: '10px',
+  fontWeight: 600,
+  color: '#e2e8f0',
+  fontSize: '16px'
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  fontSize: '14px',
+  padding: '16px 20px',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: '14px',
+  fontSize: '17px',
   boxSizing: 'border-box',
-  background: '#ffffff',
-  color: '#0f172a',
+  background: 'rgba(255,255,255,0.05)',
+  color: '#fff',
   outline: 'none',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const primaryButtonStyle: React.CSSProperties = {
-  background: '#6366f1',
+  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
   color: 'white',
-  padding: '8px 16px',
+  padding: '16px 32px',
   border: 'none',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  borderRadius: '14px',
+  fontSize: '17px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
+  transition: 'all 0.2s ease'
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  background: '#ffffff',
-  color: '#334155',
-  padding: '8px 16px',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  background: 'rgba(255,255,255,0.05)',
+  color: '#e2e8f0',
+  padding: '16px 32px',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: '14px',
+  fontSize: '17px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const dangerButtonStyle: React.CSSProperties = {
-  background: '#ef4444',
+  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
   color: 'white',
-  padding: '8px 16px',
+  padding: '16px 32px',
   border: 'none',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  borderRadius: '14px',
+  fontSize: '17px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  boxShadow: '0 4px 20px rgba(239, 68, 68, 0.3)',
+  transition: 'all 0.2s ease'
 }
 
 const warningBoxStyle: React.CSSProperties = {
-  background: '#fffbeb',
-  border: '1px solid #fde68a',
-  padding: '14px',
-  borderRadius: '6px'
+  background: 'rgba(245, 158, 11, 0.1)',
+  border: '1px solid rgba(245, 158, 11, 0.3)',
+  padding: '20px',
+  borderRadius: '14px'
 }
 
 const projectListItemStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '12px 20px',
-  borderBottom: '1px solid #f1f5f9',
-  transition: 'all 0.15s ease'
+  padding: '22px 30px',
+  borderBottom: '1px solid rgba(255,255,255,0.05)',
+  transition: 'all 0.2s ease'
 }
 
 const deleteIconBtnStyle: React.CSSProperties = {
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-  borderRadius: '6px',
-  padding: '6px 10px',
+  background: 'rgba(239, 68, 68, 0.1)',
+  border: '1px solid rgba(239, 68, 68, 0.2)',
+  borderRadius: '12px',
+  padding: '12px 16px',
   cursor: 'pointer',
-  fontSize: '14px',
-  transition: 'all 0.15s ease'
+  fontSize: '18px',
+  transition: 'all 0.2s ease'
 }

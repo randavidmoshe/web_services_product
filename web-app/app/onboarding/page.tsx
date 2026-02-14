@@ -286,7 +286,7 @@ export default function OnboardingPage() {
               >
                 <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
                 <div style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-                  Form-Heavy / Enterprise Applications
+                  Form-Pages based / Enterprise Applications
                 </div>
                 <ul style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.8, textAlign: 'left', margin: 0, paddingLeft: '20px' }}>
                   <li>Enterprise systems with forms, workflows, and admin panels</li>

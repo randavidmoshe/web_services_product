@@ -74,8 +74,8 @@ async def set_access_model(
     if body.access_model not in ('byok', 'early_access'):
         raise HTTPException(status_code=400, detail="Invalid access model. Must be 'byok' or 'early_access'")
 
-    if body.access_model == 'byok' and not body.claude_api_key:
-        raise HTTPException(status_code=400, detail="API key required for BYOK")
+    #if body.access_model == 'byok' and not body.claude_api_key:
+    #    raise HTTPException(status_code=400, detail="API key required for BYOK")
 
     current_user = get_current_user_from_request(request)
     company = db.query(Company).filter(Company.id == current_user["company_id"]).first()
@@ -86,13 +86,8 @@ async def set_access_model(
     company.access_model = body.access_model
 
     if body.access_model == 'byok':
-        company.access_status = 'active'
-        # Store API key in subscription
-        subscription = db.query(CompanyProductSubscription).filter(
-            CompanyProductSubscription.company_id == company.id
-        ).first()
-        if subscription:
-            subscription.customer_claude_api_key = body.claude_api_key
+        # BYOK selected — key will be saved securely via PUT /api/settings/api-key
+        company.access_status = 'pending'
     else:
         # Early Access - pending until super admin approves
         company.access_status = 'pending'

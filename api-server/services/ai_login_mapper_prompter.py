@@ -553,6 +553,22 @@ If the page shows a CAPTCHA/reCAPTCHA challenge, return ONLY:
 }}}}
 ```
 
+## LOGIN ERROR DETECTION
+
+If the page already shows a login error message (from a previous attempt or stale session):
+- "Invalid credentials", "Wrong password", "Incorrect username or password"
+- "Login failed", "Authentication failed", "Account locked"
+- "Too many attempts", "Account disabled", "User not found"
+- Any red/orange banner, toast, or inline error near the login form
+
+**If login error message detected, return ONLY:**
+```json
+{{{{
+  "login_failed": true,
+  "error_message": "The exact error text shown on the page"
+}}}}
+```
+
 ## IMPORTANT RULES
 
 1. Look at the DOM and screenshot to understand what type of login page this is

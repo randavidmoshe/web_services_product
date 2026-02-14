@@ -394,6 +394,15 @@ def analyze_form_page(
             mapping_hints=mapping_hints
         )
 
+        # Server-side credential injection (AI may alter case/formatting)
+        if mapping_type in ("login_mapping", "logout_mapping") and login_credentials and ai_result.get("steps"):
+            for step in ai_result["steps"]:
+                field_lower = (step.get("field_name") or "").lower()
+                if field_lower in ("username", "email", "user", "login"):
+                    step["value"] = login_credentials.get("username", step.get("value", ""))
+                elif field_lower in ("password",):
+                    step["value"] = login_credentials.get("password", step.get("value", ""))
+
         #print(f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!!!!! ✅ AI Generated steps: {len(ai_result.get('steps', []))} new steps:"
         print(msg)
@@ -1154,6 +1163,16 @@ def regenerate_steps(
             login_credentials=login_credentials,
             mapping_hints=mapping_hints
         )
+
+        # Server-side credential injection (AI may alter case/formatting)
+        if mapping_type in ("login_mapping", "logout_mapping") and login_credentials and ai_result.get("steps"):
+            for step in ai_result["steps"]:
+                field_lower = (step.get("field_name") or "").lower()
+                if field_lower in ("username", "email", "user", "login"):
+                    step["value"] = login_credentials.get("username", step.get("value", ""))
+                elif field_lower in ("password",):
+                    step["value"] = login_credentials.get("password", step.get("value", ""))
+
         # print(f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:")
         msg = f"!!!! ✅ AI regenerated_steps (regular): {len(ai_result.get('steps', []))} new steps:"
         print(msg)

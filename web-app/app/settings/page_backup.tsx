@@ -135,8 +135,8 @@ export default function SettingsPage() {
       <div style={containerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', marginBottom: '12px' }}>⏳</div>
-            <p style={{ color: '#94a3b8', fontSize: '13px' }}>Loading...</p>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
+            <p style={{ color: '#64748b', fontSize: '18px' }}>Loading...</p>
           </div>
         </div>
       </div>
@@ -153,8 +153,8 @@ export default function SettingsPage() {
         >
           ← Back to Dashboard
         </button>
-        <h1 style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Settings</h1>
-        <div style={{ width: '100px' }} /> {/* Spacer for centering */}
+        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b', margin: 0 }}>Settings</h1>
+        <div style={{ width: '140px' }} /> {/* Spacer for centering */}
       </div>
 
       {/* Main Content */}
@@ -168,22 +168,22 @@ export default function SettingsPage() {
                 onClick={() => item.available && setActiveTab(item.id)}
                 style={{
                   ...menuItemStyle,
-                  background: activeTab === item.id ? '#6366f1' : 'transparent',
+                  background: activeTab === item.id ? 'linear-gradient(135deg, #0ea5e9, #6366f1)' : 'transparent',
                   color: activeTab === item.id ? 'white' : item.available ? '#374151' : '#9ca3af',
                   cursor: item.available ? 'pointer' : 'not-allowed',
                   opacity: item.available ? 1 : 0.6
                 }}
               >
-                <span style={{ fontSize: '14px' }}>{item.icon}</span>
+                <span style={{ fontSize: '20px' }}>{item.icon}</span>
                 <span>{item.label}</span>
                 {!item.available && (
                   <span style={{
                     marginLeft: 'auto',
-                    fontSize: '9px',
-                    background: '#f1f5f9',
-                    padding: '1px 6px',
-                    borderRadius: '3px',
-                    color: '#94a3b8'
+                    fontSize: '10px',
+                    background: '#e5e7eb',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    color: '#6b7280'
                   }}>
                     Soon
                   </span>
@@ -200,14 +200,13 @@ export default function SettingsPage() {
             <div style={{
               background: message.type === 'error' ? '#fef2f2' : '#f0fdf4',
               color: message.type === 'error' ? '#dc2626' : '#16a34a',
-              padding: '10px 14px',
-              borderRadius: '6px',
-              marginBottom: '16px',
+              padding: '16px 20px',
+              borderRadius: '12px',
+              marginBottom: '24px',
               border: `1px solid ${message.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              fontSize: '13px'
+              gap: '12px'
             }}>
               <span>{message.type === 'error' ? '❌' : '✅'}</span>
               {message.text}
@@ -218,10 +217,10 @@ export default function SettingsPage() {
           {activeTab === 'api-key' && (
             <div>
               <div style={sectionHeaderStyle}>
-                <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', margin: 0 }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
                   Anthropic API Key
                 </h2>
-                <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0' }}>
+                <p style={{ color: '#64748b', fontSize: '14px', margin: '8px 0 0' }}>
                   Your API key powers all AI features in Quattera. It's stored securely and encrypted.
                 </p>
               </div>
@@ -229,17 +228,17 @@ export default function SettingsPage() {
               <div style={cardStyle}>
                 {hasKey && !showKeyInput ? (
                   <div>
-                    <div style={{ marginBottom: '14px' }}>
+                    <div style={{ marginBottom: '20px' }}>
                       <label style={labelStyle}>Current API Key</label>
                       <div style={keyDisplayStyle}>
-                        <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace", fontSize: '13px', color: '#0f172a' }}>
+                        <code style={{ fontFamily: 'monospace', fontSize: '15px', color: '#1e293b' }}>
                           {maskedKey}
                         </code>
                         <span style={statusBadgeStyle}>Active</span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
                       <button
                         onClick={() => setShowKeyInput(true)}
                         style={secondaryButtonStyle}
@@ -257,7 +256,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ marginBottom: '14px' }}>
+                    <div style={{ marginBottom: '20px' }}>
                       <label style={labelStyle}>
                         {hasKey ? 'New API Key' : 'API Key'}
                       </label>
@@ -271,12 +270,12 @@ export default function SettingsPage() {
                     </div>
 
                     <div style={infoBoxStyle}>
-                      <div style={{ fontSize: '14px' }}>💡</div>
+                      <div style={{ fontSize: '16px', marginBottom: '8px' }}>💡</div>
                       <div>
-                        <p style={{ margin: '0 0 4px', fontWeight: 500, color: '#334155', fontSize: '12px' }}>
+                        <p style={{ margin: '0 0 8px', fontWeight: 500, color: '#0369a1' }}>
                           How to get your API key:
                         </p>
-                        <ol style={{ margin: 0, paddingLeft: '16px', color: '#64748b', lineHeight: 1.7, fontSize: '12px' }}>
+                        <ol style={{ margin: 0, paddingLeft: '20px', color: '#0369a1', lineHeight: 1.8 }}>
                           <li>Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>console.anthropic.com</a></li>
                           <li>Navigate to API Keys section</li>
                           <li>Create a new key or copy an existing one</li>
@@ -284,7 +283,7 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
                       {hasKey && (
                         <button
                           onClick={() => {
@@ -314,8 +313,8 @@ export default function SettingsPage() {
               </div>
 
               {/* Additional Info */}
-              <div style={{ marginTop: '24px' }}>
-                <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '8px' }}>
+              <div style={{ marginTop: '32px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
                   About BYOK (Bring Your Own Key)
                 </h3>
                 <div style={featureListStyle}>
@@ -343,11 +342,11 @@ export default function SettingsPage() {
           {/* Coming Soon Tabs */}
           {activeTab !== 'api-key' && (
             <div style={comingSoonStyle}>
-              <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚧</div>
-              <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', margin: '0 0 8px' }}>
+              <div style={{ fontSize: '64px', marginBottom: '20px' }}>🚧</div>
+              <h2 style={{ fontSize: '24px', fontWeight: 600, color: '#1e293b', margin: '0 0 12px' }}>
                 Coming Soon
               </h2>
-              <p style={{ color: '#94a3b8', margin: 0, fontSize: '13px' }}>
+              <p style={{ color: '#64748b', margin: 0 }}>
                 This feature is under development and will be available soon.
               </p>
             </div>
@@ -361,57 +360,57 @@ export default function SettingsPage() {
 // Styles
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
-  background: '#f8fafc'
+  background: 'linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%)'
 }
 
 const headerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '12px 24px',
-  background: '#ffffff',
-  borderBottom: '1px solid #e2e8f0',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+  padding: '20px 40px',
+  background: 'rgba(255,255,255,0.9)',
+  backdropFilter: 'blur(10px)',
+  borderBottom: '1px solid #e2e8f0'
 }
 
 const backButtonStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
   color: '#6366f1',
-  fontSize: '13px',
+  fontSize: '15px',
   fontWeight: 500,
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  gap: '4px',
-  padding: '4px 0'
+  gap: '8px',
+  padding: '8px 0'
 }
 
 const mainContentStyle: React.CSSProperties = {
   display: 'flex',
-  maxWidth: '960px',
+  maxWidth: '1200px',
   margin: '0 auto',
-  padding: '24px 32px'
+  padding: '40px'
 }
 
 const sidebarStyle: React.CSSProperties = {
-  width: '200px',
+  width: '260px',
   flexShrink: 0,
-  paddingRight: '24px'
+  paddingRight: '40px'
 }
 
 const menuItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
+  gap: '14px',
   width: '100%',
-  padding: '8px 12px',
+  padding: '14px 18px',
   border: 'none',
-  borderRadius: '6px',
-  fontSize: '13px',
+  borderRadius: '12px',
+  fontSize: '15px',
   fontWeight: 500,
-  marginBottom: '2px',
-  transition: 'all 0.15s ease',
+  marginBottom: '8px',
+  transition: 'all 0.2s ease',
   textAlign: 'left'
 }
 
@@ -421,23 +420,23 @@ const contentAreaStyle: React.CSSProperties = {
 }
 
 const sectionHeaderStyle: React.CSSProperties = {
-  marginBottom: '16px'
+  marginBottom: '24px'
 }
 
 const cardStyle: React.CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '8px',
-  padding: '20px',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+  background: 'white',
+  borderRadius: '16px',
+  padding: '28px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   border: '1px solid #e2e8f0'
 }
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: '12px',
-  fontWeight: 500,
-  color: '#334155',
-  marginBottom: '6px'
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#374151',
+  marginBottom: '10px'
 }
 
 const keyDisplayStyle: React.CSSProperties = {
@@ -445,87 +444,87 @@ const keyDisplayStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   background: '#f8fafc',
-  padding: '10px 14px',
-  borderRadius: '6px',
+  padding: '16px 20px',
+  borderRadius: '10px',
   border: '1px solid #e2e8f0'
 }
 
 const statusBadgeStyle: React.CSSProperties = {
   background: '#dcfce7',
   color: '#16a34a',
-  padding: '3px 10px',
-  borderRadius: '4px',
-  fontSize: '11px',
-  fontWeight: 500
+  padding: '6px 14px',
+  borderRadius: '20px',
+  fontSize: '13px',
+  fontWeight: 600
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  fontSize: '13px',
+  padding: '14px 18px',
+  border: '2px solid #e2e8f0',
+  borderRadius: '10px',
+  fontSize: '15px',
   boxSizing: 'border-box',
   outline: 'none',
-  transition: 'border-color 0.15s ease'
+  transition: 'border-color 0.2s ease'
 }
 
 const infoBoxStyle: React.CSSProperties = {
   display: 'flex',
-  gap: '10px',
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  padding: '12px'
+  gap: '14px',
+  background: '#f0f9ff',
+  border: '1px solid #bae6fd',
+  borderRadius: '12px',
+  padding: '18px'
 }
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: '8px 16px',
-  background: '#6366f1',
+  padding: '14px 28px',
+  background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
   color: 'white',
   border: 'none',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  borderRadius: '10px',
+  fontSize: '15px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '8px 16px',
-  background: '#ffffff',
-  color: '#334155',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  padding: '14px 28px',
+  background: 'white',
+  color: '#374151',
+  border: '2px solid #e2e8f0',
+  borderRadius: '10px',
+  fontSize: '15px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const dangerButtonStyle: React.CSSProperties = {
-  padding: '8px 16px',
-  background: '#ffffff',
+  padding: '14px 28px',
+  background: 'white',
   color: '#dc2626',
-  border: '1px solid #fecaca',
-  borderRadius: '6px',
-  fontSize: '13px',
-  fontWeight: 500,
+  border: '2px solid #fecaca',
+  borderRadius: '10px',
+  fontSize: '15px',
+  fontWeight: 600,
   cursor: 'pointer',
-  transition: 'all 0.15s ease'
+  transition: 'all 0.2s ease'
 }
 
 const featureListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '8px'
+  gap: '12px'
 }
 
 const featureItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '8px',
-  fontSize: '13px',
+  gap: '12px',
+  fontSize: '14px',
   color: '#475569'
 }
 
@@ -534,10 +533,10 @@ const comingSoonStyle: React.CSSProperties = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  background: '#ffffff',
-  borderRadius: '8px',
-  padding: '48px 32px',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+  background: 'white',
+  borderRadius: '16px',
+  padding: '80px 40px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   border: '1px solid #e2e8f0',
   textAlign: 'center'
 }
